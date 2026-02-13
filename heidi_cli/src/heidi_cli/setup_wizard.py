@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -142,22 +143,38 @@ class SetupWizard:
         # Test GitHub auth (must not show token)
         console.print("\nTesting GitHub authentication...")
         try:
-            result = subprocess.run(["heidi", "auth", "status"], capture_output=True, text=True)
+            result = subprocess.run(
+                ["heidi", "auth", "status"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env={**os.environ, "HEIDI_NO_WIZARD": "1"}
+            )
             if result.returncode == 0:
                 console.print("✅ heidi auth status: PASS")
             else:
                 console.print("❌ heidi auth status: FAIL")
+        except subprocess.TimeoutExpired:
+            console.print("⚠️  heidi auth status: TIMEOUT")
         except Exception:
             console.print("❌ heidi auth status: FAIL")
 
         # Test Copilot doctor
         console.print("\nRunning Copilot doctor...")
         try:
-            result = subprocess.run(["heidi", "copilot", "doctor"], capture_output=True, text=True)
+            result = subprocess.run(
+                ["heidi", "copilot", "doctor"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env={**os.environ, "HEIDI_NO_WIZARD": "1"}
+            )
             if result.returncode == 0:
                 console.print("✅ heidi copilot doctor: PASS")
             else:
                 console.print("❌ heidi copilot doctor: FAIL")
+        except subprocess.TimeoutExpired:
+            console.print("⚠️  heidi copilot doctor: TIMEOUT")
         except Exception:
             console.print("❌ heidi copilot doctor: FAIL")
 
