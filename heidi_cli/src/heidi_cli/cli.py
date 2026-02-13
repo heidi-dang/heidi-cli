@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import shutil
 from pathlib import Path
 from typing import Any, Optional
@@ -136,7 +135,9 @@ def auth_gh(
     console.print("[green]GitHub token stored successfully[/green]")
 
     if store_keyring:
-        console.print("[dim]Token stored in OS keyring[/dim]")
+        console.print("[dim]Token also stored in OS keyring[/dim]")
+    else:
+        console.print("[dim]Token stored only in secrets file[/dim]")
 
 
 @auth_app.command("status")
@@ -155,31 +156,12 @@ def copilot_doctor() -> None:
     from .copilot_runtime import CopilotRuntime
 
     async def _run():
-        rt: Optional[CopilotRuntime] = None
+        rt = CopilotRuntime()
+        await rt.start()
         try:
             table = Table(title="Copilot SDK Status")
             table.add_column("Check", style="cyan")
             table.add_column("Status", style="green")
-
-            import importlib.util
-            sdk_present = bool(importlib.util.find_spec("copilot"))
-            table.add_row("Copilot SDK import", "ok" if sdk_present else "missing")
-
-            env_present = bool(
-                (os.getenv("COPILOT_GITHUB_TOKEN") or "").strip()
-                or (os.getenv("GH_TOKEN") or "").strip()
-                or (os.getenv("GITHUB_TOKEN") or "").strip()
-            )
-            secrets_present = bool((ConfigManager.load_secrets().github_token or "").strip())
-            keyring_present = ConfigManager.has_github_token_in_keyring()
-            effective_present = bool((ConfigManager.get_github_token() or "").strip())
-            table.add_row("Token present (env)", str(env_present))
-            table.add_row("Token present (secrets.json)", str(secrets_present))
-            table.add_row("Token present (keyring)", str(keyring_present))
-            table.add_row("Token present (effective)", str(effective_present))
-
-            rt = CopilotRuntime()
-            await rt.start()
 
             try:
                 st = await rt.client.get_status()
@@ -201,11 +183,7 @@ def copilot_doctor() -> None:
             console.print(f"[red]Doctor check failed: {e}[/red]")
             raise typer.Exit(1)
         finally:
-            if rt is not None:
-                try:
-                    await rt.stop()
-                except Exception:
-                    pass
+            await rt.stop()
 
     asyncio.run(_run())
 
@@ -214,27 +192,25 @@ def copilot_doctor() -> None:
 def copilot_status() -> None:
     """Print auth + health status from Copilot CLI."""
     from .copilot_runtime import CopilotRuntime
+    from .logging import redact_secrets
     
     async def _run():
+        rt = CopilotRuntime()
         try:
-            rt = CopilotRuntime()
             await rt.start()
             try:
                 st = await rt.client.get_status()
                 auth = await rt.client.get_auth_status()
-                console.print(
-                    Panel.fit(
-                        f"state={getattr(st, 'state', 'unknown')}\n"
-                        f"cliVersion={getattr(st, 'cliVersion', 'unknown')}\n\n"
-                        f"isAuthenticated={getattr(auth, 'isAuthenticated', False)}\n"
-                        f"login={getattr(auth, 'login', 'unknown')}",
-                        title="Copilot SDK Status",
-                    )
-                )
-            finally:
-                await rt.stop()
+                console.print(Panel.fit(f"state={st.state}\ncliVersion={st.cliVersion}\n\n" +
+                                        f"isAuthenticated={auth.isAuthenticated}\nlogin={auth.login}",
+                                        title="Copilot SDK Status"))
+            except Exception as e:
+                console.print(f"[yellow]Could not get Copilot status: {redact_secrets(str(e))}[/yellow]")
         except Exception as e:
-            console.print(Panel.fit(f"state=error\nerror={e}", title="Copilot SDK Status"))
+            console.print(f"[red]Failed to connect to Copilot SDK: {redact_secrets(str(e))}[/red]")
+            raise typer.Exit(1)
+        finally:
+            await rt.stop()
     asyncio.run(_run())
 
 
@@ -242,17 +218,28 @@ def copilot_status() -> None:
 def copilot_chat(
     prompt: str,
     model: Optional[str] = None,
-    timeout: int = typer.Option(120, "--timeout", help="Timeout seconds"),
+    timeout: int = typer.Option(120, help="Timeout in seconds"),
 ) -> None:
     """Send a single prompt and print the assistant response."""
     from .copilot_runtime import CopilotRuntime
+    from .logging import redact_secrets
     
     async def _run():
         rt = CopilotRuntime(model=model)
-        await rt.start()
         try:
-            text = await rt.send_and_wait(prompt, timeout_s=timeout)
-            console.print(text)
+            await rt.start()
+            try:
+                text = await rt.send_and_wait(prompt, timeout_s=timeout)
+                console.print(text)
+            except asyncio.TimeoutError:
+                console.print(f"[yellow]Chat timed out after {timeout} seconds[/yellow]")
+                raise typer.Exit(1)
+            except Exception as e:
+                console.print(f"[red]Chat error: {redact_secrets(str(e))}[/red]")
+                raise typer.Exit(1)
+        except Exception as e:
+            console.print(f"[red]Failed to start Copilot: {redact_secrets(str(e))}[/red]")
+            raise typer.Exit(1)
         finally:
             await rt.stop()
     asyncio.run(_run())
@@ -302,17 +289,12 @@ def valves_set(key: str, value: str) -> None:
 @app.command("loop")
 def loop(
     task: str,
-    executor: Optional[str] = typer.Option(None, help="copilot | jules | opencode | vscode"),
-    max_retries: Optional[int] = typer.Option(None, help="Max re-plans after FAIL"),
+    executor: str = typer.Option("copilot", help="copilot | jules | opencode"),
+    max_retries: int = typer.Option(2, help="Max re-plans after FAIL"),
     workdir: Path = typer.Option(Path.cwd(), help="Repo working directory"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print what would be executed"),
 ) -> None:
     """Run: Plan -> execute handoffs -> audit -> PASS/FAIL (starter loop)."""
-    if executor is None:
-        executor = str(ConfigManager.get_valve("DEFAULT_EXECUTOR") or "copilot")
-    if max_retries is None:
-        max_retries = int(ConfigManager.get_valve("MAX_RETRIES") or 2)
-
     if dry_run:
         console.print("[yellow]DRY RUN: Would execute loop with:[/yellow]")
         console.print(f"  task: {task}")
@@ -354,14 +336,11 @@ def loop(
 @app.command("run")
 def run(
     prompt: str,
-    executor: Optional[str] = typer.Option(None, help="copilot | jules | opencode | vscode"),
+    executor: str = typer.Option("copilot", help="copilot | jules | opencode"),
     workdir: Path = typer.Option(Path.cwd(), help="Repo working directory"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print what would be executed"),
 ) -> None:
     """Run a single prompt with the specified executor."""
-    if executor is None:
-        executor = str(ConfigManager.get_valve("DEFAULT_EXECUTOR") or "copilot")
-
     if dry_run:
         console.print("[yellow]DRY RUN: Would execute:[/yellow]")
         console.print(f"  executor: {executor}")

@@ -1,23 +1,44 @@
-# Heidi CLI (skeleton)
+# Heidi CLI
 
-This is a minimal starter that:
-- Chats with GitHub Copilot via the **Copilot Python SDK** (Copilot CLI in server mode).
-- Wraps **Jules** and **OpenCode** CLIs (optional).
-- Runs a simple "Plan -> Execute batches" loop using a registry of agent prompts.
+Master controller that orchestrates Copilot SDK + Jules + OpenCode agent loops with strict Plan→Runner→Audit workflow and durable artifacts.
 
-## Install (editable)
+## Install
 
 ```bash
 cd heidi_cli
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e ".[dev]"
 ```
 
-## Quick tests
+## Quickstart
 
 ```bash
-heidi copilot status
+# Initialize
+heidi init
+
+# Authenticate with GitHub
+heidi auth gh
+
+# Chat with Copilot
 heidi copilot chat "hello"
-heidi loop "fix failing tests" --executor copilot
+
+# Run full loop
+heidi loop "create hello.py prints hello" --executor copilot
 ```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `heidi init` | Initialize `.heidi/` directory |
+| `heidi auth gh` | Authenticate with GitHub |
+| `heidi doctor` | Check all dependencies |
+| `heidi copilot doctor` | Check Copilot SDK status |
+| `heidi copilot status` | Show Copilot connection status |
+| `heidi copilot chat "prompt"` | Chat with Copilot |
+| `heidi run "prompt"` | Single prompt execution |
+| `heidi loop "task"` | Full Plan→Audit loop |
+| `heidi runs` | List recent runs |
+| `heidi valves get/set` | Config management |
+| `heidi serve` | Start HTTP server (port 7777) |

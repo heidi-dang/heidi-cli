@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import os
-import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
 from ..copilot_runtime import CopilotRuntime
-from ..logging import redact_secrets
 
 
 @dataclass
@@ -39,7 +36,7 @@ class CopilotExecutor(BaseExecutor):
             text = await rt.send_and_wait(f"WORKDIR: {workdir}\n\n{prompt}")
             return ExecResult(ok=True, output=text)
         except Exception as e:
-            return ExecResult(ok=False, output=redact_secrets(str(e)))
+            return ExecResult(ok=False, output=str(e))
         finally:
             await rt.stop()
 
@@ -58,25 +55,17 @@ class SubprocessExecutor(BaseExecutor):
         )
         out, _ = await proc.communicate()
         text = (out or b"").decode(errors="replace")
-        return ExecResult(ok=(proc.returncode == 0), output=redact_secrets(text))
+        return ExecResult(ok=(proc.returncode == 0), output=text)
 
 
 class OpenCodeExecutor(SubprocessExecutor):
     def __init__(self):
-        override = (os.getenv("HEIDI_OPENCODE_CMD") or "").strip()
-        super().__init__(
-            shlex.split(override, posix=(os.name != "nt")) if override else ["opencode", "run"]
-        )
+        super().__init__(["opencode", "run"])
 
 
 class JulesExecutor(SubprocessExecutor):
     def __init__(self):
-        override = (os.getenv("HEIDI_JULES_CMD") or "").strip()
-        super().__init__(
-            shlex.split(override, posix=(os.name != "nt"))
-            if override
-            else ["jules", "remote", "new", "--session"]
-        )
+        super().__init__(["jules", "remote", "new"])
 
 
 class VscodeExecutor(BaseExecutor):
@@ -88,8 +77,7 @@ class VscodeExecutor(BaseExecutor):
         try:
             proc = await asyncio.create_subprocess_exec(
                 "code",
-                "--folder-uri",
-                workdir.resolve().as_uri(),
+                "--folder-uri", f"vscode-remote://localhost+{workdir}",
                 "--command", "heidi-vscode.execute",
                 "--",
                 prompt,
@@ -98,6 +86,6 @@ class VscodeExecutor(BaseExecutor):
             )
             out, _ = await proc.communicate()
             text = (out or b"").decode(errors="replace")
-            return ExecResult(ok=(proc.returncode == 0), output=redact_secrets(text))
+            return ExecResult(ok=(proc.returncode == 0), output=text)
         except FileNotFoundError:
-            return ExecResult(ok=False, output=redact_secrets("VS Code not found in PATH"))
+            return ExecResult(ok=False, output="VS Code not found in PATH")

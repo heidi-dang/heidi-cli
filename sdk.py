@@ -9,6 +9,8 @@ version: 0.6.2
 requirements: github-copilot-sdk==0.1.23
 """
 
+# ruff: noqa: E722, E701, F541, F841
+
 import os
 import re
 import json
@@ -21,7 +23,6 @@ import subprocess
 import hashlib
 import aiohttp
 import contextlib
-import traceback
 from pathlib import Path
 from typing import Optional, Union, AsyncGenerator, List, Any, Dict, Literal, Tuple
 from types import SimpleNamespace
@@ -48,9 +49,8 @@ from open_webui.models.files import Files, FileForm
 from open_webui.config import UPLOAD_DIR, DATA_DIR
 import mimetypes
 import uuid
-import shutil
 
-# Open WebUI internal database (re-use shared connection)
+# Open WebUI internal database
 try:
     from open_webui.internal import db as owui_db
 except ImportError:
@@ -676,7 +676,7 @@ class Pipe:
                     target_path = target_path.resolve()
                     if not str(target_path).startswith(str(workspace_dir.resolve())):
                         return {
-                            "error": f"Access denied: File must be within the current chat workspace."
+                            "error": "Access denied: File must be within the current chat workspace."
                         }
                 except Exception as e:
                     return {"error": f"Path validation failed: {e}"}
@@ -1240,7 +1240,7 @@ class Pipe:
                         )
                     else:
                         await self._emit_debug_log(
-                            f"[Tools] get_openwebui_tools returned EMPTY dictionary.",
+                            "[Tools] get_openwebui_tools returned EMPTY dictionary.",
                             __event_call__,
                         )
 
@@ -1877,7 +1877,7 @@ class Pipe:
 
         async def on_post_tool_use(input_data, invocation):
             result = input_data.get("result", "")
-            tool_name = input_data.get("toolName", "")
+            input_data.get("toolName", "")
 
             # Logic to detect and move large files saved to /tmp
             # Pattern: Saved to: /tmp/copilot_result_xxxx.txt
@@ -2180,7 +2180,7 @@ class Pipe:
         ):
             if self.valves.DEBUG:
                 logger.info(
-                    f"[Pipes] Configuration change detected. Invalidating model cache."
+                    "[Pipes] Configuration change detected. Invalidating model cache."
                 )
             self.__class__._model_cache = []
             self.__class__._last_byok_config_hash = current_config_hash
@@ -2408,7 +2408,7 @@ class Pipe:
                         __event_call__,
                         debug_enabled=debug_enabled,
                     )
-            except Exception as e:
+            except Exception:
                 # Fallback to string comparison if packaging is not available
                 if norm_target != norm_current:
                     should_install = True
@@ -2769,11 +2769,6 @@ class Pipe:
         )
 
         # Apply SHOW_THINKING user setting (prefer user override when provided)
-        show_thinking = (
-            user_valves.SHOW_THINKING
-            if user_valves.SHOW_THINKING is not None
-            else self.valves.SHOW_THINKING
-        )
 
         # 1. Determine the actual model ID to use
         # Priority: __metadata__.base_model_id (for custom models/characters) > request_model
@@ -2970,7 +2965,7 @@ class Pipe:
                 __metadata__=__metadata__,
             )
             if custom_tools:
-                tool_names = [t.name for t in custom_tools]
+                [t.name for t in custom_tools]
                 await self._emit_debug_log(
                     f"Enabled {len(custom_tools)} tools (Custom/Built-in)",
                     __event_call__,
@@ -2994,7 +2989,6 @@ class Pipe:
 
             # Create or Resume Session
             session = None
-            is_new_session = True
 
             # Build BYOK Provider Config
             provider_config = None
@@ -3106,7 +3100,6 @@ class Pipe:
                         f"Successfully resumed session {chat_id} with model {real_model_id}",
                         __event_call__,
                     )
-                    is_new_session = False
                 except Exception as e:
                     await self._emit_debug_log(
                         f"Session {chat_id} not found or failed to resume ({str(e)}), creating new.",
@@ -3114,7 +3107,6 @@ class Pipe:
                     )
 
             if session is None:
-                is_new_session = True
                 session_config = self._build_session_config(
                     chat_id,
                     real_model_id,
@@ -3244,7 +3236,6 @@ class Pipe:
         Stream response from Copilot SDK, handling various event types.
         Follows official SDK patterns for event handling and streaming.
         """
-        from copilot.generated.session_events import SessionEventType
 
         queue = asyncio.Queue()
         done = asyncio.Event()
@@ -3468,7 +3459,7 @@ class Pipe:
                                     if isinstance(args, dict) and "todos" in args:
                                         todo_text = args["todos"]
                                         self._emit_debug_log_sync(
-                                            f"Recovered TODO from arguments (Result was too short)",
+                                            "Recovered TODO from arguments (Result was too short)",
                                             __event_call__,
                                             debug_enabled=debug_enabled,
                                         )
@@ -3580,9 +3571,9 @@ class Pipe:
             elif event_type == "assistant.usage":
                 # Token usage for current assistant turn
                 if self.valves.DEBUG:
-                    input_tokens = safe_get_data_attr(event, "input_tokens", 0)
-                    output_tokens = safe_get_data_attr(event, "output_tokens", 0)
-                    total_tokens = safe_get_data_attr(event, "total_tokens", 0)
+                    safe_get_data_attr(event, "input_tokens", 0)
+                    safe_get_data_attr(event, "output_tokens", 0)
+                    safe_get_data_attr(event, "total_tokens", 0)
                 pass
 
             elif event_type == "session.usage_info":
@@ -3616,16 +3607,16 @@ class Pipe:
         unsubscribe = session.on(handler)
 
         self._emit_debug_log_sync(
-            f"Subscribed to events. Sending request...",
+            "Subscribed to events. Sending request...",
             __event_call__,
             debug_enabled=debug_enabled,
         )
 
         # Use asyncio.create_task used to prevent session.send from blocking the stream reading
         # if the SDK implementation waits for completion.
-        send_task = asyncio.create_task(session.send(send_payload))
+        asyncio.create_task(session.send(send_payload))
         self._emit_debug_log_sync(
-            f"Prompt sent (async task started)",
+            "Prompt sent (async task started)",
             __event_call__,
             debug_enabled=debug_enabled,
         )
@@ -3719,7 +3710,7 @@ class Pipe:
                 # We do not destroy session here to allow persistence,
                 # but we must stop the client.
                 await client.stop()
-            except Exception as e:
+            except Exception:
                 pass
 
 
@@ -3887,7 +3878,7 @@ class GitHubSDKRecommendations:
             with open(path, "w") as f:
                 json.dump(state_dump, f, indent=2)
             return True
-        except Exception as e:
+        except Exception:
             return False
 
     def load_session_from_disk(self, filename: str) -> bool:
@@ -3898,7 +3889,7 @@ class GitHubSDKRecommendations:
             cwd = self.pipe._get_workspace_dir() if hasattr(self.pipe, "_get_workspace_dir") else "."
             path = os.path.join(cwd, filename)
             with open(path, "r") as f:
-                data = json.load(f)
+                json.load(f)
             # Restore logic would go here
             return True
         except Exception:

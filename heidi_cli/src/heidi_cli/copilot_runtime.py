@@ -7,8 +7,6 @@ from typing import Optional
 
 from copilot import CopilotClient
 
-from .logging import redact_secrets
-
 
 class CopilotRuntime:
     """Thin wrapper around CopilotClient with sensible defaults."""
@@ -20,7 +18,7 @@ class CopilotRuntime:
         log_level: str = "error",
         cwd: Optional[Path] = None,
     ):
-        self.model = model or (os.getenv("COPILOT_MODEL") or "").strip() or None
+        self.model = model or os.getenv("COPILOT_MODEL", "gpt-5")
         
         # Try env vars first, then fall back to ConfigManager
         self.github_token = (
@@ -30,19 +28,12 @@ class CopilotRuntime:
             or os.getenv("GITHUB_TOKEN")
         )
         
-        try:
-            from .config import ConfigManager
-
-            if not self.github_token:
+        if not self.github_token:
+            try:
+                from .config import ConfigManager
                 self.github_token = ConfigManager.get_github_token()
-
-            if not self.model:
-                self.model = str(ConfigManager.get_valve("COPILOT_MODEL") or "").strip() or None
-        except Exception:
-            pass
-
-        if not self.model:
-            self.model = "gpt-5"
+            except Exception:
+                pass
         
         self.cwd = cwd or Path.cwd()
         
@@ -56,34 +47,15 @@ class CopilotRuntime:
         else:
             client_config["use_logged_in_user"] = True
         
+        # Add workspace/cwd if supported by SDK
         client_config["cwd"] = str(self.cwd)
-
-        self._client_config = client_config
+        
         self.client = CopilotClient(client_config)
         self._session = None
 
     async def start(self) -> None:
-        try:
-            await self.client.start()
-        except Exception as e:
-            msg = redact_secrets(str(e))
-            if self._client_config.get("use_logged_in_user") is False:
-                try:
-                    fallback_config = dict(self._client_config)
-                    fallback_config.pop("github_token", None)
-                    fallback_config["use_logged_in_user"] = True
-                    self.client = CopilotClient(fallback_config)
-                    self._client_config = fallback_config
-                    await self.client.start()
-                except Exception as e2:
-                    raise RuntimeError(redact_secrets(str(e2))) from None
-            else:
-                raise RuntimeError(msg) from None
-
-        try:
-            self._session = await self.client.create_session({"model": self.model})
-        except Exception as e:
-            raise RuntimeError(redact_secrets(str(e))) from None
+        await self.client.start()
+        self._session = await self.client.create_session({"model": self.model})
 
     async def stop(self) -> None:
         try:
@@ -110,15 +82,5 @@ class CopilotRuntime:
 
         self._session.on(on_event)
         await self._session.send({"prompt": prompt})
-        try:
-            await asyncio.wait_for(done.wait(), timeout=timeout_s)
-        except asyncio.TimeoutError:
-            partial = "".join(chunks).strip()
-            raise TimeoutError(
-                redact_secrets(
-                    f"Copilot chat timed out after {timeout_s}s"
-                    + (f" (partial_output_len={len(partial)})" if partial else "")
-                )
-            ) from None
-
+        await asyncio.wait_for(done.wait(), timeout=timeout_s)
         return "".join(chunks).strip()
