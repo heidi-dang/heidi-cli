@@ -39,6 +39,16 @@ def find_repo_root(start_path: Optional[Path] = None) -> Optional[Path]:
     if (has_git and has_heidi) or has_pyproject:
         return current
 
+    common_paths = [
+        Path.home() / "heidi-cli",
+        Path.home() / "dev" / "heidi-cli",
+        Path.home() / "projects" / "heidi-cli",
+        Path("/workspace/heidi-cli"),
+    ]
+    for path in common_paths:
+        if (path / ".git").exists() and ((path / "heidi_cli").exists() or (path / "ui").exists()):
+            return path
+
     return None
 
 
