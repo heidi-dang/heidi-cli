@@ -70,9 +70,9 @@ jobs:
       - name: Check secrets files not tracked
         run: |
           echo "Checking that secrets files are not tracked..."
-          if git ls-files | grep -E "(secrets\.json|config\.json)$" | grep -v "\.test" > /dev/null; then
+          if git ls-files | grep -E "(^|/)(secrets|config)\.json$" | grep -v "\.test" > /dev/null; then
             echo "ERROR: Secrets files are tracked in git!"
-            git ls-files | grep -E "(secrets\.json|config\.json)$"
+            git ls-files | grep -E "(^|/)(secrets|config)\.json$"
             exit 1
           fi
           echo "OK: No secrets files tracked"
