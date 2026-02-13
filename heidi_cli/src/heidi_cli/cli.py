@@ -390,6 +390,7 @@ def loop(
     dry_run: bool = typer.Option(False, "--dry-run", help="Generate plan but don't apply changes"),
     context: Optional[Path] = typer.Option(None, "--context", help="Path to inject into context (e.g., ./docs)"),
     persona: str = typer.Option("default", help="Persona to use (default, security, docs, refactor)"),
+    no_live: bool = typer.Option(False, "--no-live", help="Disable streaming UI"),
 ) -> None:
     """Run: Plan -> execute handoffs -> audit -> PASS/FAIL (starter loop)."""
     config = ConfigManager.load_config()
@@ -673,6 +674,63 @@ def backups_cmd(
 
 
 @app.command("serve")
+
+
+@app.command("review")
+def review_cmd(
+    diff: bool = typer.Option(False, "--diff", help="Review current git diff"),
+    branch: Optional[str] = typer.Option(None, "--branch", help="Review diff against branch"),
+) -> None:
+    """Run AI code review on diff or branch."""
+    import subprocess
+    
+    if not diff and not branch:
+        console.print("[red]Specify --diff or --branch[/red]")
+        raise typer.Exit(1)
+    
+    try:
+        if diff:
+            result = subprocess.run(["git", "diff"], capture_output=True, text=True)
+            diff_text = result.stdout or result.stderr
+        else:
+            target_branch = branch or "main"
+            result = subprocess.run(["git", "diff", f"main...{target_branch}"], capture_output=True, text=True)
+            diff_text = result.stdout or result.stderr
+        
+        if not diff_text.strip():
+            console.print("[yellow]No changes to review[/yellow]")
+            return
+        
+        review_prompt = f"""You are a code reviewer. Review the following changes and provide feedback:
+
+## Changes
+{diff_text[:10000]}
+
+Provide:
+1. Summary (2-3 sentences)
+2. High-risk findings (list any security, correctness, or performance concerns)
+3. Actionable checklist (what should be fixed before merging)
+"""
+        console.print("[cyan]Generating review...[/cyan]")
+        
+        async def _run_review():
+            from .orchestrator.loop import pick_executor
+            exec_impl = pick_executor("copilot")
+            result = await exec_impl.run(review_prompt, Path.cwd())
+            return result
+        
+        import asyncio
+        result = asyncio.run(_run_review())
+        
+        console.print(Panel.fit(result.output[:3000], title="Code Review"))
+        
+        review_file = Path("./reviews.md")
+        review_file.write_text(f"# Code Review\n\n{result.output}")
+        console.print(f"[green]Review saved to {review_file}[/green]")
+        
+    except Exception as e:
+        console.print(f"[red]Review failed: {e}[/red]")
+        raise typer.Exit(1)
 def serve(
     host: str = typer.Option("0.0.0.0", help="Host to bind to"),
     port: int = typer.Option(7777, help="Port to bind to"),

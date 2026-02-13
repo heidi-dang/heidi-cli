@@ -89,3 +89,53 @@ class VscodeExecutor(BaseExecutor):
             return ExecResult(ok=(proc.returncode == 0), output=text)
         except FileNotFoundError:
             return ExecResult(ok=False, output="VS Code not found in PATH")
+
+
+class OllamaExecutor(BaseExecutor):
+    def __init__(self, model: str = "llama3", url: str = "http://localhost:11434"):
+        self.model = model
+        self.url = url
+
+    async def run(self, prompt: str, workdir: Path) -> ExecResult:
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.url}/api/generate",
+                    json={"model": self.model, "prompt": prompt, "stream": False},
+                    timeout=aiohttp.ClientTimeout(total=300),
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        return ExecResult(ok=True, output=data.get("response", ""))
+                    else:
+                        return ExecResult(ok=False, output=f"Ollama error: {resp.status}")
+        except Exception as e:
+            return ExecResult(ok=False, output=f"Failed to connect to Ollama: {e}")
+
+
+class LMStudioExecutor(BaseExecutor):
+    def __init__(self, model: str = "llama3", url: str = "http://localhost:1234/v1"):
+        self.model = model
+        self.url = url
+
+    async def run(self, prompt: str, workdir: Path) -> ExecResult:
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.url}/chat/completions",
+                    json={
+                        "model": self.model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "stream": False,
+                    },
+                    timeout=aiohttp.ClientTimeout(total=300),
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        return ExecResult(ok=True, output=data["choices"][0]["message"]["content"])
+                    else:
+                        return ExecResult(ok=False, output=f"LM Studio error: {resp.status}")
+        except Exception as e:
+            return ExecResult(ok=False, output=f"Failed to connect to LM Studio: {e}")

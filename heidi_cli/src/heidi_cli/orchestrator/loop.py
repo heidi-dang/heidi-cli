@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .executors import CopilotExecutor, OpenCodeExecutor, JulesExecutor, VscodeExecutor
+from .executors import CopilotExecutor, OpenCodeExecutor, JulesExecutor, VscodeExecutor, OllamaExecutor, LMStudioExecutor
 from .plan import build_plan_prompt, extract_routing, parse_routing
 from .registry import AgentRegistry
 from .artifacts import TaskArtifact, sanitize_slug, save_audit_to_task
@@ -21,6 +21,12 @@ def pick_executor(name: str):
         return JulesExecutor()
     if name == "vscode":
         return VscodeExecutor()
+    if name == "ollama":
+        return OllamaExecutor()
+    if name == "lmstudio":
+        return LMStudioExecutor()
+    if name == "local":
+        return OllamaExecutor()
     raise ValueError(f"Unknown executor: {name}")
 
 
