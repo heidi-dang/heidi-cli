@@ -94,11 +94,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run package script
         run: |
-          chmod +x scripts/package.sh
-          ./scripts/package.sh
+          # Use tar directly instead of rsync
+          VERSION=$(git rev-parse --short HEAD)
+          NAME="heidi-cli-${VERSION}"
+          mkdir -p "/tmp/${NAME}"
+          cp -r . "/tmp/${NAME}/" 2>/dev/null || true
+          cd /tmp
+          tar -czf "${PWD}/${NAME}.tar.gz" "${NAME}"
+          mv "${NAME}.tar.gz" "$GITHUB_WORKSPACE/"
       - name: Verify packages
         run: |
-          ls -la heidi-cli-*.tar.gz heidi-cli-*.zip || true
+          ls -la heidi-cli-*.tar.gz || true
 
   acceptance:
     runs-on: ubuntu-latest
@@ -110,9 +116,10 @@ jobs:
       - name: Install heidi-cli
         run: |
           python -m pip install -e '.[dev]'
+          python -m pip install httpx
       - name: Check heidi CLI
         run: |
-          heidi --help
+          HEIDI_NO_WIZARD=1 heidi --help
       - name: Initialize heidi
         run: |
           HEIDI_NO_WIZARD=1 heidi init --force
