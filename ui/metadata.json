@@ -1,0 +1,5 @@
+{
+  "name": "Heidi AI",
+  "description": "A minimal web UI for the Heidi AI backend, supporting Run and Loop modes with real-time streaming.",
+  "requestFramePermissions": []
+}
