@@ -182,7 +182,7 @@ def build_task_content(task: str, plan_output: str, routing: dict, batch_output:
     return content
 
 
-async def run_loop(task: str, executor: str, max_retries: int, workdir: Path) -> str:
+async def run_loop(task: str, executor: str, max_retries: int, workdir: Path, dry_run: bool = False) -> str:
     """Execute Plan -> Runner -> Audit loop with strict artifacts."""
     exec_impl = pick_executor(executor)
     
@@ -191,8 +191,14 @@ async def run_loop(task: str, executor: str, max_retries: int, workdir: Path) ->
     
     # Create initial task artifact
     artifact = TaskArtifact(slug=task_slug)
-    artifact.content = f"# Task: {task}\n\nCreated\n"
+    artifact.content = f"# {'DRY RUN - ' if dry_run else ''}Task: {task}\n\nCreated\n"
     artifact.save()
+    
+    if dry_run:
+        artifact.content += "\n## DRY RUN - Plan Generated\n"
+        artifact.audit_content = "# DRY RUN\n\nPlan generated but not executed.\n"
+        artifact.save()
+        return "DRY_RUN: Plan generated, no execution performed"
     
     while True:
         # 1) Plan

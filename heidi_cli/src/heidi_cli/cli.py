@@ -344,15 +344,54 @@ def loop(
     executor: str = typer.Option("copilot", help="copilot | jules | opencode"),
     max_retries: int = typer.Option(2, help="Max re-plans after FAIL"),
     workdir: Path = typer.Option(Path.cwd(), help="Repo working directory"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Print what would be executed"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Generate plan but don't apply changes"),
 ) -> None:
     """Run: Plan -> execute handoffs -> audit -> PASS/FAIL (starter loop)."""
     if dry_run:
-        console.print("[yellow]DRY RUN: Would execute loop with:[/yellow]")
-        console.print(f"  task: {task}")
-        console.print(f"  executor: {executor}")
-        console.print(f"  max_retries: {max_retries}")
-        console.print(f"  workdir: {workdir}")
+        console.print("[yellow]DRY RUN MODE[/yellow]")
+        console.print(f"Task: {task}")
+        console.print(f"Executor: {executor}")
+        console.print("")
+        
+        async def _dry_run():
+            from .orchestrator.loop import run_loop
+            from .orchestrator.artifacts import TaskArtifact, sanitize_slug
+            
+            slug = sanitize_slug(task)
+            artifact = TaskArtifact(slug=slug)
+            artifact.content = f"# DRY RUN - Task: {task}\n\nGenerated: (dry run mode)\n"
+            artifact.audit_content = "# DRY RUN\n\nNo execution performed.\n"
+            artifact.save()
+            
+            result = await run_loop(
+                task=task,
+                executor=executor,
+                max_retries=0,
+                workdir=workdir,
+                dry_run=True,
+            )
+            return result
+        
+        setup_global_logging()
+        run_id = HeidiLogger.init_run()
+        
+        HeidiLogger.write_run_meta({
+            "run_id": run_id,
+            "task": task,
+            "executor": executor,
+            "max_retries": 0,
+            "workdir": str(workdir),
+            "dry_run": True,
+        })
+        
+        import asyncio
+        try:
+            result = asyncio.run(_dry_run())
+            console.print(Panel.fit("[yellow]DRY RUN COMPLETE[/yellow]\n\nArtifacts written to ./tasks/"))
+            HeidiLogger.write_run_meta({"status": "dry_run", "result": result})
+        except Exception as e:
+            console.print(f"[red]Dry run failed: {e}[/red]")
+            HeidiLogger.write_run_meta({"status": "dry_run_failed", "error": str(e)})
         return
 
     setup_global_logging()
