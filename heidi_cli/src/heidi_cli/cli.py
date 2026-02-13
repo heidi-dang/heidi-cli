@@ -791,48 +791,61 @@ Provide:
 
 @start_app.command("ui")
 def start_ui(
-    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind to"),
-    port: int = typer.Option(7777, "--port", help="Port to bind to"),
+    backend: bool = typer.Option(True, "--backend/--no-backend", help="Start backend server"),
+    ui: bool = typer.Option(True, "--ui/--no-ui", help="Start UI dev server"),
+    port: int = typer.Option(7777, "--port", help="Backend port"),
+    ui_port: int = typer.Option(3000, "--ui-port", help="UI dev server port"),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open browser automatically"),
     tunnel: bool = typer.Option(False, "--tunnel", help="Start Cloudflare tunnel"),
-    tunnel_url: str = typer.Option("http://localhost:7777", "--tunnel-url", help="Local URL for tunnel"),
+    api_url: str = typer.Option("", "--api-url", help="API URL for UI (default: http://localhost:PORT)"),
 ) -> None:
-    """Start the Heidi server and UI."""
+    """Start Heidi backend and UI dev server."""
     import webbrowser
-    from .launcher import start_server, stop_server, is_server_running
+    from .launcher import (
+        start_backend,
+        start_ui_dev_server,
+        is_backend_running,
+        is_ui_running,
+        stop_backend,
+        stop_ui,
+    )
     from .tunnel import start_tunnel, stop_tunnel, is_cloudflared_installed, get_tunnel_instructions
     from rich.panel import Panel
     import signal
     import sys
 
-    server_process = None
+    backend_process = None
+    ui_process = None
     tunnel_process = None
     actual_port = port
 
     try:
-        # Check if server already running
-        if is_server_running(host, port):
-            console.print(f"[yellow]Server already running on http://{host}:{port}[/yellow]")
-            actual_port = port
-        else:
-            # Start server
-            server_process, actual_port = start_server(host=host, port=port, wait=True, timeout=15)
+        if backend:
+            if is_backend_running("127.0.0.1", port):
+                console.print(f"[yellow]Backend already running on http://127.0.0.1:{port}[/yellow]")
+            else:
+                backend_process, actual_port = start_backend(host="127.0.0.1", port=port, wait=True, timeout=15)
         
-        ui_url = f"http://{host}:{actual_port}/ui"
-        api_url = f"http://{host}:{actual_port}"
+        if ui:
+            api_base = api_url if api_url else f"http://localhost:{actual_port}"
+            if is_ui_running(ui_port):
+                console.print(f"[yellow]UI already running on http://127.0.0.1:{ui_port}[/yellow]")
+            else:
+                ui_process = start_ui_dev_server(port=ui_port, api_url=api_base)
+        
+        api_url_final = f"http://127.0.0.1:{actual_port}"
+        ui_url = f"http://127.0.0.1:{ui_port}"
         
         console.print(Panel.fit(
-            f"[green]UI:[/green] {ui_url}\n"
-            f"[green]API:[/green] {api_url}",
-            title="Heidi Server"
+            f"[green]Backend:[/green] {api_url_final}\n"
+            f"[green]UI:[/green] {ui_url}",
+            title="Heidi Services"
         ))
         
-        # Open browser
-        if open_browser:
+        if open_browser and ui:
             console.print(f"[cyan]Opening browser...[/cyan]")
             webbrowser.open(ui_url)
         
-        # Ask about tunnel
         if not tunnel:
             tunnel = typer.confirm(
                 "Expose publicly via Cloudflare Tunnel (cloudflared)?",
@@ -843,18 +856,19 @@ def start_ui(
             if not is_cloudflared_installed():
                 console.print(get_tunnel_instructions())
             else:
-                tunnel_process, public_url = start_tunnel(tunnel_url)
+                tunnel_process, public_url = start_tunnel(api_url_final)
                 if public_url:
                     console.print(Panel.fit(
-                        f"[green]Public URL:[/green] {public_url}",
+                        f"[green]Public API:[/green] {public_url}\n"
+                        f"[dim]Use this URL in UI Settings if needed[/dim]",
                         title="Cloudflare Tunnel"
                     ))
                     if open_browser:
-                        webbrowser.open(public_url)
+                        public_ui_url = f"{public_url}/?baseUrl={public_url}"
+                        webbrowser.open(public_ui_url)
         
         console.print("\n[cyan]Press Ctrl+C to stop[/cyan]")
         
-        # Wait for interrupt
         def signal_handler(sig, frame):
             console.print("\n[yellow]Shutting down...[/yellow]")
             sys.exit(0)
@@ -862,7 +876,6 @@ def start_ui(
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
         
-        # Keep running
         import time
         while True:
             time.sleep(1)
@@ -875,14 +888,96 @@ def start_ui(
     finally:
         if tunnel_process:
             stop_tunnel(tunnel_process)
-        if server_process:
-            stop_server(server_process)
+        if ui_process or is_ui_running(ui_port):
+            stop_ui()
+        if backend_process or is_backend_running("127.0.0.1", port):
+            stop_backend()
         console.print("[green]Stopped.[/green]")
+
+
+@start_app.command("backend")
+def start_backend_cmd(
+    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind to"),
+    port: int = typer.Option(7777, "--port", help="Port to bind to"),
+    open_browser: bool = typer.Option(False, "--open/--no-open", help="Open browser automatically"),
+) -> None:
+    """Start the Heidi API server only."""
+    from .launcher import start_backend, is_backend_running
+    import webbrowser
+    
+    if is_backend_running(host, port):
+        console.print(f"[yellow]Backend already running on http://{host}:{port}[/yellow]")
+        return
+    
+    process, actual_port = start_backend(host=host, port=port, wait=True, timeout=15)
+    
+    console.print(f"[green]Backend running at http://{host}:{actual_port}[/green]")
+    
+    if open_browser:
+        webbrowser.open(f"http://{host}:{actual_port}/ui/")
+
+
+@start_app.command("services")
+def services_status_cmd() -> None:
+    """Show status of Heidi services."""
+    from .launcher import get_status
+    from rich.table import Table
+    
+    status = get_status()
+    
+    if not status:
+        console.print("[yellow]No Heidi services running[/yellow]")
+        return
+    
+    table = Table(title="Heidi Services Status")
+    table.add_column("Service", style="cyan")
+    table.add_column("PID", style="yellow")
+    table.add_column("Running", style="green")
+    table.add_column("Port", style="magenta")
+    
+    for name, info in status.items():
+        running = "Yes" if info.get("running") else "No"
+        style = "green" if info.get("running") else "red"
+        table.add_row(
+            name,
+            str(info.get("pid", "N/A")),
+            f"[{style}]{running}[/{style}]",
+            str(info.get("port", "N/A")),
+        )
+    
+    console.print(table)
+
+
+@start_app.command("stop")
+def stop_cmd(
+    all: bool = typer.Option(True, "--all", help="Stop all services"),
+    backend: bool = typer.Option(False, "--backend", help="Stop backend only"),
+    ui: bool = typer.Option(False, "--ui", help="Stop UI only"),
+) -> None:
+    """Stop Heidi services."""
+    from .launcher import stop_backend, stop_ui, stop_all, get_status
+    
+    status = get_status()
+    
+    if not status:
+        console.print("[yellow]No services running[/yellow]")
+        return
+    
+    if all or (not backend and not ui):
+        console.print("[cyan]Stopping all services...[/cyan]")
+        stop_all()
+    else:
+        if backend and "backend" in status:
+            stop_backend()
+        if ui and "ui" in status:
+            stop_ui()
+    
+    console.print("[green]Done.[/green]")
 
 
 @start_app.command("server")
 def start_server_cmd(
-    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind to"),
+    host: str = typer.Option("0.0.0.0", "--host", help="Host to bind to"),
     port: int = typer.Option(7777, "--port", help="Port to bind to"),
 ) -> None:
     """Start the Heidi API server only (without UI)."""

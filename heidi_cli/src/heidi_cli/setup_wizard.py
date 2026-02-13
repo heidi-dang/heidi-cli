@@ -102,18 +102,19 @@ class SetupWizard:
             
             progress.update(task, description="Ensuring .heidi/ is gitignored...")
             
-            # Check if .heidi/ is in .gitignore
             gitignore_path = self.project_root / ".gitignore"
             heidi_ignored = False
             
             if gitignore_path.exists():
                 gitignore_content = gitignore_path.read_text()
-                if ".heidi/" in gitignore_content:
+                if ".heidi/" in gitignore_content or ".heidi" in gitignore_content:
                     heidi_ignored = True
             
             if not heidi_ignored:
-                console.print("\n[yellow]⚠️  Warning: .heidi/ is not in .gitignore[/yellow]")
+                console.print("\n[yellow]Warning: .heidi/ is not in .gitignore[/yellow]")
                 console.print("Please add '.heidi/' to your .gitignore file to avoid committing sensitive data.")
+            else:
+                console.print("[dim].heidi/ is properly gitignored[/dim]")
             
             progress.update(task, description="Project initialized!")
 
