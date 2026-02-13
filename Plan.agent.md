@@ -24,7 +24,7 @@ agents:
   - context-memories
 
 handoffs:
-  - label: Run Plan (Dev + Review Loop)
+  - label: Run Plan (Standard Autonomous Loop)
     agent: "Workflow Runner"
     prompt: |
       Execute the plan using the execution_handoffs YAML block (between BEGIN_EXECUTION_HANDOFFS_YAML and END_EXECUTION_HANDOFFS_YAML).
@@ -170,6 +170,7 @@ STUCK CLASSIFICATION HEURISTICS
 - Failing tests/regressions  conservative-bugfix; increase verification coverage and add minimal tests.
 - DB migration conflicts  schema-migration with compatibility checks and rollback plan.
 - Tunnel/ingress issues  Tunnel Architect with TLS/route validation.
+
 
 
 
