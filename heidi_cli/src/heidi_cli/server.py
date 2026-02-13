@@ -44,6 +44,15 @@ app.add_middleware(
 )
 
 
+def _require_api_key(request: Request, stream_key: Optional[str] = None) -> None:
+    if not HEIDI_API_KEY:
+        return
+    header_key = request.headers.get("x-heidi-key", "")
+    effective = (header_key or stream_key or "").strip()
+    if not effective or effective != HEIDI_API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
 @app.get("/")
 async def root():
     """Redirect root to /ui/ for the UI"""
@@ -181,6 +190,34 @@ async def stream_run(run_id: str, request: Request, key: Optional[str] = None):
         media_type="text/event-stream",
         headers=_no_store_headers(),
     )
+
+
+def _no_store_headers() -> dict:
+    return {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+
+
+class RunRequest(BaseModel):
+    prompt: str
+    executor: str = "copilot"
+    workdir: Optional[str] = None
+
+
+class LoopRequest(BaseModel):
+    task: str
+    executor: str = "copilot"
+    max_retries: int = 2
+    workdir: Optional[str] = None
+
+
+class RunResponse(BaseModel):
+    run_id: str
+    status: str
+    result: Optional[str] = None
+    error: Optional[str] = None
 
 
 @app.post("/run", response_model=RunResponse)
