@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
+from typing import Optional
 
 import httpx
 from rich.console import Console
@@ -19,21 +20,48 @@ from .config import ConfigManager
 console = Console()
 
 
+def find_repo_root(start_path: Optional[Path] = None) -> Optional[Path]:
+    """Find the repo root by walking up for .git + heidi_cli or pyproject.toml."""
+    if start_path is None:
+        start_path = Path.cwd()
+
+    current = start_path.resolve()
+    while current != current.parent:
+        has_git = (current / ".git").exists()
+        has_pyproject = (current / "pyproject.toml").exists()
+        has_heidi = (current / "heidi_cli").exists() or (current / "ui").exists()
+
+        if (has_git and has_heidi) or has_pyproject:
+            return current
+        current = current.parent
+
+    has_git = (current / ".git").exists()
+    has_pyproject = (current / "pyproject.toml").exists()
+    has_heidi = (current / "heidi_cli").exists() or (current / "ui").exists()
+
+    if (has_git and has_heidi) or has_pyproject:
+        return current
+
+    return None
+
+
 class SetupWizard:
     def __init__(self):
         self.config = ConfigManager.load_config()
         self.openwebui_url = "http://localhost:3000"
         self.openwebui_token = None
         self.github_token = None
-        self.project_root = Path.cwd()
+        self.project_root = find_repo_root() or Path.cwd()
 
     def run(self) -> None:
         """Run the complete setup wizard."""
-        console.print(Panel.fit(
-            "[bold cyan]Heidi CLI Setup Wizard[/bold cyan]\n\n"
-            "This wizard will help you configure Heidi CLI for first use.",
-            title="Welcome"
-        ))
+        console.print(
+            Panel.fit(
+                "[bold cyan]Heidi CLI Setup Wizard[/bold cyan]\n\n"
+                "This wizard will help you configure Heidi CLI for first use.",
+                title="Welcome",
+            )
+        )
 
         # Step 1: Environment checks
         self._step1_environment_checks()
@@ -59,7 +87,7 @@ class SetupWizard:
     def _step1_environment_checks(self) -> None:
         """Step 1: Environment checks - Display checklist."""
         console.print("\n[bold]Step 1: Environment Checks[/bold]")
-        
+
         table = Table(show_header=False)
         table.add_column("Item", style="cyan")
         table.add_column("Status", style="green")
@@ -70,11 +98,15 @@ class SetupWizard:
 
         # Check state dir
         state_dir = self.project_root / ".heidi"
-        table.add_row("State dir: ./.heidi/", "✅ Exists" if state_dir.exists() else "ℹ️  Will create")
+        table.add_row(
+            "State dir: ./.heidi/", "✅ Exists" if state_dir.exists() else "ℹ️  Will create"
+        )
 
         # Check tasks dir
         tasks_dir = self.project_root / "tasks"
-        table.add_row("Tasks dir: ./tasks/", "✅ Exists" if tasks_dir.exists() else "ℹ️  Will create")
+        table.add_row(
+            "Tasks dir: ./tasks/", "✅ Exists" if tasks_dir.exists() else "ℹ️  Will create"
+        )
 
         # Heidi server base
         table.add_row("Heidi server base: http://localhost:7777", "ℹ️  Ready")
@@ -84,38 +116,57 @@ class SetupWizard:
     def _step2_initialize_project(self) -> None:
         """Step 2: Initialize project state - Create ./.heidi/ and required config files."""
         console.print("\n[bold]Step 2: Initialize Project State[/bold]")
-        
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
             task = progress.add_task("Creating project directories...", total=None)
-            
+
             # Create .heidi/ directory
             ConfigManager.ensure_dirs()
-            
+
             # Ensure secrets file permissions 0600
             secrets_file = ConfigManager.secrets_file()
             if secrets_file.exists():
                 secrets_file.chmod(0o600)
-            
+
             progress.update(task, description="Ensuring .heidi/ is gitignored...")
-            
+
             gitignore_path = self.project_root / ".gitignore"
             heidi_ignored = False
-            
+            gitignore_content = ""
+
             if gitignore_path.exists():
                 gitignore_content = gitignore_path.read_text()
                 if ".heidi/" in gitignore_content or ".heidi" in gitignore_content:
                     heidi_ignored = True
-            
+
             if not heidi_ignored:
                 console.print("\n[yellow]Warning: .heidi/ is not in .gitignore[/yellow]")
-                console.print("Please add '.heidi/' to your .gitignore file to avoid committing sensitive data.")
+                if Confirm.ask("Add '.heidi/' to .gitignore now?", default=True):
+                    try:
+                        with open(gitignore_path, "a") as f:
+                            if gitignore_content and not gitignore_content.endswith("\n"):
+                                f.write("\n")
+                            elif not gitignore_content:
+                                f.write("# Heidi CLI\n")
+                            f.write(".heidi/\n")
+                        console.print("[green]Added .heidi/ to .gitignore[/green]")
+                        heidi_ignored = True
+                    except Exception as e:
+                        console.print(f"[red]Failed to update .gitignore: {e}[/red]")
+                        console.print(
+                            "Please add '.heidi/' manually to avoid committing sensitive data."
+                        )
+                else:
+                    console.print(
+                        "Please add '.heidi/' manually to avoid committing sensitive data."
+                    )
             else:
                 console.print("[dim].heidi/ is properly gitignored[/dim]")
-            
+
             progress.update(task, description="Project initialized!")
 
         console.print("✅ Project state initialized")
@@ -123,19 +174,29 @@ class SetupWizard:
     def _step3_github_copilot_setup(self) -> None:
         """Step 3: GitHub/Copilot setup - Configure GitHub token and test."""
         console.print("\n[bold]Step 3: GitHub/Copilot Setup[/bold]")
-        
+
         if not Confirm.ask("Configure GitHub token now?", default=True):
             console.print("ℹ️  Skipping GitHub configuration")
             return
 
-        token = Prompt.ask(
-            "Enter GitHub token (with copilot scope)",
-            password=True
+        console.print(
+            "\n[dim]For Copilot, use a fine-grained token (github_pat_...) with 'Copilot' permission.[/dim]"
         )
+        console.print("[dim]Create at: https://github.com/settings/tokens/new?scopes=copilot[/dim]")
+
+        token = Prompt.ask("Enter GitHub fine-grained token (github_pat_...)", password=True)
 
         if not token:
             console.print("⚠️  No token provided, skipping GitHub configuration")
             return
+
+        if token.startswith("ghp_"):
+            console.print("\n[yellow]Warning: You entered a classic token (ghp_...).[/yellow]")
+            console.print(
+                "[yellow]Copilot often requires fine-grained tokens (github_pat_...).[/yellow]"
+            )
+            if not Confirm.ask("Continue anyway?", default=False):
+                return
 
         self.github_token = token
         ConfigManager.set_github_token(token, store_keyring=True)
@@ -149,7 +210,7 @@ class SetupWizard:
                 capture_output=True,
                 text=True,
                 timeout=10,
-                env={**os.environ, "HEIDI_NO_WIZARD": "1"}
+                env={**os.environ, "HEIDI_NO_WIZARD": "1"},
             )
             if result.returncode == 0:
                 console.print("✅ heidi auth status: PASS")
@@ -160,30 +221,73 @@ class SetupWizard:
         except Exception:
             console.print("❌ heidi auth status: FAIL")
 
-        # Test Copilot doctor (optional - may fail if not authenticated)
-        console.print("\nRunning Copilot doctor (optional)...")
+        # Test Copilot status first
+        console.print("\nRunning Copilot status...")
+        copilot_status_ok = False
+        copilot_status_output = ""
+        try:
+            result = subprocess.run(
+                ["heidi", "copilot", "status"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env={**os.environ, "HEIDI_NO_WIZARD": "1"},
+            )
+            copilot_status_output = result.stdout + result.stderr
+            if result.returncode == 0 and "isAuthenticated=True" in copilot_status_output:
+                console.print("✅ heidi copilot status: PASS")
+                copilot_status_ok = True
+            else:
+                console.print("⚠️  heidi copilot status: FAIL")
+        except subprocess.TimeoutExpired:
+            console.print("⚠️  heidi copilot status: TIMEOUT")
+        except Exception as e:
+            console.print(f"⚠️  heidi copilot status: ERROR - {e}")
+
+        # Test Copilot doctor
+        console.print("\nRunning Copilot doctor...")
         try:
             result = subprocess.run(
                 ["heidi", "copilot", "doctor"],
                 capture_output=True,
                 text=True,
                 timeout=30,
-                env={**os.environ, "HEIDI_NO_WIZARD": "1"}
+                env={**os.environ, "HEIDI_NO_WIZARD": "1"},
             )
+            output = result.stdout + result.stderr
+
             if result.returncode == 0:
                 console.print("✅ heidi copilot doctor: PASS")
+            elif (
+                "needs token" in output.lower()
+                or "unauthorized" in output.lower()
+                or "permission" in output.lower()
+            ):
+                console.print("⚠️  heidi copilot doctor: FAIL (token lacks Copilot permission)")
+                console.print("[dim]Your token may need 'Copilot' permission.[/dim]")
+                console.print(
+                    "[dim]Create at: https://github.com/settings/tokens/new?scopes=copilot[/dim]"
+                )
             else:
-                console.print("⚠️  heidi copilot doctor: SKIP (not authenticated)")
+                console.print("⚠️  heidi copilot doctor: FAIL")
+                if output.strip():
+                    for line in output.strip().split("\n")[-5:]:
+                        console.print(f"  [dim]{line}[/dim]")
         except subprocess.TimeoutExpired:
             console.print("⚠️  heidi copilot doctor: TIMEOUT")
-        except Exception:
-            console.print("⚠️  heidi copilot doctor: SKIP")
+        except Exception as e:
+            console.print(f"⚠️  heidi copilot doctor: ERROR - {e}")
 
         # Optionally test chat
         if Confirm.ask("Test Copilot chat with 'hello'?", default=False):
             console.print("\nTesting Copilot chat...")
             try:
-                result = subprocess.run(["heidi", "copilot", "chat", "hello"], capture_output=True, text=True, timeout=30)
+                result = subprocess.run(
+                    ["heidi", "copilot", "chat", "hello"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
                 if result.returncode == 0:
                     console.print("✅ Copilot chat: PASS")
                 else:
@@ -196,20 +300,15 @@ class SetupWizard:
     def _step4_openwebui_setup(self) -> None:
         """Step 4: OpenWebUI setup - Configure URL and API key, then test."""
         console.print("\n[bold]Step 4: OpenWebUI Setup[/bold]")
-        
+
         # Get OpenWebUI URL
-        self.openwebui_url = Prompt.ask(
-            "OpenWebUI URL",
-            default="http://localhost:3000"
-        )
+        self.openwebui_url = Prompt.ask("OpenWebUI URL", default="http://localhost:3000")
 
         # Get OpenWebUI API key (hidden; allow skip)
         token = Prompt.ask(
-            "OpenWebUI API key (optional, but recommended)",
-            password=True,
-            default=""
+            "OpenWebUI API key (optional, but recommended)", password=True, default=""
         )
-        
+
         if token:
             self.openwebui_token = token
             # Save to config
@@ -220,22 +319,24 @@ class SetupWizard:
         # Status check - call OpenWebUI API endpoint
         console.print("\nTesting OpenWebUI connection...")
         success, message = self._test_openwebui_connection()
-        
+
         if success:
             console.print(f"[green]✅ {message}[/green]")
         else:
             console.print(f"[red]❌ {message}[/red]")
-            
+
             # Provide specific hints based on error
             if "connection refused" in message.lower():
                 console.print("[yellow]💡 Hint: OpenWebUI is not running. Start it first.[/yellow]")
             elif "401" in message or "unauthorized" in message.lower():
-                console.print("[yellow]💡 Hint: Invalid token. Check your API key in OpenWebUI Settings > Account.[/yellow]")
+                console.print(
+                    "[yellow]💡 Hint: Invalid token. Check your API key in OpenWebUI Settings > Account.[/yellow]"
+                )
 
     def _step5_server_health_check(self) -> None:
         """Step 5: Heidi server health check - Start server and verify /health."""
         console.print("\n[bold]Step 5: Heidi Server Health Check[/bold]")
-        
+
         # Check if server is already running
         try:
             response = httpx.get("http://localhost:7777/health", timeout=5)
@@ -251,7 +352,7 @@ class SetupWizard:
             return
 
         console.print("Starting Heidi server...")
-        
+
         # Start server in background
         try:
             # Use subprocess.Popen to start server in background
@@ -259,39 +360,43 @@ class SetupWizard:
                 ["heidi", "serve"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                start_new_session=True
+                start_new_session=True,
             )
-            
+
             # Wait a bit for server to start
             time.sleep(3)
-            
+
             # Test health endpoint
             try:
                 response = httpx.get("http://localhost:7777/health", timeout=5)
                 if response.status_code == 200:
                     console.print("✅ Heidi server started and healthy")
                 else:
-                    console.print(f"❌ Heidi server health check failed: HTTP {response.status_code}")
+                    console.print(
+                        f"❌ Heidi server health check failed: HTTP {response.status_code}"
+                    )
             except Exception as e:
                 console.print(f"❌ Heidi server health check failed: {e}")
-                
+
         except Exception as e:
             console.print(f"❌ Failed to start Heidi server: {e}")
 
     def _step6_openwebui_guide(self) -> None:
         """Step 6: OpenWebUI Tools connection guide - Print exact URLs."""
         console.print("\n[bold]Step 6: OpenWebUI Tools Connection Guide[/bold]")
-        
-        console.print(Panel.fit(
-            "To connect Heidi CLI as OpenAPI tools in OpenWebUI:\n\n"
-            "1. Open OpenWebUI in your browser\n"
-            "2. Go to: Settings → Connections → OpenAPI Servers\n"
-            "3. Click 'Add Server' and configure:\n"
-            "   • Name: Heidi CLI\n"
-            "   • OpenAPI Spec URL: http://localhost:7777/openapi.json\n"
-            "4. Save and test the connection",
-            title="OpenWebUI Configuration"
-        ))
+
+        console.print(
+            Panel.fit(
+                "To connect Heidi CLI as OpenAPI tools in OpenWebUI:\n\n"
+                "1. Open OpenWebUI in your browser\n"
+                "2. Go to: Settings → Connections → OpenAPI Servers\n"
+                "3. Click 'Add Server' and configure:\n"
+                "   • Name: Heidi CLI\n"
+                "   • OpenAPI Spec URL: http://localhost:7777/openapi.json\n"
+                "4. Save and test the connection",
+                title="OpenWebUI Configuration",
+            )
+        )
 
         console.print("\n[bold]Quick Test URLs:[/bold]")
         console.print("• Health: http://localhost:7777/health")
@@ -302,7 +407,7 @@ class SetupWizard:
     def _step7_final_summary(self) -> None:
         """Step 7: Final summary - Print table with all status checks."""
         console.print("\n[bold]Step 7: Final Summary[/bold]")
-        
+
         table = Table(title="Heidi CLI Setup Status")
         table.add_column("Component", style="cyan")
         table.add_column("Status", style="green")
@@ -349,15 +454,17 @@ class SetupWizard:
         table.add_row("OpenWebUI tools URL shown", "✅")
 
         console.print(table)
-        
-        console.print(Panel.fit(
-            "🎉 Setup complete! You can now use Heidi CLI.\n\n"
-            "Next steps:\n"
-            "• Run 'heidi --help' for all commands\n"
-            "• Use 'heidi serve' to start the server\n"
-            "• Configure OpenWebUI with the provided settings",
-            title="Setup Complete"
-        ))
+
+        console.print(
+            Panel.fit(
+                "🎉 Setup complete! You can now use Heidi CLI.\n\n"
+                "Next steps:\n"
+                "• Run 'heidi --help' for all commands\n"
+                "• Use 'heidi serve' to start the server\n"
+                "• Configure OpenWebUI with the provided settings",
+                title="Setup Complete",
+            )
+        )
 
     def _test_openwebui_connection(self) -> tuple[bool, str]:
         """Test OpenWebUI connection and return (success, message)."""
@@ -365,10 +472,10 @@ class SetupWizard:
             headers = {}
             if self.openwebui_token:
                 headers["Authorization"] = f"Bearer {self.openwebui_token}"
-            
+
             # Test the /api/models endpoint as documented
             response = httpx.get(f"{self.openwebui_url}/api/models", headers=headers, timeout=10)
-            
+
             if response.status_code == 200:
                 return True, "OpenWebUI API: OK"
             elif response.status_code == 401:
