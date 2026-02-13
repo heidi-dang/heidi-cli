@@ -49,3 +49,10 @@ Thumbs.db
 
 # Backup files
 *~
+
+# Release packages
+heidi-cli-*.tar.gz
+heidi-cli-*.zip
+
+# Reviews output
+reviews/
