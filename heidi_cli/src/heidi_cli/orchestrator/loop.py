@@ -7,7 +7,7 @@ from pathlib import Path
 from .executors import CopilotExecutor, OpenCodeExecutor, JulesExecutor, VscodeExecutor
 from .plan import build_plan_prompt, extract_routing, parse_routing
 from .registry import AgentRegistry
-from .artifacts import TaskArtifact, sanitize_slug
+from .artifacts import TaskArtifact, sanitize_slug, save_audit_to_task
 from ..logging import redact_secrets
 
 
@@ -323,28 +323,8 @@ END_AUDIT_DECISION
                 # Parse the audit decision
                 decision = parse_audit_decision(audit_res.output)
                 
-                # Write audit artifact
-                audit_artifact = TaskArtifact(slug=f"{task_slug}_audit")
-                audit_artifact.content = f"""# Audit: {task_slug}
-
-## Decision
-Status: {decision.status}
-Why: {decision.why}
-
-## Blocking Issues
-{chr(10).join(f"- {i}" for i in decision.blocking_issues) if decision.blocking_issues else "None"}
-
-## Non-Blocking
-{chr(10).join(f"- {i}" for i in decision.non_blocking) if decision.non_blocking else "None"}
-
-## Recommended Next Step
-{decision.recommended_next_step}
-
-## Full Review Output
-{audit_output}
-"""
-                audit_artifact.status = "passed" if decision.status == "PASS" else "failed"
-                audit_artifact.save()
+                # Write audit to same task directory
+                save_audit_to_task(task_slug, decision)
                 
                 if decision.status != "PASS":
                     reviewer_passed = False

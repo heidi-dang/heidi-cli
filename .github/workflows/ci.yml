@@ -40,3 +40,23 @@ jobs:
       - name: Run ruff on root Python files
         run: |
           ruff check client.py sdk.py
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for secrets
+        run: |
+          echo "Checking for secret patterns in codebase..."
+          # Check for common secret patterns (false positive safe - just checking patterns exist)
+          patterns=("ghp_" "github_pat_" "GITHUB_TOKEN=" "GH_TOKEN=" "COPILOT_TOKEN=")
+          found=false
+          for pattern in "${patterns[@]}"; do
+            if grep -r "$pattern" --include="*.py" --include="*.yml" --include="*.yaml" --include="*.json" . 2>/dev/null | grep -v "REDACTED" | grep -v "test_" | grep -v "\.git" > /dev/null; then
+              echo "Warning: Potential secret pattern found: $pattern"
+              found=true
+            fi
+          done
+          if [ "$found" = true ]; then
+            echo "Please review any potential secrets above"
+          fi

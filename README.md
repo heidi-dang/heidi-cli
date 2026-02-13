@@ -1,25 +1,42 @@
-# Agents Loop Logic
+# Heidi-CLI
 
-A modular agent orchestration framework integrating GitHub Copilot SDK with customizable agent workflows.
+A modular agent orchestration framework for coordinating AI-powered development workflows with GitHub Copilot, Jules, and OpenCode.
 
 ## Overview
 
-Agents Loop Logic provides a flexible system for running AI-powered agent workflows. It combines:
+Heidi-CLI provides a flexible system for running AI-powered agent workflows with:
 
-- **GitHub Copilot SDK** - For AI-assisted code generation and conversation
-- **Agent Templates** - Reusable agent configurations in `Agents/`
-- **CLI Tooling** - Command-line interface in `heidi_cli/`
-- **Python SDK** - Programmatic access via `sdk.py` and `client.py`
+- **Multi-Agent Orchestration** - Coordinate Copilot SDK, Jules, and OpenCode agents
+- **Plan→Run→Audit Workflow** - Strict workflow with durable artifacts
+- **Python SDK** - Programmatic access via `client.py` and `sdk.py`
+- **CLI Tooling** - Full-featured command-line interface
+
+## Features
+
+### Multi-Agent Support
+- **GitHub Copilot** - AI-assisted code generation and conversation
+- **Jules** - Google's coding agent
+- **OpenCode** - Open source AI coding assistant
+
+### Workflow Engine
+- **Plan Phase** - Define agent tasks and handoffs
+- **Run Phase** - Execute agents with proper routing
+- **Audit Phase** - Verify changes and run verifications
+
+### Developer Experience
+- Interactive CLI with rich formatting
+- Configurable agent templates
+- Persistent workspace state
+- Secret redaction for security
 
 ## Project Structure
 
 ```
 .
-├── Agents/              # Agent definition templates
-├── heidi_cli/          # CLI tool for agent orchestration
-├── client.py           # Python client for agent interaction
-├── sdk.py              # GitHub Copilot SDK integration
-└── .local/             # Local development files (ignored)
+├── heidi_cli/           # CLI tool for agent orchestration
+├── client.py            # Python client for agent interaction
+├── sdk.py               # GitHub Copilot SDK integration
+└── .local/              # Local development files (ignored)
 ```
 
 ## Getting Started
@@ -27,7 +44,7 @@ Agents Loop Logic provides a flexible system for running AI-powered agent workfl
 ### Prerequisites
 
 - Python 3.10+
-- GitHub Copilot subscription
+- GitHub Copilot subscription (for Copilot features)
 
 ### Installation
 
@@ -45,6 +62,12 @@ heidi config set copilot-token <your-token>
 ### Quick Start
 
 ```bash
+# Initialize
+heidi init
+
+# Authenticate with GitHub
+heidi auth gh
+
 # Check Copilot status
 heidi copilot status
 
@@ -59,10 +82,16 @@ heidi loop "fix failing tests" --executor copilot
 
 | Command | Description |
 |---------|-------------|
-| `heidi copilot status` | Check Copilot connection |
-| `heidi copilot chat <msg>` | Send message to Copilot |
-| `heidi loop <task>` | Run agent loop for task |
+| `heidi init` | Initialize `.heidi/` directory |
+| `heidi auth gh` | Authenticate with GitHub |
+| `heidi doctor` | Check all dependencies |
+| `heidi copilot status` | Show Copilot connection status |
+| `heidi copilot chat <msg>` | Chat with Copilot |
+| `heidi run "prompt"` | Single prompt execution |
+| `heidi loop "task"` | Full Plan→Audit loop |
+| `heidi runs` | List recent runs |
 | `heidi config` | Manage configuration |
+| `heidi serve` | Start HTTP server (port 7777) |
 
 ## Development
 

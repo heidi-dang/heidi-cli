@@ -65,7 +65,7 @@ class OpenCodeExecutor(SubprocessExecutor):
 
 class JulesExecutor(SubprocessExecutor):
     def __init__(self):
-        super().__init__(["jules", "remote", "new", "--session"])
+        super().__init__(["jules", "remote", "new"])
 
 
 class VscodeExecutor(BaseExecutor):

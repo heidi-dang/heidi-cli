@@ -14,6 +14,10 @@ class HeidiConfig(BaseModel):
     executor_default: str = "copilot"
     log_level: str = "info"
     workdir: Optional[Path] = None
+    default_executor: str = "copilot"
+    max_retries: int = 3
+    copilot_model: str = "gpt-5"
+    server_url: str = "http://localhost:7777"
 
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump(exclude_none=True)
@@ -82,11 +86,12 @@ class ConfigManager:
         return token
 
     @classmethod
-    def set_github_token(cls, token: str) -> None:
+    def set_github_token(cls, token: str, store_keyring: bool = True) -> None:
         secrets = cls.load_secrets()
         secrets.github_token = token
         cls.save_secrets(secrets)
-        keyring.set_password("heidi", "github_token", token)
+        if store_keyring:
+            keyring.set_password("heidi", "github_token", token)
 
     @classmethod
     def get_valve(cls, key: str) -> Any:

@@ -46,6 +46,19 @@ async def root():
     return {"status": "ok", "service": "heidi-cli"}
 
 
+@app.get("/agents")
+async def list_agents():
+    from .orchestrator.registry import AgentRegistry
+    
+    agents = AgentRegistry.list_agents()
+    return [{"name": name, "description": desc} for name, desc in agents]
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
+
+
 @app.get("/runs")
 async def list_runs(limit: int = 10):
     from .config import ConfigManager

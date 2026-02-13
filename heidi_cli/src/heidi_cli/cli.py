@@ -131,11 +131,13 @@ def auth_gh(
         console.print("[red]Token required[/red]")
         raise typer.Exit(1)
 
-    ConfigManager.set_github_token(token)
+    ConfigManager.set_github_token(token, store_keyring=store_keyring)
     console.print("[green]GitHub token stored successfully[/green]")
 
     if store_keyring:
         console.print("[dim]Token also stored in OS keyring[/dim]")
+    else:
+        console.print("[dim]Token stored only in secrets file[/dim]")
 
 
 @auth_app.command("status")
@@ -190,16 +192,23 @@ def copilot_doctor() -> None:
 def copilot_status() -> None:
     """Print auth + health status from Copilot CLI."""
     from .copilot_runtime import CopilotRuntime
+    from .logging import redact_secrets
     
     async def _run():
         rt = CopilotRuntime()
-        await rt.start()
         try:
-            st = await rt.client.get_status()
-            auth = await rt.client.get_auth_status()
-            console.print(Panel.fit(f"state={st.state}\ncliVersion={st.cliVersion}\n\n" +
-                                    f"isAuthenticated={auth.isAuthenticated}\nlogin={auth.login}",
-                                    title="Copilot SDK Status"))
+            await rt.start()
+            try:
+                st = await rt.client.get_status()
+                auth = await rt.client.get_auth_status()
+                console.print(Panel.fit(f"state={st.state}\ncliVersion={st.cliVersion}\n\n" +
+                                        f"isAuthenticated={auth.isAuthenticated}\nlogin={auth.login}",
+                                        title="Copilot SDK Status"))
+            except Exception as e:
+                console.print(f"[yellow]Could not get Copilot status: {redact_secrets(str(e))}[/yellow]")
+        except Exception as e:
+            console.print(f"[red]Failed to connect to Copilot SDK: {redact_secrets(str(e))}[/red]")
+            raise typer.Exit(1)
         finally:
             await rt.stop()
     asyncio.run(_run())
@@ -209,16 +218,28 @@ def copilot_status() -> None:
 def copilot_chat(
     prompt: str,
     model: Optional[str] = None,
+    timeout: int = typer.Option(120, help="Timeout in seconds"),
 ) -> None:
     """Send a single prompt and print the assistant response."""
     from .copilot_runtime import CopilotRuntime
+    from .logging import redact_secrets
     
     async def _run():
         rt = CopilotRuntime(model=model)
-        await rt.start()
         try:
-            text = await rt.send_and_wait(prompt)
-            console.print(text)
+            await rt.start()
+            try:
+                text = await rt.send_and_wait(prompt, timeout_s=timeout)
+                console.print(text)
+            except asyncio.TimeoutError:
+                console.print(f"[yellow]Chat timed out after {timeout} seconds[/yellow]")
+                raise typer.Exit(1)
+            except Exception as e:
+                console.print(f"[red]Chat error: {redact_secrets(str(e))}[/red]")
+                raise typer.Exit(1)
+        except Exception as e:
+            console.print(f"[red]Failed to start Copilot: {redact_secrets(str(e))}[/red]")
+            raise typer.Exit(1)
         finally:
             await rt.stop()
     asyncio.run(_run())
