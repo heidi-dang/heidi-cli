@@ -41,6 +41,7 @@ verbose_mode = False
 
 def get_version() -> str:
     from . import __version__
+
     return __version__
 
 
@@ -64,16 +65,22 @@ def main(
         console.print(f"Heidi CLI v{get_version()}")
         raise typer.Exit(0)
 
-    # Check if Heidi is initialized - if not, automatically start wizard
-    # Skip wizard if CI=true or HEIDI_NO_WIZARD=1
     import os
+    import sys
+
+    # Skip wizard for start commands
+    if len(sys.argv) > 1 and sys.argv[1] == "start":
+        return
+
     if not ConfigManager.config_file().exists() and not os.environ.get("HEIDI_NO_WIZARD"):
-        console.print(Panel.fit(
-            "[yellow]Heidi CLI is not initialized yet.[/yellow]\n\n"
-            "Starting setup wizard...",
-            title="First Time Setup"
-        ))
+        console.print(
+            Panel.fit(
+                "[yellow]Heidi CLI is not initialized yet.[/yellow]\n\nStarting setup wizard...",
+                title="First Time Setup",
+            )
+        )
         from .setup_wizard import SetupWizard
+
         wizard = SetupWizard()
         wizard.run()
         raise typer.Exit(0)
@@ -83,7 +90,7 @@ def main(
 def setup() -> None:
     """Run the interactive setup wizard."""
     from .setup_wizard import SetupWizard
-    
+
     wizard = SetupWizard()
     wizard.run()
 
@@ -135,6 +142,7 @@ def doctor() -> None:
         has_failures = True
 
     import importlib.util
+
     if importlib.util.find_spec("copilot"):
         checks.append(("Copilot SDK", "ok", "installed"))
     else:
@@ -162,7 +170,13 @@ def doctor() -> None:
         checks.append(("./tasks/ dir", "warning", "not created yet"))
 
     config = ConfigManager.load_config()
-    checks.append(("Telemetry", "enabled" if config.telemetry_enabled else "disabled", f"telemetry_enabled={config.telemetry_enabled}"))
+    checks.append(
+        (
+            "Telemetry",
+            "enabled" if config.telemetry_enabled else "disabled",
+            f"telemetry_enabled={config.telemetry_enabled}",
+        )
+    )
     checks.append(("Provider", "ok", config.provider or "copilot"))
     checks.append(("Server URL", "ok", config.server_url))
 
@@ -248,14 +262,14 @@ def copilot_doctor() -> None:
             try:
                 st = await rt.client.get_status()
                 table.add_row("CLI State", "connected")
-                table.add_row("CLI Version", str(getattr(st, 'cliVersion', 'unknown')))
+                table.add_row("CLI Version", str(getattr(st, "cliVersion", "unknown")))
             except Exception:
                 table.add_row("CLI State", "error")
 
             try:
                 auth = await rt.client.get_auth_status()
-                table.add_row("Authenticated", str(getattr(auth, 'isAuthenticated', False)))
-                table.add_row("Login", str(getattr(auth, 'login', 'unknown')))
+                table.add_row("Authenticated", str(getattr(auth, "isAuthenticated", False)))
+                table.add_row("Login", str(getattr(auth, "login", "unknown")))
             except Exception:
                 table.add_row("Authenticated", "unknown")
                 table.add_row("Login", "unknown")
@@ -275,7 +289,7 @@ def copilot_status() -> None:
     """Print auth + health status from Copilot CLI."""
     from .copilot_runtime import CopilotRuntime
     from .logging import redact_secrets
-    
+
     async def _run():
         rt = CopilotRuntime()
         try:
@@ -283,16 +297,23 @@ def copilot_status() -> None:
             try:
                 st = await rt.client.get_status()
                 auth = await rt.client.get_auth_status()
-                console.print(Panel.fit(f"state={st.state}\ncliVersion={st.cliVersion}\n\n" +
-                                        f"isAuthenticated={auth.isAuthenticated}\nlogin={auth.login}",
-                                        title="Copilot SDK Status"))
+                console.print(
+                    Panel.fit(
+                        f"state={st.state}\ncliVersion={st.cliVersion}\n\n"
+                        + f"isAuthenticated={auth.isAuthenticated}\nlogin={auth.login}",
+                        title="Copilot SDK Status",
+                    )
+                )
             except Exception as e:
-                console.print(f"[yellow]Could not get Copilot status: {redact_secrets(str(e))}[/yellow]")
+                console.print(
+                    f"[yellow]Could not get Copilot status: {redact_secrets(str(e))}[/yellow]"
+                )
         except Exception as e:
             console.print(f"[red]Failed to connect to Copilot SDK: {redact_secrets(str(e))}[/red]")
             raise typer.Exit(1)
         finally:
             await rt.stop()
+
     asyncio.run(_run())
 
 
@@ -305,7 +326,7 @@ def copilot_chat(
     """Send a single prompt and print the assistant response."""
     from .copilot_runtime import CopilotRuntime
     from .logging import redact_secrets
-    
+
     async def _run():
         rt = CopilotRuntime(model=model)
         try:
@@ -324,6 +345,7 @@ def copilot_chat(
             raise typer.Exit(1)
         finally:
             await rt.stop()
+
     asyncio.run(_run())
 
 
@@ -350,15 +372,15 @@ def agents_list() -> None:
 def persona_list() -> None:
     """List available personas."""
     from .personas import list_personas
-    
+
     personas = list_personas()
     table = Table(title="Available Personas")
     table.add_column("Name", style="cyan")
     table.add_column("Description", style="white")
-    
+
     for name, desc in personas:
         table.add_row(name, desc)
-    
+
     console.print(table)
 
 
@@ -391,39 +413,46 @@ def loop(
     max_retries: int = typer.Option(2, help="Max re-plans after FAIL"),
     workdir: Path = typer.Option(Path.cwd(), help="Repo working directory"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Generate plan but don't apply changes"),
-    context: Optional[Path] = typer.Option(None, "--context", help="Path to inject into context (e.g., ./docs)"),
-    persona: str = typer.Option("default", help="Persona to use (default, security, docs, refactor)"),
+    context: Optional[Path] = typer.Option(
+        None, "--context", help="Path to inject into context (e.g., ./docs)"
+    ),
+    persona: str = typer.Option(
+        "default", help="Persona to use (default, security, docs, refactor)"
+    ),
     no_live: bool = typer.Option(False, "--no-live", help="Disable streaming UI"),
 ) -> None:
     """Run: Plan -> execute handoffs -> audit -> PASS/FAIL (starter loop)."""
     config = ConfigManager.load_config()
     config.persona = persona
     ConfigManager.save_config(config)
-    
+
     console.print(f"[cyan]Using persona: {persona}[/cyan]")
-    
+
     context_content = ""
     if context:
         from .context import collect_context
+
         context_content = collect_context(context)
         if context_content:
-            console.print(f"[cyan]Loaded context from {context}: {len(context_content)} chars[/cyan]")
+            console.print(
+                f"[cyan]Loaded context from {context}: {len(context_content)} chars[/cyan]"
+            )
     if dry_run:
         console.print("[yellow]DRY RUN MODE[/yellow]")
         console.print(f"Task: {task}")
         console.print(f"Executor: {executor}")
         console.print("")
-        
+
         async def _dry_run():
             from .orchestrator.loop import run_loop
             from .orchestrator.artifacts import TaskArtifact, sanitize_slug
-            
+
             slug = sanitize_slug(task)
             artifact = TaskArtifact(slug=slug)
             artifact.content = f"# DRY RUN - Task: {task}\n\nGenerated: (dry run mode)\n"
             artifact.audit_content = "# DRY RUN\n\nNo execution performed.\n"
             artifact.save()
-            
+
             result = await run_loop(
                 task=task,
                 executor=executor,
@@ -432,23 +461,28 @@ def loop(
                 dry_run=True,
             )
             return result
-        
+
         setup_global_logging()
         run_id = HeidiLogger.init_run()
-        
-        HeidiLogger.write_run_meta({
-            "run_id": run_id,
-            "task": task,
-            "executor": executor,
-            "max_retries": 0,
-            "workdir": str(workdir),
-            "dry_run": True,
-        })
-        
+
+        HeidiLogger.write_run_meta(
+            {
+                "run_id": run_id,
+                "task": task,
+                "executor": executor,
+                "max_retries": 0,
+                "workdir": str(workdir),
+                "dry_run": True,
+            }
+        )
+
         import asyncio
+
         try:
             result = asyncio.run(_dry_run())
-            console.print(Panel.fit("[yellow]DRY RUN COMPLETE[/yellow]\n\nArtifacts written to ./tasks/"))
+            console.print(
+                Panel.fit("[yellow]DRY RUN COMPLETE[/yellow]\n\nArtifacts written to ./tasks/")
+            )
             HeidiLogger.write_run_meta({"status": "dry_run", "result": result})
         except Exception as e:
             console.print(f"[red]Dry run failed: {e}[/red]")
@@ -458,20 +492,24 @@ def loop(
     setup_global_logging()
     run_id = HeidiLogger.init_run()
 
-    HeidiLogger.write_run_meta({
-        "run_id": run_id,
-        "task": task,
-        "executor": executor,
-        "max_retries": max_retries,
-        "workdir": str(workdir),
-    })
+    HeidiLogger.write_run_meta(
+        {
+            "run_id": run_id,
+            "task": task,
+            "executor": executor,
+            "max_retries": max_retries,
+            "workdir": str(workdir),
+        }
+    )
 
     console.print(f"[cyan]Starting loop {run_id}: {task}[/cyan]")
     HeidiLogger.emit_status(f"Loop started with executor={executor}")
 
     async def _run():
         try:
-            result = await run_loop(task=task, executor=executor, max_retries=max_retries, workdir=workdir)
+            result = await run_loop(
+                task=task, executor=executor, max_retries=max_retries, workdir=workdir
+            )
             HeidiLogger.emit_result(result)
             console.print(Panel.fit(result, title=f"Loop {run_id} Result"))
             HeidiLogger.write_run_meta({"status": "completed", "result": result})
@@ -491,16 +529,21 @@ def run(
     executor: str = typer.Option("copilot", help="copilot | jules | opencode"),
     workdir: Path = typer.Option(Path.cwd(), help="Repo working directory"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print what would be executed"),
-    context: Optional[Path] = typer.Option(None, "--context", help="Path to inject into context (e.g., ./docs)"),
+    context: Optional[Path] = typer.Option(
+        None, "--context", help="Path to inject into context (e.g., ./docs)"
+    ),
 ) -> None:
     """Run a single prompt with the specified executor."""
     context_content = ""
     if context:
         from .context import collect_context
+
         context_content = collect_context(context)
         if context_content:
-            console.print(f"[cyan]Loaded context from {context}: {len(context_content)} chars[/cyan]")
-    
+            console.print(
+                f"[cyan]Loaded context from {context}: {len(context_content)} chars[/cyan]"
+            )
+
     if dry_run:
         console.print("[yellow]DRY RUN: Would execute:[/yellow]")
         console.print(f"  executor: {executor}")
@@ -512,12 +555,14 @@ def run(
     setup_global_logging()
     run_id = HeidiLogger.init_run()
 
-    HeidiLogger.write_run_meta({
-        "run_id": run_id,
-        "prompt": prompt,
-        "executor": executor,
-        "workdir": str(workdir),
-    })
+    HeidiLogger.write_run_meta(
+        {
+            "run_id": run_id,
+            "prompt": prompt,
+            "executor": executor,
+            "workdir": str(workdir),
+        }
+    )
 
     async def _run():
         exec_impl = _pick_executor(executor)
@@ -640,11 +685,13 @@ def restore_cmd(
 ) -> None:
     """Restore a file from backup."""
     from .backup import restore_file
-    
+
     if not path.exists() and run_id is None:
-        console.print(f"[red]File '{path}' not found. Provide run_id to restore deleted file.[/red]")
+        console.print(
+            f"[red]File '{path}' not found. Provide run_id to restore deleted file.[/red]"
+        )
         raise typer.Exit(1)
-    
+
     success = restore_file(path, run_id, latest)
     if success:
         console.print(f"[green]Restored {path.name} from backup[/green]")
@@ -659,20 +706,20 @@ def backups_cmd(
 ) -> None:
     """List available backups."""
     from .backup import list_backups
-    
+
     backups = list_backups(run_id)
     if not backups:
         console.print("[yellow]No backups found[/yellow]")
         return
-    
+
     table = Table(title="Backups")
     table.add_column("File", style="cyan")
     table.add_column("Path", style="white")
     table.add_column("Size", style="white")
-    
+
     for b in backups[:20]:
         table.add_row(b["name"], b["path"], f"{b['size']} bytes")
-    
+
     console.print(table)
 
 
@@ -685,51 +732,143 @@ def serve(
     """Start Heidi CLI server."""
     import subprocess
     import threading
-    
+
     def start_backend():
         from .server import start_server
+
         start_server(host=host, port=port)
-    
+
     console.print(f"[cyan]Starting Heidi backend on {host}:{port}...[/cyan]")
     backend_thread = threading.Thread(target=start_backend, daemon=True)
     backend_thread.start()
-    
+
     if ui:
         ui_path = Path.cwd() / "ui"
         if not ui_path.exists():
             console.print("[red]UI not found at ./ui - run from heidi-cli root[/red]")
             raise typer.Exit(1)
-        
+
         console.print("[cyan]Starting UI dev server on http://localhost:3000...[/cyan]")
-        
+
         def start_ui():
             subprocess.run(
                 ["npm", "run", "dev", "--", "--port", "3000"],
                 cwd=ui_path,
                 env={**os.environ, "API_URL": f"http://{host}:{port}"},
             )
-        
+
         ui_thread = threading.Thread(target=start_ui, daemon=True)
         ui_thread.start()
-        
-        console.print(Panel.fit(
-            "[green]Heidi is running!\n\n"
-            "Backend: http://localhost:7777\n"
-            "UI: http://localhost:3000\n\n"
-            "Press Ctrl+C to stop",
-            title="Heidi CLI"
-        ))
+
+        console.print(
+            Panel.fit(
+                "[green]Heidi is running!\n\n"
+                "Backend: http://localhost:7777\n"
+                "UI: http://localhost:3000\n\n"
+                "Press Ctrl+C to stop",
+                title="Heidi CLI",
+            )
+        )
     else:
-        console.print(Panel.fit(
-            f"[green]Heidi server running at http://{host}:{port}[/green]\n\n"
-            "Press Ctrl+C to stop",
-            title="Heidi CLI Server"
-        ))
-    
+        console.print(
+            Panel.fit(
+                f"[green]Heidi server running at http://{host}:{port}[/green]\n\n"
+                "Press Ctrl+C to stop",
+                title="Heidi CLI Server",
+            )
+        )
+
     try:
         backend_thread.join()
     except KeyboardInterrupt:
         console.print("[yellow]Stopping Heidi...[/yellow]")
+
+
+@app.command("ui")
+def ui_cmd(
+    backend: bool = typer.Option(True, "--backend/--no-backend", help="Start backend server"),
+    ui: bool = typer.Option(True, "--ui/--no-ui", help="Start UI dev server"),
+    port: int = typer.Option(7777, "--port", help="Backend port"),
+    ui_port: int = typer.Option(3001, "--ui-port", help="UI dev server port"),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open browser automatically"),
+) -> None:
+    """Start Heidi UI (shorthand for 'heidi start ui')."""
+    from .launcher import (
+        start_backend,
+        start_ui_dev_server,
+        is_backend_running,
+        is_ui_running,
+        stop_backend,
+        stop_ui,
+    )
+    import webbrowser
+    from rich.panel import Panel
+    import signal
+    import sys
+    import os
+
+    os.environ["HEIDI_NO_WIZARD"] = "1"
+
+    backend_process = None
+    ui_process = None
+    actual_port = port
+
+    try:
+        if backend:
+            if is_backend_running("127.0.0.1", port):
+                console.print(
+                    f"[yellow]Backend already running on http://127.0.0.1:{port}[/yellow]"
+                )
+            else:
+                backend_process, actual_port = start_backend(
+                    host="127.0.0.1", port=port, wait=True, timeout=15
+                )
+
+        if ui:
+            api_base = f"http://localhost:{actual_port}"
+            if is_ui_running(ui_port):
+                console.print(f"[yellow]UI already running on http://127.0.0.1:{ui_port}[/yellow]")
+            else:
+                ui_process = start_ui_dev_server(port=ui_port, api_url=api_base)
+
+        api_url_final = f"http://127.0.0.1:{actual_port}"
+        ui_url = f"http://127.0.0.1:{ui_port}"
+
+        console.print(
+            Panel.fit(
+                f"[green]Backend:[/green] {api_url_final}\n[green]UI:[/green] {ui_url}",
+                title="Heidi Services",
+            )
+        )
+
+        if open_browser and ui:
+            console.print("[cyan]Opening browser...[/cyan]")
+            webbrowser.open(ui_url)
+
+        console.print("\n[cyan]Press Ctrl+C to stop[/cyan]")
+
+        def signal_handler(sig, frame):
+            console.print("\n[yellow]Shutting down...[/yellow]")
+            sys.exit(0)
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        import time
+
+        while True:
+            time.sleep(1)
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Shutting down...[/yellow]")
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        if ui_process:
+            stop_ui()
+        if backend_process:
+            stop_backend()
 
 
 @app.command("review")
@@ -739,24 +878,26 @@ def review_cmd(
 ) -> None:
     """Run AI code review on diff or branch."""
     import subprocess
-    
+
     if not diff and not branch:
         console.print("[red]Specify --diff or --branch[/red]")
         raise typer.Exit(1)
-    
+
     try:
         if diff:
             result = subprocess.run(["git", "diff"], capture_output=True, text=True)
             diff_text = result.stdout or result.stderr
         else:
             target_branch = branch or "main"
-            result = subprocess.run(["git", "diff", f"main...{target_branch}"], capture_output=True, text=True)
+            result = subprocess.run(
+                ["git", "diff", f"main...{target_branch}"], capture_output=True, text=True
+            )
             diff_text = result.stdout or result.stderr
-        
+
         if not diff_text.strip():
             console.print("[yellow]No changes to review[/yellow]")
             return
-        
+
         review_prompt = f"""You are a code reviewer. Review the following changes and provide feedback:
 
 ## Changes
@@ -768,22 +909,24 @@ Provide:
 3. Actionable checklist (what should be fixed before merging)
 """
         console.print("[cyan]Generating review...[/cyan]")
-        
+
         async def _run_review():
             from .orchestrator.loop import pick_executor
+
             exec_impl = pick_executor("copilot")
             result = await exec_impl.run(review_prompt, Path.cwd())
             return result
-        
+
         import asyncio
+
         result = asyncio.run(_run_review())
-        
+
         console.print(Panel.fit(result.output[:3000], title="Code Review"))
-        
+
         review_file = Path("./reviews.md")
         review_file.write_text(f"# Code Review\n\n{result.output}")
         console.print(f"[green]Review saved to {review_file}[/green]")
-        
+
     except Exception as e:
         console.print(f"[red]Review failed: {e}[/red]")
         raise typer.Exit(1)
@@ -794,10 +937,12 @@ def start_ui(
     backend: bool = typer.Option(True, "--backend/--no-backend", help="Start backend server"),
     ui: bool = typer.Option(True, "--ui/--no-ui", help="Start UI dev server"),
     port: int = typer.Option(7777, "--port", help="Backend port"),
-    ui_port: int = typer.Option(3000, "--ui-port", help="UI dev server port"),
+    ui_port: int = typer.Option(3001, "--ui-port", help="UI dev server port"),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open browser automatically"),
     tunnel: bool = typer.Option(False, "--tunnel", help="Start Cloudflare tunnel"),
-    api_url: str = typer.Option("", "--api-url", help="API URL for UI (default: http://localhost:PORT)"),
+    api_url: str = typer.Option(
+        "", "--api-url", help="API URL for UI (default: http://localhost:PORT)"
+    ),
 ) -> None:
     """Start Heidi backend and UI dev server."""
     import webbrowser
@@ -822,64 +967,72 @@ def start_ui(
     try:
         if backend:
             if is_backend_running("127.0.0.1", port):
-                console.print(f"[yellow]Backend already running on http://127.0.0.1:{port}[/yellow]")
+                console.print(
+                    f"[yellow]Backend already running on http://127.0.0.1:{port}[/yellow]"
+                )
             else:
-                backend_process, actual_port = start_backend(host="127.0.0.1", port=port, wait=True, timeout=15)
-        
+                backend_process, actual_port = start_backend(
+                    host="127.0.0.1", port=port, wait=True, timeout=15
+                )
+
         if ui:
             api_base = api_url if api_url else f"http://localhost:{actual_port}"
             if is_ui_running(ui_port):
                 console.print(f"[yellow]UI already running on http://127.0.0.1:{ui_port}[/yellow]")
             else:
                 ui_process = start_ui_dev_server(port=ui_port, api_url=api_base)
-        
+
         api_url_final = f"http://127.0.0.1:{actual_port}"
         ui_url = f"http://127.0.0.1:{ui_port}"
-        
-        console.print(Panel.fit(
-            f"[green]Backend:[/green] {api_url_final}\n"
-            f"[green]UI:[/green] {ui_url}",
-            title="Heidi Services"
-        ))
-        
+
+        console.print(
+            Panel.fit(
+                f"[green]Backend:[/green] {api_url_final}\n[green]UI:[/green] {ui_url}",
+                title="Heidi Services",
+            )
+        )
+
         if open_browser and ui:
             console.print("[cyan]Opening browser...[/cyan]")
             webbrowser.open(ui_url)
-        
+
         if not tunnel:
             tunnel = typer.confirm(
                 "Expose publicly via Cloudflare Tunnel (cloudflared)?",
                 default=False,
             )
-        
+
         if tunnel:
             if not is_cloudflared_installed():
                 console.print(get_tunnel_instructions())
             else:
                 tunnel_process, public_url = start_tunnel(api_url_final)
                 if public_url:
-                    console.print(Panel.fit(
-                        f"[green]Public API:[/green] {public_url}\n"
-                        f"[dim]Use this URL in UI Settings if needed[/dim]",
-                        title="Cloudflare Tunnel"
-                    ))
+                    console.print(
+                        Panel.fit(
+                            f"[green]Public API:[/green] {public_url}\n"
+                            f"[dim]Use this URL in UI Settings if needed[/dim]",
+                            title="Cloudflare Tunnel",
+                        )
+                    )
                     if open_browser:
                         public_ui_url = f"{public_url}/?baseUrl={public_url}"
                         webbrowser.open(public_ui_url)
-        
+
         console.print("\n[cyan]Press Ctrl+C to stop[/cyan]")
-        
+
         def signal_handler(sig, frame):
             console.print("\n[yellow]Shutting down...[/yellow]")
             sys.exit(0)
-        
+
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
-        
+
         import time
+
         while True:
             time.sleep(1)
-    
+
     except KeyboardInterrupt:
         console.print("\n[yellow]Shutting down...[/yellow]")
     except Exception as e:
@@ -904,15 +1057,15 @@ def start_backend_cmd(
     """Start the Heidi API server only."""
     from .launcher import start_backend, is_backend_running
     import webbrowser
-    
+
     if is_backend_running(host, port):
         console.print(f"[yellow]Backend already running on http://{host}:{port}[/yellow]")
         return
-    
+
     process, actual_port = start_backend(host=host, port=port, wait=True, timeout=15)
-    
+
     console.print(f"[green]Backend running at http://{host}:{actual_port}[/green]")
-    
+
     if open_browser:
         webbrowser.open(f"http://{host}:{actual_port}/ui/")
 
@@ -922,19 +1075,19 @@ def services_status_cmd() -> None:
     """Show status of Heidi services."""
     from .launcher import get_status
     from rich.table import Table
-    
+
     status = get_status()
-    
+
     if not status:
         console.print("[yellow]No Heidi services running[/yellow]")
         return
-    
+
     table = Table(title="Heidi Services Status")
     table.add_column("Service", style="cyan")
     table.add_column("PID", style="yellow")
     table.add_column("Running", style="green")
     table.add_column("Port", style="magenta")
-    
+
     for name, info in status.items():
         running = "Yes" if info.get("running") else "No"
         style = "green" if info.get("running") else "red"
@@ -944,7 +1097,7 @@ def services_status_cmd() -> None:
             f"[{style}]{running}[/{style}]",
             str(info.get("port", "N/A")),
         )
-    
+
     console.print(table)
 
 
@@ -956,13 +1109,13 @@ def stop_cmd(
 ) -> None:
     """Stop Heidi services."""
     from .launcher import stop_backend, stop_ui, stop_all, get_status
-    
+
     status = get_status()
-    
+
     if not status:
         console.print("[yellow]No services running[/yellow]")
         return
-    
+
     if all or (not backend and not ui):
         console.print("[cyan]Stopping all services...[/cyan]")
         stop_all()
@@ -971,7 +1124,7 @@ def stop_cmd(
             stop_backend()
         if ui and "ui" in status:
             stop_ui()
-    
+
     console.print("[green]Done.[/green]")
 
 
@@ -982,6 +1135,7 @@ def start_server_cmd(
 ) -> None:
     """Start the Heidi API server only (without UI)."""
     from .server import start_server
+
     start_server(host=host, port=port)
 
 
