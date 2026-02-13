@@ -345,8 +345,15 @@ def loop(
     max_retries: int = typer.Option(2, help="Max re-plans after FAIL"),
     workdir: Path = typer.Option(Path.cwd(), help="Repo working directory"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Generate plan but don't apply changes"),
+    context: Optional[Path] = typer.Option(None, "--context", help="Path to inject into context (e.g., ./docs)"),
 ) -> None:
     """Run: Plan -> execute handoffs -> audit -> PASS/FAIL (starter loop)."""
+    context_content = ""
+    if context:
+        from .context import collect_context
+        context_content = collect_context(context)
+        if context_content:
+            console.print(f"[cyan]Loaded context from {context}: {len(context_content)} chars[/cyan]")
     if dry_run:
         console.print("[yellow]DRY RUN MODE[/yellow]")
         console.print(f"Task: {task}")
@@ -430,13 +437,22 @@ def run(
     executor: str = typer.Option("copilot", help="copilot | jules | opencode"),
     workdir: Path = typer.Option(Path.cwd(), help="Repo working directory"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print what would be executed"),
+    context: Optional[Path] = typer.Option(None, "--context", help="Path to inject into context (e.g., ./docs)"),
 ) -> None:
     """Run a single prompt with the specified executor."""
+    context_content = ""
+    if context:
+        from .context import collect_context
+        context_content = collect_context(context)
+        if context_content:
+            console.print(f"[cyan]Loaded context from {context}: {len(context_content)} chars[/cyan]")
+    
     if dry_run:
         console.print("[yellow]DRY RUN: Would execute:[/yellow]")
         console.print(f"  executor: {executor}")
         console.print(f"  prompt: {prompt[:100]}...")
         console.print(f"  workdir: {workdir}")
+        console.print(f"  context: {context if context else 'none'}")
         return
 
     setup_global_logging()
