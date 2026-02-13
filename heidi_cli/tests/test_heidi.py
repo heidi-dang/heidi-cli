@@ -59,6 +59,31 @@ class TestRedaction:
         assert "abc123" not in redacted
         assert "xyz789" not in redacted
 
+    def test_redact_copilot_token(self):
+        text = "COPILOT_TOKEN=sk-abc123"
+        redacted = redact_secrets(text)
+        assert "sk-abc123" not in redacted
+
+    def test_redact_github_token_env(self):
+        text = "GITHUB_TOKEN=gho_abc123"
+        redacted = redact_secrets(text)
+        assert "gho_abc123" not in redacted
+
+    def test_redact_openai_key(self):
+        text = "OPENAI_API_KEY=sk-abc123"
+        redacted = redact_secrets(text)
+        assert "sk-abc123" not in redacted
+
+    def test_redact_anthropic_key(self):
+        text = "ANTHROPIC_API_KEY=sk-ant-abc123"
+        redacted = redact_secrets(text)
+        assert "sk-ant-abc123" not in redacted
+
+    def test_redact_json_token(self):
+        text = '{"token": "ghp_abcdefghijklmnopqrstuvwxyz1234567890"}'
+        redacted = redact_secrets(text)
+        assert "ghp_" not in redacted
+
     def test_no_redaction_needed(self):
         text = "This is normal text without secrets"
         assert redact_secrets(text) == text

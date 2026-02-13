@@ -125,9 +125,12 @@ class PatchApplicator:
         r">\s*/dev/sd",
         r"format\s+.*drive",
     ]
+    MAX_DIFF_SIZE = 100_000  # 100KB max diff size
 
     @classmethod
     def is_safe_diff(cls, diff: str) -> bool:
+        if len(diff) > cls.MAX_DIFF_SIZE:
+            return False
         for pattern in cls.DANGEROUS_PATTERNS:
             if re.search(pattern, diff):
                 return False
