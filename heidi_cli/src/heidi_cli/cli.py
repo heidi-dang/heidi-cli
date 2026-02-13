@@ -23,12 +23,14 @@ auth_app = typer.Typer(help="Authentication commands")
 agents_app = typer.Typer(help="Agent management")
 valves_app = typer.Typer(help="Configuration valves")
 openwebui_app = typer.Typer(help="OpenWebUI integration")
+persona_app = typer.Typer(help="Persona management")
 
 app.add_typer(copilot_app, name="copilot")
 app.add_typer(auth_app, name="auth")
 app.add_typer(agents_app, name="agents")
 app.add_typer(valves_app, name="valves")
 app.add_typer(openwebui_app, name="openwebui")
+app.add_typer(persona_app, name="persona")
 
 console = Console()
 json_output = False
@@ -105,17 +107,29 @@ def init(
 @app.command()
 def doctor() -> None:
     """Check health of all executors and dependencies."""
+    import sys
+    from .config import ConfigManager
+
     table = Table(title="Heidi CLI Health Check")
     table.add_column("Component", style="cyan")
     table.add_column("Status", style="green")
     table.add_column("Version/Notes", style="white")
 
     checks = []
+    has_failures = False
 
-    result = shutil.which("python")
-    checks.append(("Python", "ok" if result else "missing", result or ""))
+    result = shutil.which("python3") or shutil.which("python")
+    if result:
+        version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        if sys.version_info >= (3, 10):
+            checks.append(("Python", "ok", version))
+        else:
+            checks.append(("Python", "fail", f"{version} (need 3.10+)"))
+            has_failures = True
+    else:
+        checks.append(("Python", "fail", "not found"))
+        has_failures = True
 
-    # Check if copilot SDK is installed (without importing, to avoid triggering runtime)
     import importlib.util
     if importlib.util.find_spec("copilot"):
         checks.append(("Copilot SDK", "ok", "installed"))
@@ -131,13 +145,53 @@ def doctor() -> None:
     result = shutil.which("code")
     checks.append(("VS Code", "ok" if result else "not found", result or ""))
 
+    heidi_dir = ConfigManager.heidi_dir()
+    tasks_dir = ConfigManager.TASKS_DIR
+    if heidi_dir.exists():
+        checks.append((".heidi/ dir", "ok", str(heidi_dir)))
+    else:
+        checks.append((".heidi/ dir", "warning", "not initialized (run heidi init)"))
+
+    if tasks_dir.exists():
+        checks.append(("./tasks/ dir", "ok", str(tasks_dir)))
+    else:
+        checks.append(("./tasks/ dir", "warning", "not created yet"))
+
+    config = ConfigManager.load_config()
+    checks.append(("Telemetry", "enabled" if config.telemetry_enabled else "disabled", f"telemetry_enabled={config.telemetry_enabled}"))
+    checks.append(("Provider", "ok", config.provider or "copilot"))
+    checks.append(("Server URL", "ok", config.server_url))
+
+    if config.openwebui_url:
+        checks.append(("OpenWebUI", "ok", config.openwebui_url))
+    else:
+        checks.append(("OpenWebUI", "not set", "optional"))
+
+    token = ConfigManager.get_github_token()
+    if token:
+        checks.append(("GitHub Auth", "ok", "token configured"))
+    else:
+        checks.append(("GitHub Auth", "not configured", "optional for local provider"))
+
     for name, status, notes in checks:
-        style = "green" if status == "ok" else "yellow"
+        if status == "fail":
+            style = "red"
+            has_failures = True
+        elif status == "warning":
+            style = "yellow"
+        elif status == "ok" or status == "enabled":
+            style = "green"
+        else:
+            style = "white"
         table.add_row(name, f"[{style}]{status}[/{style}]", notes)
 
     console.print(table)
 
-    missing = [n for n, s, _ in checks if s != "ok"]
+    if has_failures:
+        console.print("[red]Fatal issues found. Run 'heidi init' first.[/red]")
+        raise typer.Exit(1)
+
+    missing = [n for n, s, _ in checks if s in ("missing", "not configured")]
     if missing:
         console.print(f"[yellow]Warning: Missing components: {', '.join(missing)}[/yellow]")
 
@@ -288,6 +342,22 @@ def agents_list() -> None:
         console.print(f"[yellow]Warning: Missing required agents: {', '.join(missing)}[/yellow]")
 
 
+@persona_app.command("list")
+def persona_list() -> None:
+    """List available personas."""
+    from .personas import list_personas
+    
+    personas = list_personas()
+    table = Table(title="Available Personas")
+    table.add_column("Name", style="cyan")
+    table.add_column("Description", style="white")
+    
+    for name, desc in personas:
+        table.add_row(name, desc)
+    
+    console.print(table)
+
+
 @valves_app.command("get")
 def valves_get(key: str) -> None:
     """Get a configuration valve value."""
@@ -316,15 +386,68 @@ def loop(
     executor: str = typer.Option("copilot", help="copilot | jules | opencode"),
     max_retries: int = typer.Option(2, help="Max re-plans after FAIL"),
     workdir: Path = typer.Option(Path.cwd(), help="Repo working directory"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Print what would be executed"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Generate plan but don't apply changes"),
+    context: Optional[Path] = typer.Option(None, "--context", help="Path to inject into context (e.g., ./docs)"),
+    persona: str = typer.Option("default", help="Persona to use (default, security, docs, refactor)"),
 ) -> None:
     """Run: Plan -> execute handoffs -> audit -> PASS/FAIL (starter loop)."""
+    config = ConfigManager.load_config()
+    config.persona = persona
+    ConfigManager.save_config(config)
+    
+    console.print(f"[cyan]Using persona: {persona}[/cyan]")
+    
+    context_content = ""
+    if context:
+        from .context import collect_context
+        context_content = collect_context(context)
+        if context_content:
+            console.print(f"[cyan]Loaded context from {context}: {len(context_content)} chars[/cyan]")
     if dry_run:
-        console.print("[yellow]DRY RUN: Would execute loop with:[/yellow]")
-        console.print(f"  task: {task}")
-        console.print(f"  executor: {executor}")
-        console.print(f"  max_retries: {max_retries}")
-        console.print(f"  workdir: {workdir}")
+        console.print("[yellow]DRY RUN MODE[/yellow]")
+        console.print(f"Task: {task}")
+        console.print(f"Executor: {executor}")
+        console.print("")
+        
+        async def _dry_run():
+            from .orchestrator.loop import run_loop
+            from .orchestrator.artifacts import TaskArtifact, sanitize_slug
+            
+            slug = sanitize_slug(task)
+            artifact = TaskArtifact(slug=slug)
+            artifact.content = f"# DRY RUN - Task: {task}\n\nGenerated: (dry run mode)\n"
+            artifact.audit_content = "# DRY RUN\n\nNo execution performed.\n"
+            artifact.save()
+            
+            result = await run_loop(
+                task=task,
+                executor=executor,
+                max_retries=0,
+                workdir=workdir,
+                dry_run=True,
+            )
+            return result
+        
+        setup_global_logging()
+        run_id = HeidiLogger.init_run()
+        
+        HeidiLogger.write_run_meta({
+            "run_id": run_id,
+            "task": task,
+            "executor": executor,
+            "max_retries": 0,
+            "workdir": str(workdir),
+            "dry_run": True,
+        })
+        
+        import asyncio
+        try:
+            result = asyncio.run(_dry_run())
+            console.print(Panel.fit("[yellow]DRY RUN COMPLETE[/yellow]\n\nArtifacts written to ./tasks/"))
+            HeidiLogger.write_run_meta({"status": "dry_run", "result": result})
+        except Exception as e:
+            console.print(f"[red]Dry run failed: {e}[/red]")
+            HeidiLogger.write_run_meta({"status": "dry_run_failed", "error": str(e)})
         return
 
     setup_global_logging()
@@ -363,13 +486,22 @@ def run(
     executor: str = typer.Option("copilot", help="copilot | jules | opencode"),
     workdir: Path = typer.Option(Path.cwd(), help="Repo working directory"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print what would be executed"),
+    context: Optional[Path] = typer.Option(None, "--context", help="Path to inject into context (e.g., ./docs)"),
 ) -> None:
     """Run a single prompt with the specified executor."""
+    context_content = ""
+    if context:
+        from .context import collect_context
+        context_content = collect_context(context)
+        if context_content:
+            console.print(f"[cyan]Loaded context from {context}: {len(context_content)} chars[/cyan]")
+    
     if dry_run:
         console.print("[yellow]DRY RUN: Would execute:[/yellow]")
         console.print(f"  executor: {executor}")
         console.print(f"  prompt: {prompt[:100]}...")
         console.print(f"  workdir: {workdir}")
+        console.print(f"  context: {context if context else 'none'}")
         return
 
     setup_global_logging()
@@ -460,6 +592,82 @@ def runs_list(
         else:
             table.add_row(run_path.name, "unknown", "")
 
+    console.print(table)
+
+
+@app.command("status")
+def status_cmd() -> None:
+    """Show Heidi CLI status and token usage."""
+    from .token_usage import get_total_usage
+
+    config = ConfigManager.load_config()
+    token = ConfigManager.get_github_token()
+
+    table = Table(title="Heidi CLI Status")
+    table.add_column("Setting", style="cyan")
+    table.add_column("Value", style="white")
+
+    table.add_row("Provider", config.provider or "copilot")
+    table.add_row("Telemetry", "enabled" if config.telemetry_enabled else "disabled")
+    table.add_row("Server URL", config.server_url)
+    table.add_row("GitHub Auth", "configured" if token else "not configured")
+
+    console.print(table)
+
+    usage = get_total_usage()
+    if usage["runs"] > 0:
+        usage_table = Table(title="Token Usage Summary")
+        usage_table.add_column("Metric", style="cyan")
+        usage_table.add_column("Value", style="white")
+        usage_table.add_row("Total Runs", str(usage["runs"]))
+        usage_table.add_row("Total Tokens", f"{usage['total_tokens']:,}")
+        usage_table.add_row("Estimated Cost", f"${usage['total_cost']:.4f}")
+        console.print(usage_table)
+    else:
+        console.print("[dim]No runs yet. Run 'heidi loop' to get started.[/dim]")
+
+
+@app.command("restore")
+def restore_cmd(
+    path: Path = typer.Argument(..., help="File path to restore"),
+    run_id: Optional[str] = typer.Option(None, help="Specific run ID to restore from"),
+    latest: bool = typer.Option(True, help="Restore latest backup (vs earliest)"),
+) -> None:
+    """Restore a file from backup."""
+    from .backup import restore_file
+    
+    if not path.exists() and run_id is None:
+        console.print(f"[red]File '{path}' not found. Provide run_id to restore deleted file.[/red]")
+        raise typer.Exit(1)
+    
+    success = restore_file(path, run_id, latest)
+    if success:
+        console.print(f"[green]Restored {path.name} from backup[/green]")
+    else:
+        console.print(f"[red]No backup found for {path.name}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("backups")
+def backups_cmd(
+    run_id: Optional[str] = typer.Option(None, help="Filter by run ID"),
+) -> None:
+    """List available backups."""
+    from .backup import list_backups
+    
+    backups = list_backups(run_id)
+    if not backups:
+        console.print("[yellow]No backups found[/yellow]")
+        return
+    
+    table = Table(title="Backups")
+    table.add_column("File", style="cyan")
+    table.add_column("Path", style="white")
+    table.add_column("Size", style="white")
+    
+    for b in backups[:20]:
+        table.add_row(b["name"], b["path"], f"{b['size']} bytes")
+    
     console.print(table)
 
 

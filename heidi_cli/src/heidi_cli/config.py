@@ -19,8 +19,13 @@ class HeidiConfig(BaseModel):
     copilot_model: str = "gpt-5"
     server_url: str = "http://localhost:7777"
     default_agent: str = "high-autonomy"
-    openwebui_url: str = "http://localhost:3000"
+    provider: str = "copilot"
+    telemetry_enabled: bool = False
+    openwebui_url: Optional[str] = "http://localhost:3000"
     openwebui_token: Optional[str] = None
+    ollama_url: str = "http://localhost:11434"
+    lmstudio_url: str = "http://localhost:1234"
+    persona: str = "default"
 
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump(exclude_none=True)
@@ -62,9 +67,14 @@ class ConfigManager:
         return cls.heidi_dir() / "runs"
 
     @classmethod
+    def backups_dir(cls) -> Path:
+        return cls.heidi_dir() / "backups"
+
+    @classmethod
     def ensure_dirs(cls) -> None:
         cls.heidi_dir().mkdir(parents=True, exist_ok=True)
         cls.runs_dir().mkdir(parents=True, exist_ok=True)
+        cls.backups_dir().mkdir(parents=True, exist_ok=True)
 
     @classmethod
     def load_config(cls) -> HeidiConfig:
@@ -96,8 +106,11 @@ class ConfigManager:
         secrets = cls.load_secrets()
         if secrets.github_token:
             return secrets.github_token
-        token = keyring.get_password("heidi", "github_token")
-        return token
+        try:
+            token = keyring.get_password("heidi", "github_token")
+            return token
+        except Exception:
+            return None
 
     @classmethod
     def set_github_token(cls, token: str, store_keyring: bool = True) -> None:
@@ -105,7 +118,10 @@ class ConfigManager:
         secrets.github_token = token
         cls.save_secrets(secrets)
         if store_keyring:
-            keyring.set_password("heidi", "github_token", token)
+            try:
+                keyring.set_password("heidi", "github_token", token)
+            except Exception:
+                pass
 
     @classmethod
     def get_valve(cls, key: str) -> Any:
