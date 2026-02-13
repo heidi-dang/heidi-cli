@@ -12,9 +12,11 @@ from pydantic import BaseModel
 class HeidiConfig(BaseModel):
     version: str = "0.1.0"
     executor_default: str = "copilot"
-    max_retries: int = 2
     log_level: str = "info"
     workdir: Optional[Path] = None
+    default_executor: str = "copilot"
+    max_retries: int = 3
+    copilot_model: str = "gpt-5"
     server_url: str = "http://localhost:7777"
 
     def to_dict(self) -> dict[str, Any]:
@@ -84,14 +86,7 @@ class ConfigManager:
         return token
 
     @classmethod
-    def has_github_token_in_keyring(cls) -> bool:
-        try:
-            return bool(keyring.get_password("heidi", "github_token"))
-        except Exception:
-            return False
-
-    @classmethod
-    def set_github_token(cls, token: str, *, store_keyring: bool = True) -> None:
+    def set_github_token(cls, token: str, store_keyring: bool = True) -> None:
         secrets = cls.load_secrets()
         secrets.github_token = token
         cls.save_secrets(secrets)
@@ -99,50 +94,12 @@ class ConfigManager:
             keyring.set_password("heidi", "github_token", token)
 
     @classmethod
-    def _normalize_valve_key(cls, key: str) -> str:
-        return (key or "").strip().upper()
-
-    @classmethod
     def get_valve(cls, key: str) -> Any:
-        k = cls._normalize_valve_key(key)
-
-        if k == "DEFAULT_EXECUTOR":
-            return cls.load_config().executor_default
-        if k == "MAX_RETRIES":
-            return cls.load_config().max_retries
-        if k == "SERVER_URL":
-            return cls.load_config().server_url
-        if k == "COPILOT_MODEL":
-            return cls.load_secrets().copilot_model
-
         config = cls.load_config()
         return getattr(config, key, None)
 
     @classmethod
     def set_valve(cls, key: str, value: Any) -> None:
-        k = cls._normalize_valve_key(key)
-
-        if k == "DEFAULT_EXECUTOR":
-            config = cls.load_config()
-            config.executor_default = str(value)
-            cls.save_config(config)
-            return
-        if k == "MAX_RETRIES":
-            config = cls.load_config()
-            config.max_retries = int(value)
-            cls.save_config(config)
-            return
-        if k == "SERVER_URL":
-            config = cls.load_config()
-            config.server_url = str(value)
-            cls.save_config(config)
-            return
-        if k == "COPILOT_MODEL":
-            secrets = cls.load_secrets()
-            secrets.copilot_model = str(value)
-            cls.save_secrets(secrets)
-            return
-
         config = cls.load_config()
         if hasattr(config, key):
             setattr(config, key, value)

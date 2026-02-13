@@ -5,14 +5,10 @@ author: Heidi
 version: 2.0.0
 """
 
-import json
 import requests
-import queue
-import threading
-import time
 import traceback
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Union, Generator, Iterator
+from typing import List, Union, Generator, Iterator
 
 
 class Pipe:
@@ -78,7 +74,7 @@ class Pipe:
         }
 
         try:
-            response = requests.post(url, json=payload, timeout=10)
+            response = requests.post(url, json=payload, timeout=300)
             response.raise_for_status()
             data = response.json()
 
@@ -87,20 +83,14 @@ class Pipe:
             result = data.get("result", "")
             error = data.get("error", "")
 
-            if status == "running" and run_id != "unknown":
-                meta = self._poll_run(run_id, timeout_s=600)
-                status = (meta.get("meta") or {}).get("status", status)
-                result = meta.get("result", result) or ""
-                error = meta.get("error", error) or ""
-
-            output = f"### 🔄 Agent Loop Started\n"
+            output = "### 🔄 Agent Loop Started\n"
             output += f"**Task:** {task}\n"
             output += f"**Executor:** {self.valves.DEFAULT_EXECUTOR}\n"
             output += f"**Run ID:** {run_id}\n\n"
 
             if status == "completed":
                 output += f"**Result:** {result}\n"
-                output += f"\n[View full logs: `heidi runs`]\n"
+                output += "\n[View full logs: `heidi runs`]\n"
             else:
                 output += f"**Status:** {status}\n"
                 if error:
@@ -122,7 +112,7 @@ class Pipe:
         }
 
         try:
-            response = requests.post(url, json=payload, timeout=10)
+            response = requests.post(url, json=payload, timeout=120)
             response.raise_for_status()
             data = response.json()
 
@@ -131,13 +121,7 @@ class Pipe:
             result = data.get("result", "")
             error = data.get("error", "")
 
-            if status == "running" and run_id != "unknown":
-                meta = self._poll_run(run_id, timeout_s=300)
-                status = (meta.get("meta") or {}).get("status", status)
-                result = meta.get("result", result) or ""
-                error = meta.get("error", error) or ""
-
-            output = f"### ▶️ Run Started\n"
+            output = "### ▶️ Run Started\n"
             output += f"**Prompt:** {prompt[:100]}...\n"
             output += f"**Executor:** {self.valves.DEFAULT_EXECUTOR}\n"
             output += f"**Run ID:** {run_id}\n\n"
@@ -156,44 +140,22 @@ class Pipe:
         except Exception as e:
             return f"**Heidi Run Error**\n\n{str(e)}\n"
 
-    def _poll_run(self, run_id: str, timeout_s: int = 300, poll_interval_s: float = 2.0) -> dict:
-        url = f"{self.server_url}/runs/{run_id}"
-        started = time.time()
-        last = {}
-        while True:
-            if time.time() - started > timeout_s:
-                return last
-
-            resp = requests.get(url, timeout=10)
-            resp.raise_for_status()
-            last = resp.json()
-            status = ((last.get("meta") or {}).get("status") or "unknown").lower()
-            if status in ("completed", "failed"):
-                return last
-            time.sleep(poll_interval_s)
-
     def list_agents(self) -> str:
         """List available agents."""
-        try:
-            url = f"{self.server_url}/agents"
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            agents = response.json()
-        except Exception:
-            agents = [
-                {"name": "Plan", "description": "Researches and outlines multi-step plans"},
-                {"name": "high-autonomy", "description": "End-to-end autonomous engineer"},
-                {"name": "conservative-bugfix", "description": "Fixes bugs with minimal changes"},
-                {"name": "reviewer-audit", "description": "Audits tasks and repo state"},
-                {"name": "workflow-runner", "description": "Orchestrates plan execution"},
-                {"name": "self-auditing", "description": "Self-audits agent output before human review"},
-            ]
+        agents = [
+            ("Plan", "Researches and outlines multi-step plans"),
+            ("high-autonomy", "End-to-end autonomous engineer"),
+            ("conservative-bugfix", "Fixes bugs with minimal changes"),
+            ("reviewer-audit", "Audits tasks and repo state"),
+            ("workflow-runner", "Orchestrates plan execution"),
+            ("self-auditing", "Self-audits agent output before human review"),
+        ]
 
         output = "### 🤖 Available Agents\n\n"
         output += "| Agent | Description |\n"
         output += "|-------|-------------|\n"
-        for a in agents:
-            output += f"| **{a.get('name', 'unknown')}** | {a.get('description', '')} |\n"
+        for name, desc in agents:
+            output += f"| **{name}** | {desc} |\n"
 
         return output
 

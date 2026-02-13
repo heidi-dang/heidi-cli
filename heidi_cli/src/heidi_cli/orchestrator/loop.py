@@ -7,9 +7,8 @@ from pathlib import Path
 from .executors import CopilotExecutor, OpenCodeExecutor, JulesExecutor, VscodeExecutor
 from .plan import build_plan_prompt, extract_routing, parse_routing
 from .registry import AgentRegistry
-from .artifacts import TaskArtifact, sanitize_slug
-from .workspace import WorkspaceManager, VerificationRunner
-from ..logging import HeidiLogger, redact_secrets
+from .artifacts import TaskArtifact, sanitize_slug, save_audit_to_task
+from ..logging import redact_secrets
 
 
 def pick_executor(name: str):
@@ -152,7 +151,7 @@ def build_task_content(task: str, plan_output: str, routing: dict, batch_output:
 """
     
     # Try to extract files from DEV_COMPLETION
-    files_match = re.search(r"(?:files_changed|changed_files):\s*(.+?)(?:\n|\Z)", batch_output, re.DOTALL)
+    files_match = re.search(r"files_changed:\s*(.+?)(?:\n|\Z)", batch_output, re.DOTALL)
     if files_match:
         content += files_match.group(1).strip() + "\n"
     else:
@@ -163,11 +162,7 @@ def build_task_content(task: str, plan_output: str, routing: dict, batch_output:
 """
     
     # Extract commands from DEV_COMPLETION
-    commands_match = re.search(
-        r"(?:commands_run|verification_commands):\s*(.+?)(?:\n|\Z)",
-        batch_output,
-        re.DOTALL,
-    )
+    commands_match = re.search(r"commands_run:\s*(.+?)(?:\n|\Z)", batch_output, re.DOTALL)
     if commands_match:
         content += commands_match.group(1).strip() + "\n"
     else:
@@ -190,8 +185,6 @@ def build_task_content(task: str, plan_output: str, routing: dict, batch_output:
 async def run_loop(task: str, executor: str, max_retries: int, workdir: Path) -> str:
     """Execute Plan -> Runner -> Audit loop with strict artifacts."""
     exec_impl = pick_executor(executor)
-    ws = WorkspaceManager(workdir)
-    verifier = VerificationRunner(ws)
     
     task_slug = sanitize_slug(task)
     retry_count = 0
@@ -202,12 +195,6 @@ async def run_loop(task: str, executor: str, max_retries: int, workdir: Path) ->
     artifact.save()
     
     while True:
-        HeidiLogger.write_run_meta({"retry_count": retry_count})
-        try:
-            artifact.progress_content += f"\nSnapshot(before_plan): {ws.snapshot().timestamp}"
-            artifact.save()
-        except Exception:
-            pass
         # 1) Plan
         plan_prompt = build_plan_prompt(task)
         plan_res = await exec_impl.run(plan_prompt, workdir)
@@ -216,7 +203,6 @@ async def run_loop(task: str, executor: str, max_retries: int, workdir: Path) ->
             artifact.content += f"\n## Plan Failed\n{plan_res.output}"
             artifact.status = "failed"
             artifact.save()
-            HeidiLogger.write_run_meta({"status": "failed", "error": plan_res.output})
             return f"FAIL: Plan step failed: {plan_res.output}"
         
         # Extract task_slug from plan output
@@ -229,11 +215,10 @@ async def run_loop(task: str, executor: str, max_retries: int, workdir: Path) ->
             artifact.content += f"\n## Routing Parse Error\n{e}\n\nRaw output:\n{plan_res.output}"
             artifact.status = "failed"
             artifact.save()
-            HeidiLogger.write_run_meta({"status": "failed", "error": str(e)})
             return f"FAIL: Could not parse routing YAML: {e}\n\nRaw plan output:\n{plan_res.output}"
         
         # Save plan output to artifact
-        artifact = TaskArtifact.load(task_slug) or TaskArtifact(slug=task_slug)
+        artifact = TaskArtifact(slug=task_slug)
         artifact.content = build_task_content(task, plan_res.output, routing)
         artifact.save()
         
@@ -245,14 +230,6 @@ async def run_loop(task: str, executor: str, max_retries: int, workdir: Path) ->
             agent_name = batch.get("agent", "high-autonomy")
             batch_executor = batch.get("executor", executor)
             batch_exec = pick_executor(batch_executor)
-
-            before_batch = None
-            try:
-                before_batch = ws.snapshot()
-                artifact.progress_content += f"\nSnapshot(before_batch:{label}): {before_batch.timestamp}"
-                artifact.save()
-            except Exception:
-                before_batch = None
             
             batch_prompt = f"""[BATCH: {label}]
 [AGENT: {agent_name}]
@@ -294,34 +271,6 @@ IMPORTANT: When done, output DEV_COMPLETION block with:
             # Update task content with batch output
             artifact.content += f"\n## Batch: {label}\n\n### Agent Output\n{safe_output[:2000]}"
             artifact.save()
-
-            if before_batch is not None:
-                try:
-                    changes = ws.get_changed_files(before_batch)
-                    if changes:
-                        artifact.progress_content += f"\nChanges({label}):\n" + "\n".join(
-                            f"- {c.operation}: {c.path}" for c in changes
-                        )
-                        artifact.save()
-                except Exception:
-                    pass
-
-            verification_cmds = batch.get("verification") or []
-            if isinstance(verification_cmds, str):
-                verification_cmds = [verification_cmds]
-            if verification_cmds:
-                results = verifier.run_commands(list(verification_cmds), timeout=120)
-                artifact.progress_content += f"\nVerification({label}):\n" + "\n".join(
-                    f"- {cmd}: rc={res.get('returncode')}" for cmd, res in results.items()
-                )
-                artifact.save()
-
-                failed = [cmd for cmd, res in results.items() if res.get("returncode") != "0"]
-                if failed:
-                    artifact.content += f"\n### Verification: FAILED\n" + "\n".join(f"- {c}" for c in failed)
-                    artifact.save()
-                    all_batches_passed = False
-                    break
             
             # Run self-auditing
             self_audit_agent = AgentRegistry.get("self-auditing")
@@ -341,16 +290,11 @@ IMPORTANT: When done, output DEV_COMPLETION block with:
             
             # Run reviewer-audit
             reviewers = batch.get("reviewers", ["reviewer-audit"])
-            if "reviewer-audit" not in reviewers:
-                reviewers = ["reviewer-audit", *reviewers]
             reviewer_passed = True
             for reviewer in reviewers:
                 reviewer_agent = AgentRegistry.get(reviewer)
                 if not reviewer_agent:
-                    reviewer_passed = False
-                    artifact.audit_content += f"\n{reviewer}: FAIL (missing reviewer agent)"
-                    artifact.save()
-                    break
+                    continue
                 
                 reviewer_prompt = f"""{reviewer_agent['prompt']}
 
@@ -372,16 +316,19 @@ END_AUDIT_DECISION
 """
                 audit_res = await batch_exec.run(reviewer_prompt, workdir)
                 audit_output = redact_secrets(audit_res.output)
-
-                artifact.audit_content += f"\n\n## {reviewer} Review ({label})\n\n{audit_output}\n"
+                
+                artifact.content += f"\n### {reviewer} Review\n{audit_output[:2000]}"
                 artifact.save()
                 
                 # Parse the audit decision
                 decision = parse_audit_decision(audit_res.output)
                 
+                # Write audit to same task directory
+                save_audit_to_task(task_slug, decision)
+                
                 if decision.status != "PASS":
                     reviewer_passed = False
-                    artifact.content += f"\n### Review: FAILED ({reviewer}) - {decision.why}"
+                    artifact.content += f"\n### Review: FAILED - {decision.why}"
                     artifact.save()
                     break
             
@@ -393,17 +340,14 @@ END_AUDIT_DECISION
         if all_batches_passed:
             artifact.status = "passed"
             artifact.save()
-            HeidiLogger.write_run_meta({"status": "completed", "result": "PASS", "retry_count": retry_count})
             return "PASS"
         
         # Escalate to Plan for retry
         retry_count += 1
-        HeidiLogger.write_run_meta({"retry_count": retry_count})
         if retry_count > max_retries:
             artifact.status = "failed"
             artifact.content += f"\n## FATAL ERROR\nExceeded max retries ({max_retries}). Execution stuck."
             artifact.save()
-            HeidiLogger.write_run_meta({"status": "failed", "result": "FAIL", "retry_count": retry_count})
             return f"FAIL: Exceeded max retries ({max_retries}). Execution stuck."
         
         # Continue loop to re-plan

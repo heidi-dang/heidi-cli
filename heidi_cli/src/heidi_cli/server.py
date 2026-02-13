@@ -7,7 +7,6 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import uvicorn
 
@@ -42,73 +41,22 @@ class RunResponse(BaseModel):
     error: Optional[str] = None
 
 
-_bg_tasks: dict[str, asyncio.Task] = {}
-
-
-def _read_text_if_exists(path: Path) -> Optional[str]:
-    try:
-        if path.exists():
-            return path.read_text(errors="replace")
-    except Exception:
-        return None
-    return None
-
-
-async def _execute_run(run_id: str, request: RunRequest) -> None:
-    from .logging import HeidiLogger
-    from .orchestrator.loop import pick_executor
-
-    HeidiLogger.init_run(run_id)
-
-    workdir = Path(request.workdir) if request.workdir else Path.cwd()
-    run_dir = HeidiLogger.get_run_dir()
-
-    try:
-        executor = pick_executor(request.executor)
-        result = await executor.run(request.prompt, workdir)
-        if run_dir:
-            (run_dir / "result.txt").write_text(result.output)
-        HeidiLogger.write_run_meta({"status": "completed", "ok": result.ok})
-        if not result.ok:
-            HeidiLogger.write_run_meta({"error": result.output})
-    except Exception as e:
-        if run_dir:
-            (run_dir / "error.txt").write_text(str(e))
-        HeidiLogger.write_run_meta({"status": "failed", "error": str(e)})
-    finally:
-        _bg_tasks.pop(run_id, None)
-
-
-async def _execute_loop(run_id: str, request: LoopRequest) -> None:
-    from .logging import HeidiLogger
-    from .orchestrator.loop import run_loop
-
-    HeidiLogger.init_run(run_id)
-
-    workdir = Path(request.workdir) if request.workdir else Path.cwd()
-    run_dir = HeidiLogger.get_run_dir()
-
-    try:
-        result = await run_loop(
-            task=request.task,
-            executor=request.executor,
-            max_retries=request.max_retries,
-            workdir=workdir,
-        )
-        if run_dir:
-            (run_dir / "result.txt").write_text(result)
-        HeidiLogger.write_run_meta({"status": "completed", "result": result})
-    except Exception as e:
-        if run_dir:
-            (run_dir / "error.txt").write_text(str(e))
-        HeidiLogger.write_run_meta({"status": "failed", "error": str(e)})
-    finally:
-        _bg_tasks.pop(run_id, None)
-
-
 @app.get("/")
 async def root():
     return {"status": "ok", "service": "heidi-cli"}
+
+
+@app.get("/agents")
+async def list_agents():
+    from .orchestrator.registry import AgentRegistry
+    
+    agents = AgentRegistry.list_agents()
+    return [{"name": name, "description": desc} for name, desc in agents]
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
 
 
 @app.get("/runs")
@@ -150,13 +98,6 @@ async def get_run(run_id: str):
     if run_json.exists():
         result["meta"] = json.loads(run_json.read_text())
 
-    result_text = _read_text_if_exists(run_dir / "result.txt")
-    error_text = _read_text_if_exists(run_dir / "error.txt")
-    if result_text is not None:
-        result["result"] = result_text
-    if error_text is not None:
-        result["error"] = error_text
-
     if transcript.exists():
         events = []
         for line in transcript.read_text().strip().split("\n"):
@@ -191,12 +132,13 @@ async def stream_run(run_id: str):
                     if line:
                         yield f"data: {line}\n\n"
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return event_generator()
 
 
 @app.post("/run", response_model=RunResponse)
 async def run(request: RunRequest):
     from .logging import HeidiLogger
+    from .orchestrator.loop import pick_executor
 
     workdir = Path(request.workdir) if request.workdir else None
     if not workdir:
@@ -208,17 +150,22 @@ async def run(request: RunRequest):
         "prompt": request.prompt,
         "executor": request.executor,
         "workdir": str(workdir),
-        "status": "running",
     })
 
-    task = asyncio.create_task(_execute_run(run_id, request))
-    _bg_tasks[run_id] = task
-    return RunResponse(run_id=run_id, status="running")
+    try:
+        executor = pick_executor(request.executor)
+        result = await executor.run(request.prompt, workdir)
+        HeidiLogger.write_run_meta({"status": "completed", "ok": result.ok})
+        return RunResponse(run_id=run_id, status="completed", result=result.output)
+    except Exception as e:
+        HeidiLogger.write_run_meta({"status": "failed", "error": str(e)})
+        return RunResponse(run_id=run_id, status="failed", error=str(e))
 
 
 @app.post("/loop", response_model=RunResponse)
 async def loop(request: LoopRequest):
     from .logging import HeidiLogger
+    from .orchestrator.loop import run_loop
 
     workdir = Path(request.workdir) if request.workdir else None
     if not workdir:
@@ -231,20 +178,20 @@ async def loop(request: LoopRequest):
         "executor": request.executor,
         "max_retries": request.max_retries,
         "workdir": str(workdir),
-        "status": "running",
     })
 
-    task = asyncio.create_task(_execute_loop(run_id, request))
-    _bg_tasks[run_id] = task
-    return RunResponse(run_id=run_id, status="running")
-
-
-@app.get("/agents")
-async def list_agents():
-    from .orchestrator.registry import AgentRegistry
-
-    agents = AgentRegistry.list_agents()
-    return [{"name": n, "description": d} for n, d in agents]
+    try:
+        result = await run_loop(
+            task=request.task,
+            executor=request.executor,
+            max_retries=request.max_retries,
+            workdir=workdir,
+        )
+        HeidiLogger.write_run_meta({"status": "completed", "result": result})
+        return RunResponse(run_id=run_id, status="completed", result=result)
+    except Exception as e:
+        HeidiLogger.write_run_meta({"status": "failed", "error": str(e)})
+        return RunResponse(run_id=run_id, status="failed", error=str(e))
 
 
 def start_server(host: str = "0.0.0.0", port: int = 7777):

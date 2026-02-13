@@ -90,3 +90,29 @@ def update_task_audit(slug: str, audit_result: str, passed: bool) -> None:
         artifact.status = "passed" if passed else "failed"
         artifact.save()
         HeidiLogger.write_event("audit_update", {"slug": slug, "passed": passed, "result": audit_result})
+
+
+def save_audit_to_task(slug: str, decision) -> None:
+    """Save audit decision to the same task directory."""
+    task_dir = ConfigManager.TASKS_DIR / slug
+    task_dir.mkdir(parents=True, exist_ok=True)
+    
+    content = f"""# Audit: {slug}
+
+## Decision
+Status: {decision.status}
+Why: {decision.why}
+
+## Blocking Issues
+{chr(10).join(f"- {i}" for i in decision.blocking_issues) if decision.blocking_issues else "None"}
+
+## Non-Blocking
+{chr(10).join(f"- {i}" for i in decision.non_blocking) if decision.non_blocking else "None"}
+
+## Recommended Next Step
+{decision.recommended_next_step}
+
+## Timestamp
+{datetime.utcnow().isoformat()}
+"""
+    (task_dir / "audit.md").write_text(content)

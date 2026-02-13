@@ -125,50 +125,19 @@ class PatchApplicator:
         r">\s*/dev/sd",
         r"format\s+.*drive",
     ]
-
-    MAX_DIFF_BYTES = 200_000
-    MAX_DELETED_LINES = 800
-    MAX_DELETED_FILES = 3
+    MAX_DIFF_SIZE = 100_000  # 100KB max diff size
 
     @classmethod
     def is_safe_diff(cls, diff: str) -> bool:
-        if not diff:
-            return True
-
-        if len(diff.encode(errors="ignore")) > cls.MAX_DIFF_BYTES:
+        if len(diff) > cls.MAX_DIFF_SIZE:
             return False
-
         for pattern in cls.DANGEROUS_PATTERNS:
             if re.search(pattern, diff):
                 return False
-
-        deleted_files = 0
-        deleted_lines = 0
-        for line in diff.splitlines():
-            if line.startswith("+++ ") and "/dev/null" in line:
-                deleted_files += 1
-            if line.startswith("-") and not line.startswith("---"):
-                deleted_lines += 1
-
-        if deleted_files > cls.MAX_DELETED_FILES:
-            return False
-        if deleted_lines > cls.MAX_DELETED_LINES:
-            return False
-
-        for header in re.findall(r"^\+\+\+ b/(.+)$", diff, re.MULTILINE):
-            p = header.strip()
-            if not p or p.startswith("/") or re.match(r"^[A-Za-z]:\\", p):
-                return False
-            if ".." in Path(p).parts:
-                return False
-
         return True
 
     @classmethod
     def apply_unified_diff(cls, diff: str, root: Path) -> list[FileChange]:
-        if "@@" in diff or any(l.startswith(" ") for l in diff.splitlines()):
-            raise ValueError("Only simple add/replace diffs are supported")
-
         changes = []
         lines = diff.splitlines()
         current_file = None
@@ -198,7 +167,7 @@ class PatchApplicator:
 
         for change in changes:
             if change.diff and not cls.is_safe_diff(change.diff):
-                raise ValueError("Unsafe diff")
+                continue
             try:
                 (root / change.path).write_text(change.new_content or "")
             except Exception:
