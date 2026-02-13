@@ -34,11 +34,108 @@ fi
 
 echo "Python version: $PYTHON_VERSION"
 
-# Create temp directory
-TEMP_DIR=$(mktemp -d)
-cd "$TEMP_DIR"
+# Initial setup: Check for existing installation
+INSTALL_DIR="$HOME/heidi-cli"
+EXISTING_INSTALL=false
+EXISTING_VENV=false
+
+# Check for existing installation directory
+if [ -d "$INSTALL_DIR" ]; then
+    EXISTING_INSTALL=true
+fi
+
+# Check for existing venv in common locations
+for dir in "$INSTALL_DIR/heidi_cli" "$HOME/.local/heidi-cli" "."; do
+    if [ -d "$dir/.venv" ] || [ -d "$dir/venv" ]; then
+        EXISTING_VENV=true
+        break
+    fi
+done
+
+# Check if heidi command is available (in PATH)
+if command -v heidi &> /dev/null; then
+    echo ""
+    echo "⚠️  Heidi CLI is already installed!"
+    EXISTING_INSTALL=true
+fi
+
+# Prompt for action if existing installation found
+if [ "$EXISTING_INSTALL" = true ] || [ "$EXISTING_VENV" = true ]; then
+    echo ""
+    echo "Found existing Heidi CLI installation."
+    echo ""
+    echo "Options:"
+    echo "  [1] Uninstall and reinstall (fresh install)"
+    echo "  [2] Update existing installation"
+    echo "  [3] Cancel"
+    echo ""
+    read -p "Choose option [1]: " -r choice
+    choice=${choice:-1}
+
+    case $choice in
+        1)
+            echo ""
+            echo "Uninstalling existing installation..."
+            
+            # Remove existing installation directory
+            if [ -d "$INSTALL_DIR" ]; then
+                rm -rf "$INSTALL_DIR"
+            fi
+            
+            # Remove venv in current directory if exists
+            if [ -d ".venv" ]; then
+                rm -rf .venv
+            fi
+            if [ -d "venv" ]; then
+                rm -rf venv
+            fi
+            
+            # Try to find and remove venv in common locations
+            for dir in "$HOME/.local/heidi-cli"; do
+                if [ -d "$dir/.venv" ] || [ -d "$dir/venv" ]; then
+                    rm -rf "$dir"
+                fi
+            done
+            
+            echo "✅ Existing installation removed."
+            ;;
+        2)
+            echo ""
+            echo "Updating existing installation..."
+            
+            if [ -d "$INSTALL_DIR" ]; then
+                cd "$INSTALL_DIR"
+                git pull origin main
+                if [ -d "heidi_cli/.venv" ]; then
+                    cd heidi_cli
+                    source .venv/bin/activate
+                    pip install -e ".[dev]" -q
+                fi
+                echo ""
+                echo "✅ Heidi CLI updated successfully!"
+                echo ""
+                echo "To activate, run:"
+                echo "  cd $INSTALL_DIR/heidi_cli && source .venv/bin/activate"
+                exit 0
+            fi
+            ;;
+        3)
+            echo "Cancelled."
+            exit 0
+            ;;
+        *)
+            echo "Invalid option. Cancelling."
+            exit 1
+            ;;
+    esac
+fi
+
+# Create installation directory
+mkdir -p "$INSTALL_DIR"
+cd "$INSTALL_DIR"
 
 # Clone repo
+echo ""
 echo "Cloning heidi-cli..."
 git clone https://github.com/heidi-dang/heidi-cli.git
 cd heidi-cli/heidi_cli
