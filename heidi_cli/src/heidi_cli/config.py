@@ -24,6 +24,7 @@ class HeidiConfig(BaseModel):
     openwebui_url: Optional[str] = None
     ollama_url: str = "http://localhost:11434"
     lmstudio_url: str = "http://localhost:1234"
+    persona: str = "default"
 
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump(exclude_none=True)

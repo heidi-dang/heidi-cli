@@ -21,11 +21,13 @@ copilot_app = typer.Typer(help="Copilot (Copilot CLI via GitHub Copilot SDK)")
 auth_app = typer.Typer(help="Authentication commands")
 agents_app = typer.Typer(help="Agent management")
 valves_app = typer.Typer(help="Configuration valves")
+persona_app = typer.Typer(help="Persona management")
 
 app.add_typer(copilot_app, name="copilot")
 app.add_typer(auth_app, name="auth")
 app.add_typer(agents_app, name="agents")
 app.add_typer(valves_app, name="valves")
+app.add_typer(persona_app, name="persona")
 
 console = Console()
 json_output = False
@@ -316,6 +318,22 @@ def agents_list() -> None:
         console.print(f"[yellow]Warning: Missing required agents: {', '.join(missing)}[/yellow]")
 
 
+@persona_app.command("list")
+def persona_list() -> None:
+    """List available personas."""
+    from .personas import list_personas
+    
+    personas = list_personas()
+    table = Table(title="Available Personas")
+    table.add_column("Name", style="cyan")
+    table.add_column("Description", style="white")
+    
+    for name, desc in personas:
+        table.add_row(name, desc)
+    
+    console.print(table)
+
+
 @valves_app.command("get")
 def valves_get(key: str) -> None:
     """Get a configuration valve value."""
@@ -346,8 +364,15 @@ def loop(
     workdir: Path = typer.Option(Path.cwd(), help="Repo working directory"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Generate plan but don't apply changes"),
     context: Optional[Path] = typer.Option(None, "--context", help="Path to inject into context (e.g., ./docs)"),
+    persona: str = typer.Option("default", help="Persona to use (default, security, docs, refactor)"),
 ) -> None:
     """Run: Plan -> execute handoffs -> audit -> PASS/FAIL (starter loop)."""
+    config = ConfigManager.load_config()
+    config.persona = persona
+    ConfigManager.save_config(config)
+    
+    console.print(f"[cyan]Using persona: {persona}[/cyan]")
+    
     context_content = ""
     if context:
         from .context import collect_context
