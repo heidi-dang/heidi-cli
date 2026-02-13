@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import httpx
 import typer
-import sys
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
 
 from .config import ConfigManager
 
@@ -110,7 +108,7 @@ def openwebui_configure(
     
     ConfigManager.save_config(config)
     
-    console.print(f"[green]✅ OpenWebUI configured[/green]")
+    console.print("[green]OpenWebUI configured[/green]")
     console.print(f"URL: {url}")
     console.print(f"Token: {'[green]configured[/green]' if token else '[yellow]not set[/yellow]'}")
     

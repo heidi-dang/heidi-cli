@@ -76,6 +76,29 @@ jobs:
             exit 1
           fi
           echo "OK: No secrets files tracked"
+      - name: Check forbidden paths exist locally
+        run: |
+          echo "Checking for forbidden paths in working tree..."
+          FORBIDDEN=".venv venv __pycache__ .pytest_cache .ruff_cache .mypy_cache .git"
+          for path in $FORBIDDEN; do
+            if [ -e "$path" ]; then
+              echo "ERROR: Forbidden path found: $path"
+              exit 1
+            fi
+          done
+          echo "OK: No forbidden paths in working tree"
+
+  clean-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run package script
+        run: |
+          chmod +x scripts/package.sh
+          ./scripts/package.sh
+      - name: Verify packages
+        run: |
+          ls -la heidi-cli-*.tar.gz heidi-cli-*.zip || true
 
   acceptance:
     runs-on: ubuntu-latest

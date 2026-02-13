@@ -22,7 +22,6 @@ copilot_app = typer.Typer(help="Copilot (Copilot CLI via GitHub Copilot SDK)")
 auth_app = typer.Typer(help="Authentication commands")
 agents_app = typer.Typer(help="Agent management")
 valves_app = typer.Typer(help="Configuration valves")
-openwebui_app = typer.Typer(help="OpenWebUI integration")
 persona_app = typer.Typer(help="Persona management")
 
 app.add_typer(copilot_app, name="copilot")
@@ -63,7 +62,9 @@ def main(
         raise typer.Exit(0)
 
     # Check if Heidi is initialized - if not, automatically start wizard
-    if not ConfigManager.config_file().exists():
+    # Skip wizard if CI=true or HEIDI_NO_WIZARD=1
+    import os
+    if not ConfigManager.config_file().exists() and not os.environ.get("HEIDI_NO_WIZARD"):
         console.print(Panel.fit(
             "[yellow]Heidi CLI is not initialized yet.[/yellow]\n\n"
             "Starting setup wizard...",

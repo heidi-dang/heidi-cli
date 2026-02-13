@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import shutil
 import subprocess
-import sys
 import time
 from pathlib import Path
-from typing import Optional
 
 import httpx
-import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -241,7 +237,7 @@ class SetupWizard:
         # Start server in background
         try:
             # Use subprocess.Popen to start server in background
-            server_process = subprocess.Popen(
+            _server_process = subprocess.Popen(
                 ["heidi", "serve"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
