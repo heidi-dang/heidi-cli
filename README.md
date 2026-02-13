@@ -51,7 +51,19 @@ Heidi-CLI provides a flexible system for running AI-powered agent workflows with
 - Python 3.10+
 - GitHub Copilot subscription (for Copilot features)
 
-### Installation
+### One-Click Installation
+
+**Linux/macOS:**
+```bash
+curl -sSL https://raw.githubusercontent.com/heidi-dang/heidi-cli/main/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/heidi-dang/heidi-cli/main/install.ps1 | iex
+```
+
+### Manual Installation
 
 ```bash
 # Install CLI from repo root
@@ -61,7 +73,10 @@ python -m pip install -e '.[dev]'
 ### Quick Start
 
 ```bash
-# Initialize
+# Run setup wizard (recommended for first-time users)
+heidi setup
+
+# Or initialize with defaults
 heidi init
 
 # Authenticate with GitHub
@@ -75,12 +90,22 @@ heidi copilot chat "hello world"
 
 # Run agent loop
 heidi loop "fix failing tests" --executor copilot
+
+# Start HTTP server for OpenWebUI integration
+heidi serve
+
+# Check OpenWebUI status
+heidi openwebui status
+
+# Get OpenWebUI setup guide
+heidi openwebui guide
 ```
 
 ## CLI Commands
 
 | Command | Description |
 |---------|-------------|
+| `heidi setup` | Interactive setup wizard for first-time users |
 | `heidi init` | Initialize `.heidi/` directory |
 | `heidi auth gh` | Authenticate with GitHub |
 | `heidi doctor` | Check all dependencies |
@@ -91,6 +116,46 @@ heidi loop "fix failing tests" --executor copilot
 | `heidi runs` | List recent runs |
 | `heidi config` | Manage configuration |
 | `heidi serve` | Start HTTP server (port 7777) |
+| `heidi openwebui status` | Check OpenWebUI connectivity |
+| `heidi openwebui guide` | Show OpenWebUI setup guide |
+| `heidi openwebui configure` | Configure OpenWebUI settings |
+
+## Setup Wizard
+
+The interactive setup wizard (`heidi setup`) guides you through:
+
+1. **Environment Check** - Verifies Python, Copilot SDK, and optional tools
+2. **Heidi Initialization** - Creates `.heidi/` directory and config files
+3. **GitHub Authentication** - Sets up GitHub token for Copilot access
+4. **OpenWebUI Integration** - Configures connection to OpenWebUI
+5. **Final Summary** - Shows setup status and next steps
+
+## OpenWebUI Integration
+
+Heidi CLI includes a built-in HTTP server for OpenWebUI integration:
+
+```bash
+# Start the server
+heidi serve
+
+# Check OpenWebUI status
+heidi openwebui status
+
+# Get setup guide
+heidi openwebui guide
+
+# Configure OpenWebUI settings
+heidi openwebui configure --url http://localhost:3000 --token YOUR_TOKEN
+```
+
+The server provides these endpoints for OpenWebUI:
+- `GET /health` - Health check
+- `GET /agents` - List available agents
+- `GET /runs` - List recent runs
+- `GET /runs/{id}` - Get run details
+- `GET /runs/{id}/stream` - Stream run events (SSE)
+- `POST /run` - Execute single prompt
+- `POST /loop` - Execute full agent loop
 
 ## Development
 

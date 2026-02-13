@@ -46,5 +46,8 @@ Thumbs.db
 # Local development
 .local/
 
+# Heidi CLI state (contains secrets)
+.heidi/
+
 # Backup files
 *~

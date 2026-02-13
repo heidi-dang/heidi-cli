@@ -19,6 +19,8 @@ class HeidiConfig(BaseModel):
     copilot_model: str = "gpt-5"
     server_url: str = "http://localhost:7777"
     default_agent: str = "high-autonomy"
+    openwebui_url: str = "http://localhost:3000"
+    openwebui_token: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump(exclude_none=True)

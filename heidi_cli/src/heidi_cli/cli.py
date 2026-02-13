@@ -15,17 +15,20 @@ from .config import ConfigManager
 from .logging import HeidiLogger, setup_global_logging
 from .orchestrator.loop import run_loop, pick_executor as _pick_executor
 from .orchestrator.registry import AgentRegistry
+from .openwebui_commands import openwebui_app
 
 app = typer.Typer(add_completion=False, help="Heidi CLI - Copilot/Jules/OpenCode orchestrator")
 copilot_app = typer.Typer(help="Copilot (Copilot CLI via GitHub Copilot SDK)")
 auth_app = typer.Typer(help="Authentication commands")
 agents_app = typer.Typer(help="Agent management")
 valves_app = typer.Typer(help="Configuration valves")
+openwebui_app = typer.Typer(help="OpenWebUI integration")
 
 app.add_typer(copilot_app, name="copilot")
 app.add_typer(auth_app, name="auth")
 app.add_typer(agents_app, name="agents")
 app.add_typer(valves_app, name="valves")
+app.add_typer(openwebui_app, name="openwebui")
 
 console = Console()
 json_output = False
@@ -56,6 +59,27 @@ def main(
     if version:
         console.print(f"Heidi CLI v{get_version()}")
         raise typer.Exit(0)
+
+    # Check if Heidi is initialized - if not, automatically start wizard
+    if not ConfigManager.config_file().exists():
+        console.print(Panel.fit(
+            "[yellow]Heidi CLI is not initialized yet.[/yellow]\n\n"
+            "Starting setup wizard...",
+            title="First Time Setup"
+        ))
+        from .setup_wizard import SetupWizard
+        wizard = SetupWizard()
+        wizard.run()
+        raise typer.Exit(0)
+
+
+@app.command()
+def setup() -> None:
+    """Run the interactive setup wizard."""
+    from .setup_wizard import SetupWizard
+    
+    wizard = SetupWizard()
+    wizard.run()
 
 
 @app.command()
