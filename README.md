@@ -113,6 +113,9 @@ heidi openwebui guide
 | `heidi setup` | Interactive setup wizard for first-time users |
 | `heidi init` | Initialize global config directory |
 | `heidi paths` | Show config/state/cache paths |
+| `heidi update` | Update UI to latest version |
+| `heidi upgrade` | Upgrade Heidi CLI |
+| `heidi uninstall` | Uninstall Heidi CLI |
 | `heidi auth gh` | Authenticate with GitHub |
 | `heidi doctor` | Check all dependencies |
 | `heidi copilot status` | Show Copilot connection status |
@@ -122,9 +125,14 @@ heidi openwebui guide
 | `heidi runs` | List recent runs |
 | `heidi config` | Manage configuration |
 | `heidi serve` | Start HTTP server (port 7777) |
+| `heidi start ui` | Start UI dev server (port 3002) |
 | `heidi openwebui status` | Check OpenWebUI connectivity |
 | `heidi openwebui guide` | Show OpenWebUI setup guide |
 | `heidi openwebui configure` | Configure OpenWebUI settings |
+| `heidi connect status` | Show connection status (Ollama, OpenCode) |
+| `heidi connect ollama` | Connect to Ollama |
+| `heidi connect opencode` | Connect to OpenCode CLI or server |
+| `heidi connect disconnect` | Disconnect from a service |
 
 ## Setup Wizard
 
@@ -135,6 +143,37 @@ The interactive setup wizard (`heidi setup`) guides you through:
 3. **GitHub Authentication** - Sets up GitHub token for Copilot access
 4. **OpenWebUI Integration** - Configures connection to OpenWebUI
 5. **Final Summary** - Shows setup status and next steps
+
+## Connect Commands
+
+Connect to external services like Ollama and OpenCode:
+
+```bash
+# Check connection status for all services
+heidi connect status
+heidi connect status --json
+
+# Connect to Ollama (default: http://127.0.0.1:11434)
+heidi connect ollama
+heidi connect ollama --url http://localhost:11434 --token <token> --save
+
+# Connect to OpenCode CLI
+heidi connect opencode --mode local
+
+# Connect to OpenCode server (default: http://127.0.0.1:4096)
+heidi connect opencode --mode server --url http://127.0.0.1:4096 --username <user>
+
+# Disconnect from a service
+heidi connect disconnect ollama --yes
+heidi connect disconnect opencode --yes
+```
+
+### Connection Details
+
+| Service | Default URL | Health Endpoint |
+|---------|-------------|----------------|
+| Ollama | `http://127.0.0.1:11434` | `/api/version` |
+| OpenCode Server | `http://127.0.0.1:4096` | `/global/health` |
 
 ## OpenWebUI Integration
 

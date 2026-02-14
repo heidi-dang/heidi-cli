@@ -76,7 +76,7 @@ def check_opencode_server(
         if auth:
             headers["Authorization"] = f"Basic {auth}"
 
-        response = httpx.get(f"{url.rstrip('/')}/doc", headers=headers, timeout=5)
+        response = httpx.get(f"{url.rstrip('/')}/global/health", headers=headers, timeout=5)
         if response.status_code == 200:
             return True, "OpenCode server running"
         elif response.status_code == 401:
