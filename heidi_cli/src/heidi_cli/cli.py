@@ -1124,11 +1124,11 @@ def serve(
             console.print("[red]UI not found at ./ui - run from heidi-cli root[/red]")
             raise typer.Exit(1)
 
-        console.print("[cyan]Starting UI dev server on http://localhost:3000...[/cyan]")
+        console.print("[cyan]Starting UI dev server on http://localhost:3002...[/cyan]")
 
         def start_ui():
             subprocess.run(
-                ["npm", "run", "dev", "--", "--port", "3000"],
+                ["npm", "run", "dev", "--", "--port", "3002"],
                 cwd=ui_path,
                 env={**os.environ, "API_URL": f"http://{host}:{port}"},
             )
@@ -1140,7 +1140,7 @@ def serve(
             Panel.fit(
                 "[green]Heidi is running!\n\n"
                 "Backend: http://localhost:7777\n"
-                "UI: http://localhost:3000\n\n"
+                "UI: http://localhost:3002\n\n"
                 "Press Ctrl+C to stop",
                 title="Heidi CLI",
             )

@@ -310,9 +310,10 @@ def start_ui_dev_server(
     Returns the process.
     """
     if not check_port_available("127.0.0.1", port):
-        console.print(f"[yellow]Port {port} not available, scanning ports 3002-3010...[/yellow]")
-        port = find_available_port("127.0.0.1", 3002, 3010)
-        console.print(f"[green]Using port {port}[/green]")
+        console.print(
+            f"[red]Port {port} is not available. Please free the port or use a different one.[/red]"
+        )
+        raise RuntimeError(f"Port {port} is not available")
 
     console.print(f"[cyan]Starting UI dev server on 127.0.0.1:{port}...[/cyan]")
 
