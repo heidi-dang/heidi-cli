@@ -143,3 +143,21 @@ class LMStudioExecutor(BaseExecutor):
                         return ExecResult(ok=False, output=f"LM Studio error: {resp.status}")
         except Exception as e:
             return ExecResult(ok=False, output=f"Failed to connect to LM Studio: {e}")
+
+def pick_executor(name: str, model: Optional[str] = None):
+    name = (name or "copilot").lower()
+    if name == "copilot":
+        return CopilotExecutor(model=model)
+    if name == "opencode":
+        return OpenCodeExecutor()
+    if name == "jules":
+        return JulesExecutor()
+    if name == "vscode":
+        return VscodeExecutor()
+    if name == "ollama":
+        return OllamaExecutor()
+    if name == "lmstudio":
+        return LMStudioExecutor()
+    if name == "local":
+        return OllamaExecutor()
+    raise ValueError(f"Unknown executor: {name}")

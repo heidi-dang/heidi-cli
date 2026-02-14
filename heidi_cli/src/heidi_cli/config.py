@@ -53,7 +53,7 @@ def heidi_config_dir() -> Path:
     return base / "heidi"
 
 
-def heidi_state_dir() -> Optional[Path]:
+def heidi_state_dir() -> Path:
     """Get the optional state directory for Heidi CLI.
 
     - Linux: ${XDG_STATE_HOME:-$HOME/.local/state}/heidi
@@ -67,7 +67,7 @@ def heidi_state_dir() -> Optional[Path]:
         return Path(base) / "Heidi"
 
     if system == "darwin":
-        return None
+        return heidi_config_dir() # Fallback to config dir on macOS
 
     xdg_state = os.environ.get("XDG_STATE_HOME")
     base = Path(xdg_state) if xdg_state else (Path.home() / ".local" / "state")
@@ -241,6 +241,11 @@ class ConfigManager:
         return cls.config_dir()
 
     @classmethod
+    def heidi_state_dir(cls) -> Path:
+        """Get the global state directory."""
+        return heidi_state_dir()
+
+    @classmethod
     def config_file(cls) -> Path:
         return cls.config_dir() / "config.json"
 
@@ -262,6 +267,11 @@ class ConfigManager:
         cls.runs_dir().mkdir(parents=True, exist_ok=True)
         cls.backups_dir().mkdir(parents=True, exist_ok=True)
         cls.tasks_dir().mkdir(parents=True, exist_ok=True)
+
+        state_dir = heidi_state_dir()
+        if state_dir:
+            state_dir.mkdir(parents=True, exist_ok=True)
+
         os.chmod(cls.secrets_file(), 0o600) if cls.secrets_file().exists() else None
 
     @classmethod

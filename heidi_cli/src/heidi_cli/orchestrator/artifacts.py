@@ -12,6 +12,86 @@ from ..logging import HeidiLogger, redact_secrets
 
 
 @dataclass
+class AuditDecision:
+    status: str  # PASS or FAIL
+    why: str = ""
+    blocking_issues: list = None
+    non_blocking: list = None
+    rerun_commands: list = None
+    recommended_next_step: str = ""
+
+    def __post_init__(self):
+        if self.blocking_issues is None:
+            self.blocking_issues = []
+        if self.non_blocking is None:
+            self.non_blocking = []
+        if self.rerun_commands is None:
+            self.rerun_commands = []
+
+
+def parse_audit_decision(text: str) -> AuditDecision:
+    """Parse AUDIT_DECISION block from reviewer output."""
+    decision = AuditDecision(status="FAIL", why="Could not parse audit decision")
+
+    # Extract AUDIT_DECISION block
+    match = re.search(r"AUDIT_DECISION:(.*?)(?:END_AUDIT_DECISION|$)", text, re.DOTALL)
+    if not match:
+        # Fall back to simple PASS/FAIL detection
+        if "PASS" in text and "FAIL" not in text:
+            decision.status = "PASS"
+            decision.why = "PASS found in output"
+            return decision
+        elif "FAIL" in text:
+            decision.status = "FAIL"
+            decision.why = "FAIL found in output"
+            return decision
+        return decision
+
+    block = match.group(1)
+
+    # Parse status
+    status_match = re.search(r"status:\s*(PASS|FAIL)", block, re.IGNORECASE)
+    if status_match:
+        decision.status = status_match.group(1).upper()
+
+    # Parse why
+    why_match = re.search(r"why:\s*(.+?)(?:\n|$)", block)
+    if why_match:
+        decision.why = why_match.group(1).strip()
+
+    # Parse blocking_issues
+    issues_match = re.search(r"blocking_issues:\s*(.+?)(?:\n\w|\Z)", block, re.DOTALL)
+    if issues_match:
+        issues_text = issues_match.group(1)
+        decision.blocking_issues = [
+            i.strip().lstrip("- ").strip() for i in issues_text.split("\n") if i.strip()
+        ]
+
+    # Parse non_blocking
+    non_blocking_match = re.search(r"non_blocking:\s*(.+?)(?:\n\w|\Z)", block, re.DOTALL)
+    if non_blocking_match:
+        non_blocking_text = non_blocking_match.group(1)
+        decision.non_blocking = [
+            i.strip().lstrip("- ").strip() for i in non_blocking_text.split("\n") if i.strip()
+        ]
+
+    # Parse rerun_commands
+    rerun_match = re.search(r"rerun_commands:\s*(.+?)(?:\n\w|\Z)", block, re.DOTALL)
+    if rerun_match:
+        rerun_text = rerun_match.group(1)
+        decision.rerun_commands = [
+            i.strip().lstrip("- ").strip() for i in rerun_text.split("\n") if i.strip()
+        ]
+
+    # Parse recommended_next_step
+    next_step_match = re.search(r"recommended_next_step:\s*(.+?)(?:\n|\Z)", block)
+    if next_step_match:
+        decision.recommended_next_step = next_step_match.group(1).strip()
+
+    return decision
+
+
+@dataclass
 class TaskArtifact:
     slug: str
     content: str = ""
@@ -105,7 +185,7 @@ def update_task_audit(slug: str, audit_result: str, passed: bool) -> None:
         )
 
 
-def save_audit_to_task(slug: str, decision) -> None:
+def save_audit_to_task(slug: str, decision: AuditDecision) -> None:
     """Save audit decision to the task audit file."""
     tasks_dir = ConfigManager.tasks_dir()
     tasks_dir.mkdir(parents=True, exist_ok=True)
