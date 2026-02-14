@@ -5,7 +5,6 @@ author: Heidi
 version: 2.0.0
 """
 
-import asyncio
 import traceback
 from typing import List, Union, Generator, Iterator
 
@@ -52,7 +51,6 @@ class Pipe:
     def _fetch_agents(self) -> List[tuple]:
         """Fetch agents from Heidi server."""
         import time
-        import json
 
         # Cache agents for 5 minutes
         now = time.time()
@@ -166,7 +164,7 @@ class Pipe:
             return f"**Timeout Error**\n\nRequest timed out after {self.valves.REQUEST_TIMEOUT}s.\n\nTry increasing REQUEST_TIMEOUT valve."
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 401:
-                return f"**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
+                return "**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
             return f"**HTTP Error**\n\n{str(e)}\n"
         except Exception as e:
             return f"**Heidi Loop Error**\n\n{str(e)}\n"
@@ -211,7 +209,7 @@ class Pipe:
             return f"**Timeout Error**\n\nRequest timed out after {self.valves.REQUEST_TIMEOUT}s."
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 401:
-                return f"**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
+                return "**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
             return f"**HTTP Error**\n\n{str(e)}\n"
         except Exception as e:
             return f"**Heidi Run Error**\n\n{str(e)}\n"
@@ -239,7 +237,7 @@ class Pipe:
 
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 401:
-                return f"**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
+                return "**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
             return f"**HTTP Error**\n\n{str(e)}\n"
         except Exception as e:
             return f"**Error listing runs**\n\n{str(e)}\n"
@@ -273,7 +271,7 @@ class Pipe:
             return f"**Timeout Error**\n\nRequest timed out after {self.valves.REQUEST_TIMEOUT}s."
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 401:
-                return f"**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
+                return "**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
             return f"**HTTP Error**\n\n{str(e)}\n"
         except Exception as e:
             return f"**Heidi Chat Error**\n\n{str(e)}\n"
