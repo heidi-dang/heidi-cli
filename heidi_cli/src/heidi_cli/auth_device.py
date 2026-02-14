@@ -130,7 +130,7 @@ async def complete_device_login(client_id: str) -> Optional[str]:
         )
     )
 
-    console.print(f"\n[cyan]Waiting for authorization... (press Ctrl+C to cancel)[/cyan]")
+    console.print("\n[cyan]Waiting for authorization... (press Ctrl+C to cancel)[/cyan]")
 
     token_data = await poll_for_token(client_id, device_code, interval)
     if not token_data:
