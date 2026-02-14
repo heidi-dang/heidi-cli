@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { RunSummary } from '../types';
 import { api } from '../api/heidi';
-import { RefreshCw, Settings, MessageSquare, Circle, CheckCircle, XCircle, AlertTriangle, PanelLeft, User } from 'lucide-react';
+import { RefreshCw, Settings, MessageSquare, Circle, CheckCircle, XCircle, AlertTriangle, PanelLeft, User, Sparkles } from 'lucide-react';
 
 interface SidebarProps {
   currentView: 'chat' | 'settings';
