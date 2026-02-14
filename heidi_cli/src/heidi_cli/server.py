@@ -348,18 +348,16 @@ async def run(request: RunRequest, http_request: Request):
         }
     )
 
-    async def _run_background():
-        try:
-            executor = pick_executor(request.executor, model=request.model)
-            result = await executor.run(request.prompt, workdir)
-            HeidiLogger.write_run_meta(
-                {"status": "completed", "ok": result.ok, "result": result.output}
-            )
-        except Exception as e:
-            HeidiLogger.write_run_meta({"status": "failed", "error": str(e)})
-
-    asyncio.create_task(_run_background())
-    return RunResponse(run_id=run_id, status="running")
+    try:
+        executor = pick_executor(request.executor, model=request.model)
+        result = await executor.run(request.prompt, workdir)
+        HeidiLogger.write_run_meta(
+            {"status": "completed", "ok": result.ok, "result": result.output}
+        )
+        return RunResponse(run_id=run_id, status="completed", result=result.output)
+    except Exception as e:
+        HeidiLogger.write_run_meta({"status": "failed", "error": str(e)})
+        return RunResponse(run_id=run_id, status="failed", error=str(e))
 
 
 @app.post("/loop", response_model=RunResponse)
