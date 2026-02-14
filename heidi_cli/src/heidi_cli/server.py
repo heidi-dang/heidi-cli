@@ -779,7 +779,7 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
         return {"error": {"message": str(e), "type": "invalid_request_error"}}
 
 
-def start_server(host: str = "0.0.0.0", port: int = 7777):
+def start_server(host: str = "127.0.0.1", port: int = 7777):
     uvicorn.run(app, host=host, port=port)
 
 

@@ -1539,7 +1539,7 @@ def backups_cmd(
 
 @app.command("serve")
 def serve(
-    host: str = typer.Option("0.0.0.0", help="Host to bind to"),
+    host: str = typer.Option("127.0.0.1", help="Host to bind to"),
     port: int = typer.Option(7777, help="Port to bind to"),
     ui: bool = typer.Option(False, "--ui", help="Also start UI"),
     force: bool = typer.Option(False, "--force", "-f", help="Kill existing server if running"),
@@ -2008,7 +2008,7 @@ def stop_cmd(
 
 @start_app.command("server")
 def start_server_cmd(
-    host: str = typer.Option("0.0.0.0", "--host", help="Host to bind to"),
+    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind to"),
     port: int = typer.Option(7777, "--port", help="Port to bind to"),
 ) -> None:
     """Start the Heidi API server only (without UI)."""
