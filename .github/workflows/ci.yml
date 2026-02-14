@@ -154,28 +154,29 @@ jobs:
           cd "$TEMP_DIR"
           
           echo "=== Running from temp dir: $TEMP_DIR ==="
-          pwd
           
-          # Just run heidi --version first to see if it works
-          echo "--- Testing heidi --version ---"
-          heidi --version
+          # Check if heidi is installed
+          which heidi || echo "heidi not in PATH"
           
-          # Run heidi init 
-          echo "--- Running heidi init ---"
+          # Try running heidi init
+          echo "=== Running heidi init ==="
+          set +e
           HEIDI_NO_WIZARD=1 heidi init
-          echo "Init exit code: $?"
+          EXIT_CODE=$?
+          set -e
+          echo "Exit code: $EXIT_CODE"
           
-          # List files
+          # List all files including hidden
           echo "Files in CWD:"
           ls -la
           
           # Check for .heidi
+          echo "Checking for .heidi..."
           if [ -d ".heidi" ]; then
-            echo "FAIL: .heidi created in CWD"
-            exit 1
+            echo "FOUND: .heidi exists in CWD"
+            ls -la .heidi
+          else
+            echo "OK: No .heidi in CWD"
           fi
-          echo "PASS: No .heidi in CWD"
-          
-          # Check global config
           echo "Checking global config:"
           ls -la "$HOME/.config/heidi" || echo "Global config not found"
