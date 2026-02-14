@@ -92,9 +92,11 @@ def _check_auth(request: Request, stream_key: Optional[str] = None) -> bool:
 
     Returns True if authorized, False otherwise.
     """
+    # AuthMiddleware now handles API key validation and sets request.state.user
     if hasattr(request.state, "user") and request.state.user is not None:
         return True
 
+    # Fallback for manual check if middleware didn't catch it (e.g. key mismatch)
     if not HEIDI_API_KEY:
         return False
 
@@ -318,6 +320,7 @@ class RunRequest(BaseModel):
     executor: str = "copilot"
     model: Optional[str] = None
     workdir: Optional[str] = None
+    dry_run: bool = False
 
 
 class LoopRequest(BaseModel):
@@ -326,6 +329,7 @@ class LoopRequest(BaseModel):
     model: Optional[str] = None
     max_retries: int = 2
     workdir: Optional[str] = None
+    dry_run: bool = False
 
 
 class RunResponse(BaseModel):
@@ -347,6 +351,7 @@ class ChatResponse(BaseModel):
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, http_request: Request):
     """Simple chat endpoint - no artifacts, no planning, just response."""
+    _require_api_key(http_request)
     from .orchestrator.loop import pick_executor
 
     try:
@@ -375,8 +380,17 @@ async def run(request: RunRequest, http_request: Request):
             "executor": request.executor,
             "workdir": str(workdir),
             "status": "running",
+            "dry_run": request.dry_run,
         }
     )
+
+    if request.dry_run:
+        HeidiLogger.write_run_meta(
+            {"status": "completed", "result": "Dry run: Execution skipped."}
+        )
+        return RunResponse(
+            run_id=run_id, status="completed", result="Dry run: Execution skipped."
+        )
 
     try:
         executor = pick_executor(request.executor, model=request.model)
@@ -409,6 +423,7 @@ async def loop(request: LoopRequest, http_request: Request):
             "max_retries": request.max_retries,
             "workdir": str(workdir),
             "status": "running",
+            "dry_run": request.dry_run,
         }
     )
 
@@ -420,6 +435,7 @@ async def loop(request: LoopRequest, http_request: Request):
                 model=request.model,
                 max_retries=request.max_retries,
                 workdir=workdir,
+                dry_run=request.dry_run,
             )
             HeidiLogger.write_run_meta({"status": "completed", "result": result})
         except Exception as e:

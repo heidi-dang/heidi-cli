@@ -267,13 +267,18 @@ class Pipe:
                 prompt = last_message.replace("run:", "").strip()
                 return await self.execute_run(prompt, executor=executor, model=model)
 
+            if last_message.startswith("chat:"):
+                message = last_message.replace("chat:", "").strip()
+                return await self.chat_simple(message, executor=executor, model=model)
+
             if last_message.startswith("agents"):
                 return self.list_agents()
 
             if last_message.startswith("runs"):
                 return await self.list_runs()
 
-            return await self.chat_with_heidi(body["messages"], executor=executor, model=model)
+            # Default: Orchestrated run
+            return await self.chat_orchestrated(body["messages"], executor=executor, model=model)
 
         except Exception as e:
             traceback.print_exc()
@@ -420,10 +425,43 @@ class Pipe:
             return f"**Error listing runs**\n\n{str(e)}\n"
         return "**Error listing runs**\n"
 
-    async def chat_with_heidi(
+    async def chat_simple(
+        self, message: str, executor: str = None, model: str = None
+    ) -> str:
+        """Execute simple chat (no artifacts)."""
+        executor = executor or self.valves.DEFAULT_EXECUTOR
+        # Note: /chat endpoint might not support model override depending on implementation,
+        # but we pass it anyway.
+
+        url = f"{self.server_url}/chat"
+        payload = {
+            "message": message,
+            "executor": executor,
+        }
+
+        try:
+            response = requests.post(
+                url, json=payload, headers=self._get_headers(), timeout=self.valves.REQUEST_TIMEOUT
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("response", "[No response]")
+
+        except requests.exceptions.ConnectionError:
+            return f"**Connection Error**\n\nCould not connect to Heidi server at {self.server_url}\n\nEnsure `heidi serve` is running."
+        except requests.exceptions.Timeout:
+            return f"**Timeout Error**\n\nRequest timed out after {self.valves.REQUEST_TIMEOUT}s."
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                return "**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
+            return f"**HTTP Error**\n\n{str(e)}\n"
+        except Exception as e:
+            return f"**Heidi Chat Error**\n\n{str(e)}\n"
+
+    async def chat_orchestrated(
         self, messages: List[dict], executor: str = None, model: str = None
     ) -> str:
-        """Route chat messages to Copilot via Heidi."""
+        """Route chat messages to Copilot via Heidi (Orchestrated Run)."""
         executor = executor or self.valves.DEFAULT_EXECUTOR
         model = model or self.valves.DEFAULT_MODEL
         prompt = "\n".join([m.get("content", "") for m in messages])

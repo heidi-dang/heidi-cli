@@ -2,8 +2,9 @@ import os
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from datetime import datetime
 
-from .auth_db import get_session, get_user_by_id, cleanup_expired_sessions
+from .auth_db import get_session, get_user_by_id, cleanup_expired_sessions, User
 
 PUBLIC_ROUTES = [
     "/",
@@ -29,9 +30,34 @@ class AuthMiddleware(BaseHTTPMiddleware):
     """Middleware to handle authentication."""
 
     async def dispatch(self, request: Request, call_next):
+        # Allow OPTIONS requests (CORS preflight) without auth
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         session_id = request.cookies.get("heidi_session")
         request.state.user = None
         request.state.session = None
+
+        # Check API Key first
+        api_key = os.getenv("HEIDI_API_KEY", "").strip()
+        header_key = request.headers.get("x-heidi-key", "").strip()
+
+        # Also support stream key in query param for SSE/Stream endpoints
+        query_key = request.query_params.get("key", "").strip()
+        effective_key = header_key or query_key
+
+        if api_key and effective_key == api_key:
+            # Create a dummy system user for API key access
+            # This satisfies 'require_auth' checks downstream
+            request.state.user = User(
+                id="system",
+                email="system@local",
+                name="System User",
+                avatar_url=None,
+                created_at=datetime.utcnow()
+            )
+            # Proceed without checking session
+            return await call_next(request)
 
         if session_id:
             session = get_session(session_id)

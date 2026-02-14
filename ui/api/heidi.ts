@@ -19,15 +19,11 @@ const getHeaders = (customApiKey?: string) => {
     'Content-Type': 'application/json',
   };
   
-  // NOTE: Backend currently has no auth. Sending this header might cause CORS issues if not allowed.
-  // Uncomment when backend supports X-Heidi-Key.
-  /*
   const { apiKey } = getSettings();
   const key = customApiKey !== undefined ? customApiKey : apiKey;
   if (key) {
     headers['X-Heidi-Key'] = key;
   }
-  */
   
   return headers;
 };

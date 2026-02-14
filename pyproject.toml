@@ -12,12 +12,14 @@ dependencies = [
   "keyring>=24.0.0",
   "fastapi>=0.109.0",
   "uvicorn>=0.27.0",
+  "requests>=2.31.0",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0.0",
   "ruff>=0.3.0",
+  "httpx>=0.27.0",
 ]
 
 [project.scripts]
