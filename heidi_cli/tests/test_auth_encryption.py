@@ -3,8 +3,6 @@ from unittest.mock import MagicMock
 
 # Mock missing dependencies before they are imported by heidi_cli.config
 sys.modules["keyring"] = MagicMock()
-sys.modules["pydantic"] = MagicMock()
-sys.modules["pydantic"].BaseModel = MagicMock
 
 import pytest
 from heidi_cli.auth_encryption import (

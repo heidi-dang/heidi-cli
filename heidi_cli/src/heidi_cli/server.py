@@ -93,6 +93,83 @@ init_db()
 ACTIVE_SESSIONS: dict[str, PlannerAgent] = {}
 
 
+class RunCache:
+    _instance = None
+
+    def __init__(self):
+        self.runs = []  # List of (mtime, run_id)
+        self.runs_dir_mtime = 0
+        self.meta_cache = {}  # run_id -> (mtime, data)
+
+    @classmethod
+    def get(cls):
+        if not cls._instance:
+            cls._instance = cls()
+        return cls._instance
+
+    def list_runs(self, runs_dir_path: Path, limit: int):
+        # Check runs_dir mtime
+        try:
+            current_mtime = runs_dir_path.stat().st_mtime
+        except (FileNotFoundError, OSError):
+            return []
+
+        if current_mtime > self.runs_dir_mtime or not self.runs:
+            # Rescan
+            new_runs = []
+            # Use os.scandir for speed
+            try:
+                with os.scandir(runs_dir_path) as it:
+                    for entry in it:
+                        if entry.is_dir():
+                            # We still need stat for sorting
+                            try:
+                                mtime = entry.stat().st_mtime
+                                new_runs.append((mtime, entry.name))
+                            except OSError:
+                                pass
+            except OSError:
+                pass
+
+            # Sort
+            new_runs.sort(key=lambda x: (x[0], x[1]), reverse=True)
+            self.runs = new_runs
+            self.runs_dir_mtime = current_mtime
+
+        # Get top runs
+        results = []
+        for mtime, run_id in self.runs[:limit]:
+            # Get metadata
+            meta = self._get_meta(runs_dir_path / run_id, run_id)
+            results.append(
+                {
+                    "run_id": run_id,
+                    "status": meta.get("status", "unknown"),
+                    "task": meta.get("task", meta.get("prompt", "")),
+                    "executor": meta.get("executor", ""),
+                }
+            )
+
+        return results
+
+    def _get_meta(self, run_dir: Path, run_id: str):
+        run_json = run_dir / "run.json"
+        try:
+            stat = run_json.stat()
+            file_mtime = stat.st_mtime
+
+            cached = self.meta_cache.get(run_id)
+            if cached and cached[0] == file_mtime:
+                return cached[1]
+
+            # Read
+            meta = json.loads(run_json.read_text())
+            self.meta_cache[run_id] = (file_mtime, meta)
+            return meta
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            return {}
+
+
 def get_planner(session_id: str = "default") -> PlannerAgent:
     if session_id not in ACTIVE_SESSIONS:
         session = Session.load(session_id)
@@ -201,26 +278,7 @@ async def list_runs(limit: int = 10, request: Request = None):
     from .config import ConfigManager
 
     runs_dir = ConfigManager.runs_dir()
-    if not runs_dir.exists():
-        return []
-
-    runs = []
-    for run_path in sorted(runs_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)[
-        :limit
-    ]:
-        run_json = run_path / "run.json"
-        if run_json.exists():
-            meta = json.loads(run_json.read_text())
-            runs.append(
-                {
-                    "run_id": run_path.name,
-                    "status": meta.get("status", "unknown"),
-                    "task": meta.get("task", meta.get("prompt", "")),
-                    "executor": meta.get("executor", ""),
-                }
-            )
-
-    return runs
+    return RunCache.get().list_runs(runs_dir, limit)
 
 
 @app.get("/runs/{run_id}")
