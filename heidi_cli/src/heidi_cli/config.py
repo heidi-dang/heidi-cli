@@ -183,7 +183,6 @@ class HeidiConfig(BaseModel):
     telemetry_enabled: bool = False
     openwebui_url: Optional[str] = "http://localhost:3000"
     openwebui_token: Optional[str] = None
-    ollama_url: str = "http://localhost:11434"
     lmstudio_url: str = "http://localhost:1234"
     persona: str = "default"
     # Install metadata
@@ -191,6 +190,10 @@ class HeidiConfig(BaseModel):
     install_dir: Optional[str] = None
     ui_dir: Optional[str] = None
     installed_at: Optional[str] = None
+    # Connection config
+    ollama_url: Optional[str] = None
+    opencode_url: Optional[str] = None
+    opencode_username: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump(exclude_none=True)
@@ -203,6 +206,8 @@ class HeidiConfig(BaseModel):
 class HeidiSecrets(BaseModel):
     github_token: Optional[str] = None
     copilot_model: str = "gpt-5"
+    ollama_token: Optional[str] = None
+    opencode_password: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump(exclude_none=True)
