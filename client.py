@@ -291,6 +291,19 @@ class Pipe:
 
         return output
 
+    def _handle_request_error(self, e: Exception, context: str = "Heidi Error") -> str:
+        """Centralized error handling for requests."""
+        if isinstance(e, requests.exceptions.ConnectionError):
+            return f"**Connection Error**\n\nCould not connect to Heidi server at {self.server_url}\n\nEnsure `heidi serve` is running."
+        if isinstance(e, requests.exceptions.Timeout):
+            return f"**Timeout Error**\n\nRequest timed out after {self.valves.REQUEST_TIMEOUT}s.\n\nTry increasing REQUEST_TIMEOUT valve."
+        if isinstance(e, requests.exceptions.HTTPError):
+            if e.response.status_code == 401:
+                return "**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
+            return f"**HTTP Error**\n\n{str(e)}\n"
+
+        return f"**{context}**\n\n{str(e)}\n"
+
     async def execute_loop(self, task: str, executor: str = None, model: str = None) -> str:
         """Execute a full agent loop (Plan → Runner → Audit)."""
         executor = executor or self.valves.DEFAULT_EXECUTOR
@@ -331,16 +344,8 @@ class Pipe:
 
             return output
 
-        except requests.exceptions.ConnectionError:
-            return f"**Connection Error**\n\nCould not connect to Heidi server at {self.server_url}\n\nEnsure `heidi serve` is running."
-        except requests.exceptions.Timeout:
-            return f"**Timeout Error**\n\nRequest timed out after {self.valves.REQUEST_TIMEOUT}s.\n\nTry increasing REQUEST_TIMEOUT valve."
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 401:
-                return "**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
-            return f"**HTTP Error**\n\n{str(e)}\n"
         except Exception as e:
-            return f"**Heidi Loop Error**\n\n{str(e)}\n"
+            return self._handle_request_error(e, "Heidi Loop Error")
 
     async def execute_run(self, prompt: str, executor: str = None, model: str = None) -> str:
         """Execute a single prompt with the specified executor."""
@@ -380,16 +385,8 @@ class Pipe:
 
             return output
 
-        except requests.exceptions.ConnectionError:
-            return f"**Connection Error**\n\nCould not connect to Heidi server at {self.server_url}\n\nEnsure `heidi serve` is running."
-        except requests.exceptions.Timeout:
-            return f"**Timeout Error**\n\nRequest timed out after {self.valves.REQUEST_TIMEOUT}s."
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 401:
-                return "**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
-            return f"**HTTP Error**\n\n{str(e)}\n"
         except Exception as e:
-            return f"**Heidi Run Error**\n\n{str(e)}\n"
+            return self._handle_request_error(e, "Heidi Run Error")
 
     async def list_runs(self) -> str:
         """List recent runs."""
@@ -412,13 +409,8 @@ class Pipe:
 
             return output
 
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 401:
-                return "**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
-            return f"**HTTP Error**\n\n{str(e)}\n"
         except Exception as e:
-            return f"**Error listing runs**\n\n{str(e)}\n"
-        return "**Error listing runs**\n"
+            return self._handle_request_error(e, "Error listing runs")
 
     async def chat_with_heidi(
         self, messages: List[dict], executor: str = None, model: str = None
@@ -448,16 +440,8 @@ class Pipe:
             else:
                 return f"**Error:** {data.get('error', 'Unknown error')}\n"
 
-        except requests.exceptions.ConnectionError:
-            return f"**Connection Error**\n\nCould not connect to Heidi server at {self.server_url}\n\nEnsure `heidi serve` is running."
-        except requests.exceptions.Timeout:
-            return f"**Timeout Error**\n\nRequest timed out after {self.valves.REQUEST_TIMEOUT}s."
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 401:
-                return "**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
-            return f"**HTTP Error**\n\n{str(e)}\n"
         except Exception as e:
-            return f"**Heidi Chat Error**\n\n{str(e)}\n"
+            return self._handle_request_error(e, "Heidi Chat Error")
 
 
 # For backward compatibility with old client
