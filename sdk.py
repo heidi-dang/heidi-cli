@@ -695,31 +695,45 @@ class Pipe:
                         upload_url = f"{base_url}/api/v1/files/"
 
                         async with aiohttp.ClientSession() as session:
-                            with open(target_path, "rb") as f:
-                                data = aiohttp.FormData()
-                                data.add_field("file", f, filename=target_path.name)
-                                import json
+                            data = aiohttp.FormData()
 
-                                data.add_field(
-                                    "metadata",
-                                    json.dumps(
-                                        {
-                                            "source": "copilot_workspace_publish",
-                                            "skip_rag": True,
-                                        }
-                                    ),
-                                )
+                            async def file_sender():
+                                def read_chunk(f_obj):
+                                    return f_obj.read(64 * 1024)
 
-                                async with session.post(
-                                    upload_url,
-                                    data=data,
-                                    headers={"Authorization": f"Bearer {token}"},
-                                ) as resp:
-                                    if resp.status == 200:
-                                        api_result = await resp.json()
-                                        file_id = api_result.get("id")
-                                        safe_filename = api_result.get("filename", target_path.name)
-                                        api_success = True
+                                f = await asyncio.to_thread(open, target_path, "rb")
+                                try:
+                                    while True:
+                                        chunk = await asyncio.to_thread(read_chunk, f)
+                                        if not chunk:
+                                            break
+                                        yield chunk
+                                finally:
+                                    await asyncio.to_thread(f.close)
+
+                            data.add_field("file", file_sender(), filename=target_path.name)
+                            import json
+
+                            data.add_field(
+                                "metadata",
+                                json.dumps(
+                                    {
+                                        "source": "copilot_workspace_publish",
+                                        "skip_rag": True,
+                                    }
+                                ),
+                            )
+
+                            async with session.post(
+                                upload_url,
+                                data=data,
+                                headers={"Authorization": f"Bearer {token}"},
+                            ) as resp:
+                                if resp.status == 200:
+                                    api_result = await resp.json()
+                                    file_id = api_result.get("id")
+                                    safe_filename = api_result.get("filename", target_path.name)
+                                    api_success = True
                     except Exception as e:
                         logger.error(f"API upload failed: {e}")
 
