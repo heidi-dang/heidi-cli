@@ -5,7 +5,7 @@ author: Heidi
 version: 2.1.0
 """
 
-import traceback
+import logging
 from typing import List, Union, Generator, Iterator
 
 import requests
@@ -276,7 +276,7 @@ class Pipe:
             return await self.chat_with_heidi(body["messages"], executor=executor, model=model)
 
         except Exception as e:
-            traceback.print_exc()
+            logging.exception("Heidi CLI Error")
             return f"**Heidi CLI Error**\n\n```\n{str(e)}\n```"
 
     def list_agents(self) -> str:
