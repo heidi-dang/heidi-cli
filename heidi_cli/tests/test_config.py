@@ -4,11 +4,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-# Mock keyring and pydantic before importing heidi_cli.config
+# Mock keyring before importing heidi_cli.config
 sys.modules["keyring"] = MagicMock()
-mock_pydantic = MagicMock()
-mock_pydantic.BaseModel = MagicMock
-sys.modules["pydantic"] = mock_pydantic
+# Removing pydantic mock as it interferes with other tests that require the real pydantic (e.g. test_server_cors)
+# mock_pydantic = MagicMock()
+# mock_pydantic.BaseModel = MagicMock
+# sys.modules["pydantic"] = mock_pydantic
 
 from heidi_cli.config import heidi_config_dir, heidi_state_dir, heidi_cache_dir, heidi_ui_dir
 
