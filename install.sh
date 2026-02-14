@@ -228,3 +228,4 @@ echo ""
 echo "To start the UI:"
 echo "  heidi serve --ui"
 echo "  # Or: heidi start ui"
+# trigger CI
