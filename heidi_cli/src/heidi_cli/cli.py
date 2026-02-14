@@ -1557,26 +1557,34 @@ def serve(
     backend_thread.start()
 
     if ui:
+        # Check for cached UI first, then fallback to ./ui
+        xdg_cache = os.getenv("XDG_CACHE_HOME", str(Path.home() / ".cache"))
+        ui_cache = Path(xdg_cache) / "heidi" / "ui" / "dist"
         ui_path = Path.cwd() / "ui"
-        if not ui_path.exists():
-            console.print("[red]UI not found at ./ui - run from heidi-cli root[/red]")
-            raise typer.Exit(1)
 
-        console.print("[cyan]Starting UI dev server on http://localhost:3002...[/cyan]")
+        if ui_cache.exists():
+            console.print(f"[green]Using cached UI: {ui_cache}[/green]")
+            # Backend will serve UI from cache
+        elif not ui_path.exists():
+            console.print("[yellow]UI not found. Run: heidi ui build[/yellow]")
+            console.print("[cyan]Starting backend only...[/cyan]")
+            ui = False
+        else:
+            console.print("[cyan]Starting UI dev server on http://localhost:3002...[/cyan]")
 
-        def start_ui():
-            env = os.environ.copy()
-            env["API_URL"] = f"http://{host}:{port}"
-            env["VITE_HEIDI_SERVER_BASE"] = f"http://{host}:{port}"
-            env["HEIDI_SERVER_BASE"] = f"http://{host}:{port}"
-            subprocess.run(
-                ["npm", "run", "dev", "--", "--port", "3002"],
-                cwd=ui_path,
-                env=env,
-            )
+            def start_ui():
+                env = os.environ.copy()
+                env["API_URL"] = f"http://{host}:{port}"
+                env["VITE_HEIDI_SERVER_BASE"] = f"http://{host}:{port}"
+                env["HEIDI_SERVER_BASE"] = f"http://{host}:{port}"
+                subprocess.run(
+                    ["npm", "run", "dev", "--", "--port", "3002"],
+                    cwd=ui_path,
+                    env=env,
+                )
 
-        ui_thread = threading.Thread(target=start_ui, daemon=True)
-        ui_thread.start()
+            ui_thread = threading.Thread(target=start_ui, daemon=True)
+            ui_thread.start()
 
         console.print(
             Panel.fit(
