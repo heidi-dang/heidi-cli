@@ -1114,11 +1114,11 @@ def copilot_chat(
     from .copilot_runtime import CopilotRuntime
     from .logging import redact_secrets
     from .orchestrator.artifacts import TaskArtifact
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     slug = prompt[:50].lower().replace(" ", "_")
     artifact = TaskArtifact(slug=f"chat_{slug}")
-    artifact.content = f"# Chat: {prompt}\n\nCreated: {datetime.now(timezone.utc).isoformat()}\n\n"
+    artifact.content = f"# Chat: {prompt}\n\nCreated: {datetime.utcnow().isoformat()}\n\n"
 
     async def _run():
         rt = CopilotRuntime(model=model)
@@ -1356,11 +1356,11 @@ def run(
     run_id = HeidiLogger.init_run()
 
     from .orchestrator.artifacts import TaskArtifact
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     slug = prompt[:50].lower().replace(" ", "_")
     artifact = TaskArtifact(slug=f"run_{slug}")
-    artifact.content = f"# Run: {prompt}\n\nCreated: {datetime.now(timezone.utc).isoformat()}\n\nExecutor: {executor}\nWorkdir: {workdir}\n\n"
+    artifact.content = f"# Run: {prompt}\n\nCreated: {datetime.utcnow().isoformat()}\n\nExecutor: {executor}\nWorkdir: {workdir}\n\n"
 
     HeidiLogger.write_run_meta(
         {

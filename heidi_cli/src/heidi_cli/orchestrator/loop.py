@@ -201,160 +201,6 @@ def build_task_content(task: str, plan_output: str, routing: dict, batch_output:
 
     return content
 
-async def execute_workflow(
-    task: str,
-    plan_output: str,
-    workdir: Path,
-    executor: str = "copilot",
-    artifact: TaskArtifact = None
-) -> str:
-    """Execute the batches defined in the plan."""
-
-    # Extract task_slug from plan output
-    task_slug = extract_task_slug(plan_output, task)
-
-    if not artifact:
-        # Load existing or create new?
-        # If we are executing an approved plan, we might want to load the artifact created during planning if any.
-        # But here we assume we just start fresh or use provided one.
-        artifact = TaskArtifact(slug=task_slug)
-        artifact.content = f"# Task: {task}\n\nExecuting Plan...\n"
-        artifact.save()
-
-    try:
-        routing_text = extract_routing(plan_output)
-        routing = parse_routing(routing_text)
-    except Exception as e:
-        artifact.content += f"\n## Routing Parse Error\n{e}\n\nRaw output:\n{plan_output}"
-        artifact.status = "failed"
-        artifact.save()
-        return f"FAIL: Could not parse routing YAML: {e}"
-
-    # Save plan output to artifact if not already there?
-    # We reconstruct content to include plan info
-    artifact.content = build_task_content(task, plan_output, routing)
-    artifact.save()
-
-    all_batches_passed = True
-
-    for batch in routing.get("execution_handoffs", []):
-        label = batch.get("label", "batch")
-        agent_name = batch.get("agent", "high-autonomy")
-        batch_executor = batch.get("executor", executor)
-        batch_exec = pick_executor(batch_executor)
-
-        batch_prompt = f"""[BATCH: {label}]
-[AGENT: {agent_name}]
-TASK: {task}
-
-You must implement the included steps: {batch.get("includes_steps")}
-Verification commands: {batch.get("verification")}
-
-IMPORTANT: When done, output DEV_COMPLETION block with:
-- files_changed: [list of files]
-- commands_run: [list of commands executed]
-- results: [what was done]
-"""
-
-        # Run the agent
-        run_res = await batch_exec.run(batch_prompt, workdir)
-
-        # Redact secrets before storing
-        safe_output = redact_secrets(run_res.output)
-
-        if not run_res.ok:
-            artifact.content += f"\n## Batch {label} Failed\n{run_res.output}"
-            artifact.save()
-            return f"FAIL: Execution failed in {label}: {run_res.output}"
-
-        # Check for DEV_COMPLETION markers - re-ask once if missing
-        if "DEV_COMPLETION" not in run_res.output:
-            run_res = await batch_exec.run(
-                batch_prompt
-                + "\n\nIMPORTANT: You MUST output DEV_COMPLETION markers when done.",
-                workdir,
-            )
-            safe_output = redact_secrets(run_res.output)
-
-        # Update task content with batch output
-        artifact.content += f"\n## Batch: {label}\n\n### Agent Output\n{safe_output[:2000]}"
-        artifact.save()
-
-        # Run self-auditing
-        self_audit_agent = AgentRegistry.get("self-auditing")
-        self_audit_passed = True
-        if self_audit_agent:
-            self_audit_prompt = (
-                f"{self_audit_agent['prompt']}\n\nYour output:\n{run_res.output}"
-            )
-            self_audit_res = await batch_exec.run(self_audit_prompt, workdir)
-            self_audit_output = redact_secrets(self_audit_res.output)
-
-            artifact.content += f"\n### Self-Audit\n{self_audit_output[:1000]}"
-            artifact.save()
-
-            if "SELF_AUDIT_FAIL" in self_audit_res.output:
-                self_audit_passed = False
-                artifact.content += "\n### Self-Audit: FAILED\n"
-                artifact.save()
-
-        # Run reviewer-audit
-        reviewers = batch.get("reviewers", ["reviewer-audit"])
-        reviewer_passed = True
-        for reviewer in reviewers:
-            reviewer_agent = AgentRegistry.get(reviewer)
-            if not reviewer_agent:
-                continue
-
-            reviewer_prompt = f"""{reviewer_agent["prompt"]}
-
-Task: {task}
-Agent output:
-{run_res.output}
-
-IMPORTANT: Output exactly:
-
-AUDIT_DECISION:
-- status: PASS | FAIL
-- why: "<short reason>"
-- blocking_issues:
-  - "<issue 1>"
-- rerun_commands:
-  - "<command if needed>"
-- recommended_next_step: rerun_dev_batch:<label> | handoff_to_planner | accept_as_is
-END_AUDIT_DECISION
-"""
-            audit_res = await batch_exec.run(reviewer_prompt, workdir)
-            audit_output = redact_secrets(audit_res.output)
-
-            artifact.content += f"\n### {reviewer} Review\n{audit_output[:2000]}"
-            artifact.save()
-
-            # Parse the audit decision
-            decision = parse_audit_decision(audit_res.output)
-
-            # Write audit to same task directory
-            save_audit_to_task(task_slug, decision)
-
-            if decision.status != "PASS":
-                reviewer_passed = False
-                artifact.content += f"\n### Review: FAILED - {decision.why}"
-                artifact.save()
-                break
-
-        if not self_audit_passed or not reviewer_passed:
-            all_batches_passed = False
-            break
-
-    if all_batches_passed:
-        artifact.status = "passed"
-        artifact.save()
-        return "PASS"
-
-    artifact.status = "failed"
-    artifact.save()
-    return "FAIL: Audit failed"
-
 
 async def run_loop(
     task: str,
@@ -392,19 +238,145 @@ async def run_loop(
             artifact.save()
             return f"FAIL: Plan step failed: {plan_res.output}"
 
-        # 2) Execute Workflow
-        # Note: execute_workflow will overwrite content of artifact with formatted task content
-        # We pass the artifact to it so it updates it
-        result = await execute_workflow(
-            task=task,
-            plan_output=plan_res.output,
-            workdir=workdir,
-            executor=executor,
-            artifact=artifact
-        )
+        # Extract task_slug from plan output
+        task_slug = extract_task_slug(plan_res.output, task)
 
-        if result.startswith("PASS"):
-            return result
+        try:
+            routing_text = extract_routing(plan_res.output)
+            routing = parse_routing(routing_text)
+        except Exception as e:
+            artifact.content += f"\n## Routing Parse Error\n{e}\n\nRaw output:\n{plan_res.output}"
+            artifact.status = "failed"
+            artifact.save()
+            return f"FAIL: Could not parse routing YAML: {e}\n\nRaw plan output:\n{plan_res.output}"
+
+        # Save plan output to artifact
+        artifact = TaskArtifact(slug=task_slug)
+        artifact.content = build_task_content(task, plan_res.output, routing)
+        artifact.save()
+
+        # 2) Execute each handoff with reviewer-audit
+        all_batches_passed = True
+
+        for batch in routing.get("execution_handoffs", []):
+            label = batch.get("label", "batch")
+            agent_name = batch.get("agent", "high-autonomy")
+            batch_executor = batch.get("executor", executor)
+            batch_exec = pick_executor(batch_executor)
+
+            batch_prompt = f"""[BATCH: {label}]
+[AGENT: {agent_name}]
+TASK: {task}
+
+You must implement the included steps: {batch.get("includes_steps")}
+Verification commands: {batch.get("verification")}
+
+IMPORTANT: When done, output DEV_COMPLETION block with:
+- files_changed: [list of files]
+- commands_run: [list of commands executed]
+- results: [what was done]
+"""
+
+            # Run the agent
+            run_res = await batch_exec.run(batch_prompt, workdir)
+
+            # Redact secrets before storing
+            safe_output = redact_secrets(run_res.output)
+
+            if not run_res.ok:
+                artifact.content += f"\n## Batch {label} Failed\n{run_res.output}"
+                artifact.save()
+                if retry_count >= max_retries:
+                    artifact.status = "failed"
+                    artifact.save()
+                    return f"FAIL: Execution failed in {label}: {run_res.output}"
+                all_batches_passed = False
+                break
+
+            # Check for DEV_COMPLETION markers - re-ask once if missing
+            if "DEV_COMPLETION" not in run_res.output:
+                run_res = await batch_exec.run(
+                    batch_prompt
+                    + "\n\nIMPORTANT: You MUST output DEV_COMPLETION markers when done.",
+                    workdir,
+                )
+                safe_output = redact_secrets(run_res.output)
+
+            # Update task content with batch output
+            artifact.content += f"\n## Batch: {label}\n\n### Agent Output\n{safe_output[:2000]}"
+            artifact.save()
+
+            # Run self-auditing
+            self_audit_agent = AgentRegistry.get("self-auditing")
+            self_audit_passed = True
+            if self_audit_agent:
+                self_audit_prompt = (
+                    f"{self_audit_agent['prompt']}\n\nYour output:\n{run_res.output}"
+                )
+                self_audit_res = await batch_exec.run(self_audit_prompt, workdir)
+                self_audit_output = redact_secrets(self_audit_res.output)
+
+                artifact.content += f"\n### Self-Audit\n{self_audit_output[:1000]}"
+                artifact.save()
+
+                if "SELF_AUDIT_FAIL" in self_audit_res.output:
+                    self_audit_passed = False
+                    artifact.content += "\n### Self-Audit: FAILED\n"
+                    artifact.save()
+
+            # Run reviewer-audit
+            reviewers = batch.get("reviewers", ["reviewer-audit"])
+            reviewer_passed = True
+            for reviewer in reviewers:
+                reviewer_agent = AgentRegistry.get(reviewer)
+                if not reviewer_agent:
+                    continue
+
+                reviewer_prompt = f"""{reviewer_agent["prompt"]}
+
+Task: {task}
+Agent output:
+{run_res.output}
+
+IMPORTANT: Output exactly:
+
+AUDIT_DECISION:
+- status: PASS | FAIL
+- why: "<short reason>"
+- blocking_issues:
+  - "<issue 1>"
+- rerun_commands:
+  - "<command if needed>"
+- recommended_next_step: rerun_dev_batch:<label> | handoff_to_planner | accept_as_is
+END_AUDIT_DECISION
+"""
+                audit_res = await batch_exec.run(reviewer_prompt, workdir)
+                audit_output = redact_secrets(audit_res.output)
+
+                artifact.content += f"\n### {reviewer} Review\n{audit_output[:2000]}"
+                artifact.save()
+
+                # Parse the audit decision
+                decision = parse_audit_decision(audit_res.output)
+
+                # Write audit to same task directory
+                save_audit_to_task(task_slug, decision)
+
+                if decision.status != "PASS":
+                    reviewer_passed = False
+                    artifact.content += f"\n### Review: FAILED - {decision.why}"
+                    artifact.save()
+                    break
+
+            if not self_audit_passed or not reviewer_passed:
+                all_batches_passed = False
+                break
+
+        # Check loop result
+        if all_batches_passed:
+            artifact.status = "passed"
+            artifact.save()
+            return "PASS"
 
         # Escalate to Plan for retry
         retry_count += 1

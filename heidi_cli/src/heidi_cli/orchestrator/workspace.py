@@ -4,7 +4,7 @@ import difflib
 import re
 import subprocess
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -22,7 +22,7 @@ class FileChange:
 class WorkspaceSnapshot:
     git_root: Path
     files: dict[str, str] = field(default_factory=dict)
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
 
 class WorkspaceManager:

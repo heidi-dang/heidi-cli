@@ -4,7 +4,7 @@ import json
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -112,7 +112,7 @@ class HeidiLogger:
         redacted_data = {k: redact_secrets(str(v)) for k, v in data.items()}
         transcript_file = cls._run_dir / "transcript.jsonl"
         event = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.utcnow().isoformat(),
             "type": event_type,
             "data": redacted_data,
         }

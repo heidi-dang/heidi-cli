@@ -1,6 +1,6 @@
 import sqlite3
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
@@ -112,7 +112,7 @@ def create_user(email: Optional[str], name: str, avatar_url: Optional[str] = Non
     cursor = conn.cursor()
 
     user_id = generate_id("usr")
-    created_at = datetime.now(timezone.utc).isoformat()
+    created_at = datetime.utcnow().isoformat()
 
     cursor.execute(
         "INSERT INTO users (id, email, name, avatar_url, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -256,7 +256,7 @@ def create_session(user_id: str, expires_in_days: int = 7) -> Session:
     cursor = conn.cursor()
 
     session_id = generate_id("sess")
-    created_at = datetime.now(timezone.utc)
+    created_at = datetime.utcnow()
     expires_at = created_at + timedelta(days=expires_in_days)
 
     cursor.execute(
@@ -289,7 +289,7 @@ def get_session(session_id: str) -> Optional[Session]:
         SELECT * FROM sessions 
         WHERE id = ? AND revoked_at IS NULL AND expires_at > ?
     """,
-        (session_id, datetime.now(timezone.utc).isoformat()),
+        (session_id, datetime.utcnow().isoformat()),
     )
 
     row = cursor.fetchone()
@@ -316,7 +316,7 @@ def revoke_session(session_id: str) -> None:
         """
         UPDATE sessions SET revoked_at = ? WHERE id = ?
     """,
-        (datetime.now(timezone.utc).isoformat(), session_id),
+        (datetime.utcnow().isoformat(), session_id),
     )
 
     conn.commit()
@@ -332,7 +332,7 @@ def cleanup_expired_sessions() -> int:
         """
         DELETE FROM sessions WHERE expires_at < ?
     """,
-        (datetime.now(timezone.utc).isoformat(),),
+        (datetime.utcnow().isoformat(),),
     )
 
     deleted = cursor.rowcount

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -20,7 +20,7 @@ def backup_file(file_path: Path, run_id: str) -> Optional[Path]:
     backup_dir = get_backup_dir(run_id)
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     rel_path = file_path.name
     backup_path = backup_dir / f"{rel_path}.{timestamp}"
 
