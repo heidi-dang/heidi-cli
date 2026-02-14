@@ -6,7 +6,7 @@ version: 2.1.0
 """
 
 import traceback
-from typing import List, Union, Generator, Iterator, Optional
+from typing import List, Union, Generator, Iterator
 
 import requests
 from pydantic import BaseModel, Field
@@ -159,12 +159,9 @@ class Pipe:
 
     async def pipes(self):
         """Return available models from Copilot, Jules, and OpenCode."""
-        import time
         import subprocess
-        import shutil
 
         models = []
-        now = time.time()
 
         # Fetch Copilot models from server
         try:

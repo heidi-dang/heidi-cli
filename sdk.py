@@ -65,18 +65,14 @@ def _discover_owui_engine(db_module: Any) -> Optional[Engine]:
     if db_module is None:
         return None
 
-    db_context = getattr(db_module, "get_db_context", None) or getattr(
-        db_module, "get_db", None
-    )
+    db_context = getattr(db_module, "get_db_context", None) or getattr(db_module, "get_db", None)
     if callable(db_context):
         try:
             with db_context() as session:
                 try:
                     return session.get_bind()
                 except AttributeError:
-                    return getattr(session, "bind", None) or getattr(
-                        session, "engine", None
-                    )
+                    return getattr(session, "bind", None) or getattr(session, "engine", None)
         except Exception as exc:
             logger.error(f"[DB Discover] get_db_context failed: {exc}")
 
@@ -89,9 +85,7 @@ def _discover_owui_engine(db_module: Any) -> Optional[Engine]:
 
 
 owui_engine = _discover_owui_engine(owui_db)
-owui_Base = (
-    getattr(owui_db, "Base", None) if owui_db is not None else declarative_base()
-)
+owui_Base = getattr(owui_db, "Base", None) if owui_db is not None else declarative_base()
 
 
 class ChatTodo(owui_Base):
@@ -454,9 +448,7 @@ class Pipe:
                     existing.metrics = metrics
                     existing.updated_at = datetime.now(timezone.utc)
                 else:
-                    new_todo = ChatTodo(
-                        chat_id=chat_id, content=content, metrics=metrics
-                    )
+                    new_todo = ChatTodo(chat_id=chat_id, content=content, metrics=metrics)
                     session.add(new_todo)
                 session.commit()
 
@@ -539,9 +531,7 @@ class Pipe:
 
         # 3. Check Cache
         if enable_cache and self._tool_cache is not None:
-            await self._emit_debug_log(
-                "ℹ️ Using cached OpenWebUI tools.", __event_call__
-            )
+            await self._emit_debug_log("ℹ️ Using cached OpenWebUI tools.", __event_call__)
             # Create a shallow copy to append user-specific tools without polluting cache
             tools = list(self._tool_cache)
 
@@ -651,9 +641,7 @@ class Pipe:
 
                             data = json.loads(filename)
                             if isinstance(data, dict):
-                                filename = (
-                                    data.get("filename") or data.get("file") or filename
-                                )
+                                filename = data.get("filename") or data.get("file") or filename
                         except:
                             pass
 
@@ -730,9 +718,7 @@ class Pipe:
                                     if resp.status == 200:
                                         api_result = await resp.json()
                                         file_id = api_result.get("id")
-                                        safe_filename = api_result.get(
-                                            "filename", target_path.name
-                                        )
+                                        safe_filename = api_result.get("filename", target_path.name)
                                         api_success = True
                     except Exception as e:
                         logger.error(f"API upload failed: {e}")
@@ -756,8 +742,7 @@ class Pipe:
                         data={"status": "completed", "skip_rag": True},
                         meta={
                             "name": safe_filename,
-                            "content_type": mimetypes.guess_type(safe_filename)[0]
-                            or "text/plain",
+                            "content_type": mimetypes.guess_type(safe_filename)[0] or "text/plain",
                             "size": os.path.getsize(dest_path),
                             "source": "copilot_workspace_publish",
                             "skip_rag": True,
@@ -816,9 +801,7 @@ class Pipe:
 
         return Any
 
-    def _convert_openwebui_tool(
-        self, tool_name: str, tool_dict: dict, __event_call__=None
-    ):
+    def _convert_openwebui_tool(self, tool_name: str, tool_dict: dict, __event_call__=None):
         """Convert OpenWebUI tool definition to Copilot SDK tool."""
         # Sanitize tool name to match pattern ^[a-zA-Z0-9_-]+$
         sanitized_tool_name = re.sub(r"[^a-zA-Z0-9_-]", "_", tool_name)
@@ -829,9 +812,7 @@ class Pipe:
             sanitized_tool_name = f"tool_{hash_suffix}"
 
         if sanitized_tool_name != tool_name:
-            logger.debug(
-                f"Sanitized tool name '{tool_name}' to '{sanitized_tool_name}'"
-            )
+            logger.debug(f"Sanitized tool name '{tool_name}' to '{sanitized_tool_name}'")
 
         spec = tool_dict.get("spec", {}) if isinstance(tool_dict, dict) else {}
         params_schema = spec.get("parameters", {}) if isinstance(spec, dict) else {}
@@ -887,9 +868,7 @@ class Pipe:
 
         # Determine tool source/group for description prefix
         tool_id = tool_dict.get("tool_id", "")
-        tool_type = tool_dict.get(
-            "type", ""
-        )  # "builtin", "external", or empty (user-defined)
+        tool_type = tool_dict.get("type", "")  # "builtin", "external", or empty (user-defined)
 
         if tool_type == "builtin":
             # OpenWebUI Built-in Tool (system tools like web search, memory, notes)
@@ -906,9 +885,7 @@ class Pipe:
 
             if tool_group_name:
                 if tool_group_desc:
-                    group_prefix = (
-                        f"[Tool Server: {tool_group_name} - {tool_group_desc}]"
-                    )
+                    group_prefix = f"[Tool Server: {tool_group_name} - {tool_group_desc}]"
                 else:
                     group_prefix = f"[Tool Server: {tool_group_name}]"
             else:
@@ -930,9 +907,7 @@ class Pipe:
         # Build final description with group prefix
         if sanitized_tool_name != tool_name:
             # Include original name if it was sanitized
-            tool_description = (
-                f"{group_prefix} Function '{tool_name}': {tool_description}"
-            )
+            tool_description = f"{group_prefix} Function '{tool_name}': {tool_description}"
         else:
             tool_description = f"{group_prefix} {tool_description}"
 
@@ -942,11 +917,7 @@ class Pipe:
             # (which default to None in the Pydantic model) are COMPLETELY OMITTED
             # from the function call. This allows the underlying Python function's
             # own default values to take effect, instead of receiving an explicit None.
-            payload = (
-                params.model_dump(exclude_unset=True)
-                if hasattr(params, "model_dump")
-                else {}
-            )
+            payload = params.model_dump(exclude_unset=True) if hasattr(params, "model_dump") else {}
 
             try:
                 if self.valves.DEBUG:
@@ -985,9 +956,7 @@ class Pipe:
         _tool.__doc__ = tool_description
 
         # Debug log for tool conversion
-        logger.debug(
-            f"Converting tool '{sanitized_tool_name}': {tool_description[:50]}..."
-        )
+        logger.debug(f"Converting tool '{sanitized_tool_name}': {tool_description[:50]}...")
 
         # Core Fix: Explicitly pass params_type and name
         return define_tool(
@@ -1093,9 +1062,7 @@ class Pipe:
             conn_status = "Missing"
             if hasattr(TOOL_SERVER_CONNECTIONS, "value"):
                 val = TOOL_SERVER_CONNECTIONS.value
-                conn_status = (
-                    f"List({len(val)})" if isinstance(val, list) else str(type(val))
-                )
+                conn_status = f"List({len(val)})" if isinstance(val, list) else str(type(val))
 
             await self._emit_debug_log(
                 f"[Tools Debug] Entry. UserID: {user_id}, EnableTools: {enable_tools}, EnableOpenAPI: {enable_openapi}, Connections: {conn_status}",
@@ -1178,9 +1145,7 @@ class Pipe:
                             __event_call__,
                         )
 
-        if (
-            not tool_ids and not enable_tools
-        ):  # No IDs and no built-ins either if tools disabled
+        if not tool_ids and not enable_tools:  # No IDs and no built-ins either if tools disabled
             if self.valves.DEBUG:
                 await self._emit_debug_log(
                     "[Tools] No tool IDs found and built-ins disabled.", __event_call__
@@ -1188,9 +1153,7 @@ class Pipe:
             return []
 
         if self.valves.DEBUG and tool_ids:
-            await self._emit_debug_log(
-                f"[Tools] Requesting tool IDs: {tool_ids}", __event_call__
-            )
+            await self._emit_debug_log(f"[Tools] Requesting tool IDs: {tool_ids}", __event_call__)
 
         # Extract token from body first (before building request)
         token = None
@@ -1224,9 +1187,7 @@ class Pipe:
                         __event_call__,
                     )
 
-                tools_dict = await get_openwebui_tools(
-                    request, tool_ids, user, extra_params
-                )
+                tools_dict = await get_openwebui_tools(request, tool_ids, user, extra_params)
 
                 if self.valves.DEBUG:
                     if tools_dict:
@@ -1252,9 +1213,7 @@ class Pipe:
                 import traceback
 
                 traceback.print_exc()
-                await self._emit_debug_log(
-                    f"Error fetching user/server tools: {e}", __event_call__
-                )
+                await self._emit_debug_log(f"Error fetching user/server tools: {e}", __event_call__)
 
         # Fetch Built-in Tools (Web Search, Memory, etc.)
         if enable_tools:
@@ -1281,9 +1240,7 @@ class Pipe:
                 if builtin_tools:
                     tools_dict.update(builtin_tools)
             except Exception as e:
-                await self._emit_debug_log(
-                    f"Error fetching built-in tools: {e}", __event_call__
-                )
+                await self._emit_debug_log(f"Error fetching built-in tools: {e}", __event_call__)
 
         if not tools_dict:
             return []
@@ -1320,12 +1277,10 @@ class Pipe:
                     else ""
                 )
                 if server_id and server_id in server_metadata_cache:
-                    tool_def["_tool_group_name"] = server_metadata_cache[server_id].get(
-                        "name"
+                    tool_def["_tool_group_name"] = server_metadata_cache[server_id].get("name")
+                    tool_def["_tool_group_description"] = server_metadata_cache[server_id].get(
+                        "description"
                     )
-                    tool_def["_tool_group_description"] = server_metadata_cache[
-                        server_id
-                    ].get("description")
             else:
                 # User-defined Python script tool
                 if tool_id and tool_id not in tool_metadata_cache:
@@ -1335,29 +1290,23 @@ class Pipe:
                             tool_metadata_cache[tool_id] = {
                                 "name": tool_model.name,
                                 "description": (
-                                    tool_model.meta.description
-                                    if tool_model.meta
-                                    else None
+                                    tool_model.meta.description if tool_model.meta else None
                                 ),
                             }
                     except Exception:
                         pass
 
                 if tool_id in tool_metadata_cache:
-                    tool_def["_tool_group_name"] = tool_metadata_cache[tool_id].get(
-                        "name"
+                    tool_def["_tool_group_name"] = tool_metadata_cache[tool_id].get("name")
+                    tool_def["_tool_group_description"] = tool_metadata_cache[tool_id].get(
+                        "description"
                     )
-                    tool_def["_tool_group_description"] = tool_metadata_cache[
-                        tool_id
-                    ].get("description")
 
         converted_tools = []
         for tool_name, tool_def in tools_dict.items():
             try:
                 converted_tools.append(
-                    self._convert_openwebui_tool(
-                        tool_name, tool_def, __event_call__=__event_call__
-                    )
+                    self._convert_openwebui_tool(tool_name, tool_def, __event_call__=__event_call__)
                 )
             except Exception as e:
                 await self._emit_debug_log(
@@ -1414,9 +1363,7 @@ class Pipe:
                     headers["Authorization"] = f"Bearer {key}"
                 elif auth_type == "basic" and key:
                     # Fix: Basic auth requires base64 encoding
-                    headers["Authorization"] = (
-                        f"Basic {base64.b64encode(key.encode()).decode()}"
-                    )
+                    headers["Authorization"] = f"Basic {base64.b64encode(key.encode()).decode()}"
                 elif auth_type in ["api_key", "apikey"]:
                     headers["X-API-Key"] = key
 
@@ -1432,9 +1379,7 @@ class Pipe:
                 allowed_tools = ["*"]
                 if function_filter:
                     if isinstance(function_filter, str):
-                        allowed_tools = [
-                            f.strip() for f in function_filter.split(",") if f.strip()
-                        ]
+                        allowed_tools = [f.strip() for f in function_filter.split(",") if f.strip()]
                     elif isinstance(function_filter, list):
                         allowed_tools = function_filter
 
@@ -1444,9 +1389,7 @@ class Pipe:
                     "headers": headers,
                     "tools": allowed_tools,
                 }
-                self._emit_debug_log_sync(
-                    f"🔌 MCP Integrated: {server_id}", __event_call__
-                )
+                self._emit_debug_log_sync(f"🔌 MCP Integrated: {server_id}", __event_call__)
 
         # Update Cache
         if self.valves.ENABLE_TOOL_CACHE:
@@ -1459,9 +1402,7 @@ class Pipe:
     ):
         """Emit debug log to frontend (console) when DEBUG is enabled."""
         should_log = (
-            debug_enabled
-            if debug_enabled is not None
-            else getattr(self.valves, "DEBUG", False)
+            debug_enabled if debug_enabled is not None else getattr(self.valves, "DEBUG", False)
         )
         if not should_log:
             return
@@ -1486,18 +1427,14 @@ class Pipe:
     ):
         """Sync wrapper for debug logging."""
         should_log = (
-            debug_enabled
-            if debug_enabled is not None
-            else getattr(self.valves, "DEBUG", False)
+            debug_enabled if debug_enabled is not None else getattr(self.valves, "DEBUG", False)
         )
         if not should_log:
             return
 
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(
-                self._emit_debug_log(message, __event_call__, debug_enabled=True)
-            )
+            loop.create_task(self._emit_debug_log(message, __event_call__, debug_enabled=True))
         except RuntimeError:
             logger.debug(f"[Copilot Pipe] {message}")
 
@@ -1549,9 +1486,7 @@ class Pipe:
 
         return res
 
-    def _collect_model_ids(
-        self, body: dict, request_model: str, real_model_id: str
-    ) -> List[str]:
+    def _collect_model_ids(self, body: dict, request_model: str, real_model_id: str) -> List[str]:
         """Collect possible model IDs from request/metadata/body params."""
         model_ids: List[str] = []
         if request_model:
@@ -1624,9 +1559,7 @@ class Pipe:
             try:
                 from open_webui.models.models import Models
 
-                model_ids_to_try = self._collect_model_ids(
-                    body, request_model, real_model_id
-                )
+                model_ids_to_try = self._collect_model_ids(body, request_model, real_model_id)
                 await self._emit_debug_log(
                     f"Checking system prompt for models: {model_ids_to_try}",
                     __event_call__,
@@ -1677,9 +1610,7 @@ class Pipe:
         if not system_prompt_content:
             for msg in messages:
                 if msg.get("role") == "system":
-                    system_prompt_content = self._extract_text_from_content(
-                        msg.get("content", "")
-                    )
+                    system_prompt_content = self._extract_text_from_content(msg.get("content", ""))
                     if system_prompt_content:
                         system_prompt_source = "messages_system"
                         await self._emit_debug_log(
@@ -1720,9 +1651,7 @@ class Pipe:
 
         return cwd
 
-    def _build_client_config(
-        self, body: dict, user_id: str = None, chat_id: str = None
-    ) -> dict:
+    def _build_client_config(self, body: dict, user_id: str = None, chat_id: str = None) -> dict:
         """Build CopilotClient config from valves and request body."""
         cwd = self._get_workspace_dir(user_id=user_id, chat_id=chat_id)
         client_config = {}
@@ -1825,17 +1754,11 @@ class Pipe:
         if is_reas_model and reasoning_effort:
             # Map requested effort to supported efforts if possible
             m = next(
-                (
-                    m
-                    for m in (self._model_cache or [])
-                    if m.get("raw_id") == real_model_id
-                ),
+                (m for m in (self._model_cache or []) if m.get("raw_id") == real_model_id),
                 None,
             )
             supp = (
-                m.get("meta", {})
-                .get("capabilities", {})
-                .get("supported_reasoning_efforts", [])
+                m.get("meta", {}).get("capabilities", {}).get("supported_reasoning_efforts", [])
                 if m
                 else []
             )
@@ -1983,9 +1906,7 @@ class Pipe:
 
         # Resolve effective settings (User > Global)
         # Note: We handle the case where uv might be None
-        effective_base_url = (
-            uv.BYOK_BASE_URL if uv else ""
-        ) or self.valves.BYOK_BASE_URL
+        effective_base_url = (uv.BYOK_BASE_URL if uv else "") or self.valves.BYOK_BASE_URL
         effective_type = (uv.BYOK_TYPE if uv else "") or self.valves.BYOK_TYPE
         effective_api_key = (uv.BYOK_API_KEY if uv else "") or self.valves.BYOK_API_KEY
         effective_bearer_token = (
@@ -2036,11 +1957,11 @@ class Pipe:
                                     break
                                 else:
                                     await self._emit_debug_log(
-                                        f"BYOK: Failed to fetch models from {url} (Attempt {attempt+1}/3). Status: {resp.status}"
+                                        f"BYOK: Failed to fetch models from {url} (Attempt {attempt + 1}/3). Status: {resp.status}"
                                     )
                         except Exception as e:
                             await self._emit_debug_log(
-                                f"BYOK: Model fetch error (Attempt {attempt+1}/3): {e}"
+                                f"BYOK: Model fetch error (Attempt {attempt + 1}/3): {e}"
                             )
 
                         if attempt < 2:
@@ -2051,9 +1972,7 @@ class Pipe:
         # Fallback to configured list or defaults
         if not model_list:
             if effective_models.strip():
-                model_list = [
-                    m.strip() for m in effective_models.split(",") if m.strip()
-                ]
+                model_list = [m.strip() for m in effective_models.split(",") if m.strip()]
                 await self._emit_debug_log(
                     f"BYOK: Using user-configured BYOK_MODELS ({len(model_list)} models)."
                 )
@@ -2140,9 +2059,7 @@ class Pipe:
                 os.environ["GH_TOKEN"] = os.environ["GITHUB_TOKEN"] = token
 
         # Get user info for isolation
-        user_data = (
-            __user__[0] if isinstance(__user__, (list, tuple)) else (__user__ or {})
-        )
+        user_data = __user__[0] if isinstance(__user__, (list, tuple)) else (__user__ or {})
         user_id = user_data.get("id") or user_data.get("user_id") or "default_user"
 
         token = uv.GH_TOKEN or self.valves.GH_TOKEN
@@ -2163,9 +2080,7 @@ class Pipe:
         # Keyword filtering: combine global and user keywords
         ex_kw = [
             k.strip().lower()
-            for k in (self.valves.EXCLUDE_KEYWORDS + "," + uv.EXCLUDE_KEYWORDS).split(
-                ","
-            )
+            for k in (self.valves.EXCLUDE_KEYWORDS + "," + uv.EXCLUDE_KEYWORDS).split(",")
             if k.strip()
         ]
 
@@ -2174,14 +2089,9 @@ class Pipe:
         current_config_str = f"{token}|{uv.BYOK_BASE_URL or self.valves.BYOK_BASE_URL}|{uv.BYOK_API_KEY or self.valves.BYOK_API_KEY}|{self.valves.BYOK_BEARER_TOKEN}"
         current_config_hash = hashlib.md5(current_config_str.encode()).hexdigest()
 
-        if (
-            self._model_cache
-            and self.__class__._last_byok_config_hash != current_config_hash
-        ):
+        if self._model_cache and self.__class__._last_byok_config_hash != current_config_hash:
             if self.valves.DEBUG:
-                logger.info(
-                    "[Pipes] Configuration change detected. Invalidating model cache."
-                )
+                logger.info("[Pipes] Configuration change detected. Invalidating model cache.")
             self.__class__._model_cache = []
             self.__class__._last_byok_config_hash = current_config_hash
 
@@ -2209,9 +2119,7 @@ class Pipe:
                 if token:
                     client_config = {
                         "cli_path": os.environ.get("COPILOT_CLI_PATH"),
-                        "cwd": self._get_workspace_dir(
-                            user_id=user_id, chat_id="listing"
-                        ),
+                        "cwd": self._get_workspace_dir(user_id=user_id, chat_id="listing"),
                     }
                     c = CopilotClient(client_config)
                     try:
@@ -2219,11 +2127,7 @@ class Pipe:
                         raw = await c.list_models()
                         for m in raw if isinstance(raw, list) else []:
                             try:
-                                mid = (
-                                    m.get("id")
-                                    if isinstance(m, dict)
-                                    else getattr(m, "id", "")
-                                )
+                                mid = m.get("id") if isinstance(m, dict) else getattr(m, "id", "")
                                 if not mid:
                                     continue
 
@@ -2246,9 +2150,7 @@ class Pipe:
                                     {
                                         "id": f"{self.id}-{mid}",
                                         "name": (
-                                            f"-{cid} ({mult}x)"
-                                            if mult > 0
-                                            else f"-🔥 {cid} (0x)"
+                                            f"-{cid} ({mult}x)" if mult > 0 else f"-🔥 {cid} (0x)"
                                         ),
                                         "multiplier": mult,
                                         "raw_id": mid,
@@ -2267,9 +2169,7 @@ class Pipe:
 
                 self._model_cache = standard + byok
                 if not self._model_cache:
-                    return [
-                        {"id": "error", "name": "No models found. Check Token/Network."}
-                    ]
+                    return [{"id": "error", "name": "No models found. Check Token/Network."}]
             except Exception as e:
                 return [{"id": "error", "name": f"Error: {e}"}]
 
@@ -2290,9 +2190,7 @@ class Pipe:
                 m_mult = float(m.get("multiplier", 0))
                 if m_mult > (eff_max + epsilon):
                     if self.valves.DEBUG:
-                        logger.debug(
-                            f"[Pipes] Filtered {m.get('id')} (Mult: {m_mult} > {eff_max})"
-                        )
+                        logger.debug(f"[Pipes] Filtered {m.get('id')} (Mult: {m_mult} > {eff_max})")
                     continue
 
             res.append(m)
@@ -2354,9 +2252,7 @@ class Pipe:
         def get_cli_version(path):
             try:
                 output = (
-                    subprocess.check_output(
-                        [path, "--version"], stderr=subprocess.STDOUT
-                    )
+                    subprocess.check_output([path, "--version"], stderr=subprocess.STDOUT)
                     .decode()
                     .strip()
                 )
@@ -2399,9 +2295,7 @@ class Pipe:
 
                 if parse_version(norm_target) > parse_version(norm_current):
                     should_install = True
-                    install_reason = (
-                        f"Upgrade needed ({current_version} -> {target_version})"
-                    )
+                    install_reason = f"Upgrade needed ({current_version} -> {target_version})"
                 elif parse_version(norm_target) < parse_version(norm_current):
                     self._emit_debug_log_sync(
                         f"Current version ({current_version}) is newer than specified ({target_version}). Skipping downgrade.",
@@ -2412,9 +2306,7 @@ class Pipe:
                 # Fallback to string comparison if packaging is not available
                 if norm_target != norm_current:
                     should_install = True
-                    install_reason = (
-                        f"Version mismatch ({current_version} != {target_version})"
-                    )
+                    install_reason = f"Version mismatch ({current_version} != {target_version})"
 
         if should_install:
             self._emit_debug_log_sync(
@@ -2471,9 +2363,7 @@ class Pipe:
                     # Adapt to different file structures
                     file_obj = file_item.get("file", file_item)
                     file_id = file_obj.get("id")
-                    filename = (
-                        file_obj.get("filename") or file_obj.get("name") or "upload.bin"
-                    )
+                    filename = file_obj.get("filename") or file_obj.get("name") or "upload.bin"
 
                     if file_id:
                         # Construct source path
@@ -2695,9 +2585,7 @@ class Pipe:
         # -----------------
 
         # 1. Determine user role and settings
-        user_data = (
-            __user__[0] if isinstance(__user__, (list, tuple)) else (__user__ or {})
-        )
+        user_data = __user__[0] if isinstance(__user__, (list, tuple)) else (__user__ or {})
         is_admin = user_data.get("role") == "admin"
 
         # Robustly parse User Valves
@@ -2746,9 +2634,7 @@ class Pipe:
 
         # Determine effective BYOK settings
         byok_api_key = user_valves.BYOK_API_KEY or self.valves.BYOK_API_KEY
-        byok_bearer_token = (
-            user_valves.BYOK_BEARER_TOKEN or self.valves.BYOK_BEARER_TOKEN
-        )
+        byok_bearer_token = user_valves.BYOK_BEARER_TOKEN or self.valves.BYOK_BEARER_TOKEN
         byok_base_url = user_valves.BYOK_BASE_URL or self.valves.BYOK_BASE_URL
         byok_active = bool(byok_base_url and (byok_api_key or byok_bearer_token))
 
@@ -2796,16 +2682,10 @@ class Pipe:
             None,
         )
         if not m_info:
-            logger.info(
-                f"[Pipe Impl] Model info missing for {real_model_id}, refreshing cache..."
-            )
+            logger.info(f"[Pipe Impl] Model info missing for {real_model_id}, refreshing cache...")
             await self.pipes(__user__)
             m_info = next(
-                (
-                    m
-                    for m in (self._model_cache or [])
-                    if m.get("raw_id") == real_model_id
-                ),
+                (m for m in (self._model_cache or []) if m.get("raw_id") == real_model_id),
                 None,
             )
 
@@ -2834,8 +2714,7 @@ class Pipe:
         # 4. Log the resolution result
         if real_model_id != request_model:
             log_msg = (
-                f"Using {model_source_type} model: {real_model_id} "
-                f"(Cleaned from '{resolved_id}')"
+                f"Using {model_source_type} model: {real_model_id} (Cleaned from '{resolved_id}')"
             )
             await self._emit_debug_log(
                 log_msg,
@@ -2884,9 +2763,7 @@ class Pipe:
         )
 
         # 1. Determine user role and construct guidelines
-        user_data = (
-            __user__[0] if isinstance(__user__, (list, tuple)) else (__user__ or {})
-        )
+        user_data = __user__[0] if isinstance(__user__, (list, tuple)) else (__user__ or {})
         is_admin = user_data.get("role") == "admin"
 
         system_parts = []
@@ -2926,12 +2803,10 @@ class Pipe:
 
         # Detection priority for BYOK
         # 1. Check metadata.model.name for multiplier (Standard Copilot format)
-        model_display_name = body.get("metadata", {}).get("model", {}).get(
-            "name", ""
-        ) or (__metadata__.get("model", {}).get("name", "") if __metadata__ else "")
-        has_multiplier = bool(
-            re.search(r"[\(（]\d+(?:\.\d+)?x[\)）]", model_display_name)
+        model_display_name = body.get("metadata", {}).get("model", {}).get("name", "") or (
+            __metadata__.get("model", {}).get("name", "") if __metadata__ else ""
         )
+        has_multiplier = bool(re.search(r"[\(（]\d+(?:\.\d+)?x[\)）]", model_display_name))
 
         if m_info and "source" in m_info:
             is_byok_model = m_info["source"] == "byok"
@@ -2949,9 +2824,7 @@ class Pipe:
             self._sync_copilot_config(effective_reasoning_effort, __event_call__)
 
         # Initialize Client
-        client = CopilotClient(
-            self._build_client_config(body, user_id=user_id, chat_id=chat_id)
-        )
+        client = CopilotClient(self._build_client_config(body, user_id=user_id, chat_id=chat_id))
         should_stop_client = True
         try:
             await client.start()
@@ -3044,9 +2917,7 @@ class Pipe:
                         system_parts.append(system_prompt_content.strip())
 
                     # Calculate and inject path context for resumed session
-                    resolved_cwd = self._get_workspace_dir(
-                        user_id=user_id, chat_id=chat_id
-                    )
+                    resolved_cwd = self._get_workspace_dir(user_id=user_id, chat_id=chat_id)
                     path_context = (
                         f"\n[Session Context]\n"
                         f"- **Your Isolated Workspace**: `{resolved_cwd}`\n"
@@ -3169,23 +3040,26 @@ class Pipe:
                     try:
                         async with aiohttp.ClientSession() as session:
                             # Send task
-                            async with session.post('http://localhost:3000/task', json={'command': prompt}) as resp:
+                            async with session.post(
+                                "http://localhost:3000/task", json={"command": prompt}
+                            ) as resp:
                                 if resp.status != 200:
                                     yield f"Error submitting task: {resp.status}"
                                     return
                             # Connect to ws
-                            async with session.ws_connect('ws://localhost:3000/stream') as ws:
+                            async with session.ws_connect("ws://localhost:3000/stream") as ws:
                                 await ws.send_str(prompt)
                                 async for msg in ws:
                                     if msg.type == aiohttp.WSMsgType.TEXT:
                                         data = json.loads(msg.data)
-                                        if data['type'] == 'output':
-                                            yield data['data']
+                                        if data["type"] == "output":
+                                            yield data["data"]
                                     elif msg.type == aiohttp.WSMsgType.ERROR:
                                         yield f"WebSocket error: {ws.exception()}"
                                         break
                     except Exception as e:
                         yield f"Integration error: {str(e)}"
+
                 return stream_from_server()
             else:
                 try:
@@ -3282,9 +3156,9 @@ class Pipe:
             # === Message Delta Events (Primary streaming content) ===
             if event_type == "assistant.message_delta":
                 # Official: event.data.delta_content for Python SDK
-                delta = safe_get_data_attr(
-                    event, "delta_content"
-                ) or safe_get_data_attr(event, "deltaContent")
+                delta = safe_get_data_attr(event, "delta_content") or safe_get_data_attr(
+                    event, "deltaContent"
+                )
                 if delta:
                     state["content_sent"] = True
                     if state["thinking_started"]:
@@ -3311,9 +3185,9 @@ class Pipe:
 
             # === Reasoning Delta Events (Chain-of-thought streaming) ===
             elif event_type == "assistant.reasoning_delta":
-                delta = safe_get_data_attr(
-                    event, "delta_content"
-                ) or safe_get_data_attr(event, "deltaContent")
+                delta = safe_get_data_attr(event, "delta_content") or safe_get_data_attr(
+                    event, "deltaContent"
+                )
                 if delta:
                     # Suppress late-arriving reasoning if content already started
                     if state["content_sent"]:
@@ -3413,9 +3287,7 @@ class Pipe:
                         result_type = result_obj.get("result_type", "success")
                         if not result_content:
                             # Try to serialize the entire dict if no content field
-                            result_content = json.dumps(
-                                result_obj, indent=2, ensure_ascii=False
-                            )
+                            result_content = json.dumps(result_obj, indent=2, ensure_ascii=False)
                 except Exception as e:
                     self._emit_debug_log_sync(
                         f"Error extracting result: {e}",
@@ -3436,14 +3308,10 @@ class Pipe:
                             todo_text = ""
 
                             # 1. Try detailedContent (Best source)
-                            if isinstance(result_obj, dict) and result_obj.get(
-                                "detailedContent"
-                            ):
+                            if isinstance(result_obj, dict) and result_obj.get("detailedContent"):
                                 todo_text = result_obj["detailedContent"]
                             # 2. Try content (Second best)
-                            elif isinstance(result_obj, dict) and result_obj.get(
-                                "content"
-                            ):
+                            elif isinstance(result_obj, dict) and result_obj.get("content"):
                                 todo_text = result_obj["content"]
                             elif hasattr(result_obj, "content"):
                                 todo_text = result_obj.content
@@ -3453,9 +3321,7 @@ class Pipe:
                                 not todo_text or len(todo_text) < 50
                             ):  # Threshold to detect "TODO list updated"
                                 if tool_call_id in active_tools:
-                                    args = active_tools[tool_call_id].get(
-                                        "arguments", {}
-                                    )
+                                    args = active_tools[tool_call_id].get("arguments", {})
                                     if isinstance(args, dict) and "todos" in args:
                                         todo_text = args["todos"]
                                         self._emit_debug_log_sync(
@@ -3507,9 +3373,7 @@ class Pipe:
                             else result_content
                         )
                         if isinstance(json_obj, (dict, list)):
-                            result_content = json.dumps(
-                                json_obj, indent=2, ensure_ascii=False
-                            )
+                            result_content = json.dumps(json_obj, indent=2, ensure_ascii=False)
                             is_json = True
                     except:
                         pass
@@ -3644,9 +3508,7 @@ class Pipe:
         try:
             while not done.is_set():
                 try:
-                    chunk = await asyncio.wait_for(
-                        queue.get(), timeout=float(self.valves.TIMEOUT)
-                    )
+                    chunk = await asyncio.wait_for(queue.get(), timeout=float(self.valves.TIMEOUT))
                     if chunk is SENTINEL:
                         break
                     if chunk:
@@ -3731,19 +3593,22 @@ class GitHubSDKRecommendations:
         return {
             "Authorization": f"Bearer {self.token}",
             "Accept": "application/vnd.github.v3+json",
-            "User-Agent": "OpenWebUI-Copilot-Pipe"
+            "User-Agent": "OpenWebUI-Copilot-Pipe",
         }
 
     async def _github_request(self, method: str, endpoint: str, json_data: dict = None) -> Any:
         import aiohttp
+
         if not self.token:
             return {"error": "No GitHub token configured"}
-        
+
         base_url = "https://api.github.com"
         url = f"{base_url}{endpoint}" if endpoint.startswith("/") else endpoint
-        
+
         async with aiohttp.ClientSession() as session:
-            async with session.request(method, url, headers=self._get_headers(), json=json_data) as response:
+            async with session.request(
+                method, url, headers=self._get_headers(), json=json_data
+            ) as response:
                 if response.status in (200, 201):
                     return await response.json()
                 text = await response.text()
@@ -3754,43 +3619,50 @@ class GitHubSDKRecommendations:
     async def fetch_repo_structure(self, repo_url: str) -> str:
         """Retrieve and visualize the file tree of a remote repository (recursive)."""
         import re
+
         # Extract owner/repo from URL
         match = re.search(r"github\.com/([^/]+)/([^/]+)", repo_url)
         if not match:
             return "Invalid GitHub URL"
         owner, repo = match.groups()
         repo = repo.replace(".git", "")
-        
+
         # Get default branch SHA
         repo_info = await self._github_request("GET", f"/repos/{owner}/{repo}")
-        if "error" in repo_info: return str(repo_info)
+        if "error" in repo_info:
+            return str(repo_info)
         branch = repo_info.get("default_branch", "main")
-        
+
         # Get Tree
-        tree_data = await self._github_request("GET", f"/repos/{owner}/{repo}/git/trees/{branch}?recursive=1")
-        if "error" in tree_data: return str(tree_data)
-        
+        tree_data = await self._github_request(
+            "GET", f"/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
+        )
+        if "error" in tree_data:
+            return str(tree_data)
+
         tree = tree_data.get("tree", [])
         output = [f"Repository Structure ({owner}/{repo} @ {branch}):"]
-        for item in tree[:500]: # Limit to avoid context overflow
+        for item in tree[:500]:  # Limit to avoid context overflow
             path = item.get("path")
             type_ = "DIR" if item.get("type") == "tree" else "FILE"
             output.append(f"[{type_}] {path}")
-        
+
         if len(tree) > 500:
-            output.append(f"... and {len(tree)-500} more items.")
-            
+            output.append(f"... and {len(tree) - 500} more items.")
+
         return "\n".join(output)
 
     async def get_file_content_from_github(self, repo: str, path: str) -> str:
         """Directly fetch file content from GitHub via API. Repo format: 'owner/repo'"""
         import base64
+
         data = await self._github_request("GET", f"/repos/{repo}/contents/{path}")
-        if "error" in data: return str(data)
-        
+        if "error" in data:
+            return str(data)
+
         content = data.get("content", "")
         encoding = data.get("encoding", "")
-        
+
         if encoding == "base64":
             try:
                 return base64.b64decode(content).decode("utf-8")
@@ -3801,8 +3673,9 @@ class GitHubSDKRecommendations:
     async def search_github_code(self, query: str) -> List[str]:
         """Search for code snippets across repositories."""
         data = await self._github_request("GET", f"/search/code?q={query}")
-        if "error" in data: return [str(data)]
-        
+        if "error" in data:
+            return [str(data)]
+
         results = []
         for item in data.get("items", [])[:5]:
             repo = item.get("repository", {}).get("full_name")
@@ -3814,8 +3687,9 @@ class GitHubSDKRecommendations:
     async def get_active_pr_context(self, repo: str, pr_number: int) -> str:
         """Fetch description and details of a Pull Request. Repo: 'owner/repo'"""
         pr = await self._github_request("GET", f"/repos/{repo}/pulls/{pr_number}")
-        if "error" in pr: return str(pr)
-        
+        if "error" in pr:
+            return str(pr)
+
         return (
             f"PR #{pr_number}: {pr.get('title')}\n"
             f"State: {pr.get('state')}\n"
@@ -3826,7 +3700,8 @@ class GitHubSDKRecommendations:
     async def list_user_repos(self) -> List[str]:
         """List the authenticated user's repositories."""
         data = await self._github_request("GET", "/user/repos?sort=updated&per_page=20")
-        if "error" in data: return [str(data)]
+        if "error" in data:
+            return [str(data)]
         return [f"{r.get('full_name')} ({r.get('visibility')})" for r in data]
 
     # 2. Code Analysis & Quality (Prompt Generators)
@@ -3850,6 +3725,7 @@ class GitHubSDKRecommendations:
     def scan_for_secrets(self, code_selection: str) -> List[str]:
         """Local regex scan for potential secrets."""
         import re
+
         patterns = {
             "AWS Key": r"AKIA[0-9A-Z]{16}",
             "GitHub Token": r"(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36}",
@@ -3868,12 +3744,17 @@ class GitHubSDKRecommendations:
         import json
         import os
         from datetime import datetime
+
         state_dump = {
-            "valves": self.valves.model_dump() if hasattr(self.valves, "model_dump") else self.valves.dict(),
-            "timestamp": datetime.now().isoformat()
+            "valves": self.valves.model_dump()
+            if hasattr(self.valves, "model_dump")
+            else self.valves.dict(),
+            "timestamp": datetime.now().isoformat(),
         }
         try:
-            cwd = self.pipe._get_workspace_dir() if hasattr(self.pipe, "_get_workspace_dir") else "."
+            cwd = (
+                self.pipe._get_workspace_dir() if hasattr(self.pipe, "_get_workspace_dir") else "."
+            )
             path = os.path.join(cwd, filename)
             with open(path, "w") as f:
                 json.dump(state_dump, f, indent=2)
@@ -3885,8 +3766,11 @@ class GitHubSDKRecommendations:
         """Restore settings from disk."""
         import json
         import os
+
         try:
-            cwd = self.pipe._get_workspace_dir() if hasattr(self.pipe, "_get_workspace_dir") else "."
+            cwd = (
+                self.pipe._get_workspace_dir() if hasattr(self.pipe, "_get_workspace_dir") else "."
+            )
             path = os.path.join(cwd, filename)
             with open(path, "r") as f:
                 json.load(f)
@@ -3902,8 +3786,11 @@ class GitHubSDKRecommendations:
     def export_chat_to_markdown(self, filename: str, history: List[dict]) -> str:
         """Export provided history list to Markdown."""
         import os
+
         try:
-            cwd = self.pipe._get_workspace_dir() if hasattr(self.pipe, "_get_workspace_dir") else "."
+            cwd = (
+                self.pipe._get_workspace_dir() if hasattr(self.pipe, "_get_workspace_dir") else "."
+            )
             path = os.path.join(cwd, filename)
             with open(path, "w") as f:
                 f.write("# Chat Export\n\n")
@@ -3930,20 +3817,21 @@ class GitHubSDKRecommendations:
         user = await self._github_request("GET", "/user")
         if "error" in user:
             return {"valid": False, "error": user["error"]}
-        
+
         # Check rate limit
         limits = await self._github_request("GET", "/rate_limit")
         return {
             "valid": True,
             "user": user.get("login"),
             "scopes": user.get("plan", {}).get("name"),
-            "rate_limit": limits.get("rate", {})
+            "rate_limit": limits.get("rate", {}),
         }
 
     async def get_rate_limit_status(self) -> Dict[str, int]:
         """Check and display current API rate usage."""
         data = await self._github_request("GET", "/rate_limit")
-        if "error" in data: return {}
+        if "error" in data:
+            return {}
         return data.get("resources", {}).get("core", {})
 
     def register_custom_tool_runtime(self, tool_definition: Dict) -> bool:
@@ -3960,11 +3848,12 @@ class GitHubSDKRecommendations:
     def get_system_health(self) -> Dict[str, bool]:
         """Comprehensive check."""
         import os
+
         cwd = self.pipe._get_workspace_dir() if hasattr(self.pipe, "_get_workspace_dir") else "."
         return {
             "internet": True,
             "github_api": bool(self.token),
-            "workspace_writable": os.access(cwd, os.W_OK)
+            "workspace_writable": os.access(cwd, os.W_OK),
         }
 
     # 5. OpenWebUI Specific Integrations
@@ -3972,36 +3861,36 @@ class GitHubSDKRecommendations:
     async def sync_todo_to_issue(self, repo: str, title: str = "TODO Sync") -> str:
         """Convert the TODO.md list directly into a GitHub Issue."""
         import os
+
         try:
-            cwd = self.pipe._get_workspace_dir() if hasattr(self.pipe, "_get_workspace_dir") else "."
+            cwd = (
+                self.pipe._get_workspace_dir() if hasattr(self.pipe, "_get_workspace_dir") else "."
+            )
             path = os.path.join(cwd, "TODO.md")
             if not os.path.exists(path):
                 return "TODO.md not found in workspace."
-            
+
             with open(path, "r") as f:
                 content = f.read()
-            
-            data = {
-                "title": title,
-                "body": f"Synced from OpenWebUI Chat:\n\n{content}"
-            }
+
+            data = {"title": title, "body": f"Synced from OpenWebUI Chat:\n\n{content}"}
             res = await self._github_request("POST", f"/repos/{repo}/issues", data)
-            if "error" in res: return str(res)
+            if "error" in res:
+                return str(res)
             return f"Issue created: {res.get('html_url')}"
         except Exception as e:
             return f"Sync failed: {e}"
 
-    async def create_gist_from_chat(self, content: str, description: str, filename: str = "snippet.py") -> str:
+    async def create_gist_from_chat(
+        self, content: str, description: str, filename: str = "snippet.py"
+    ) -> str:
         """Save a code snippet from chat directly as a GitHub Gist."""
         data = {
             "description": description,
             "public": False,
-            "files": {
-                filename: {
-                    "content": content
-                }
-            }
+            "files": {filename: {"content": content}},
         }
         res = await self._github_request("POST", "/gists", data)
-        if "error" in res: return str(res)
+        if "error" in res:
+            return str(res)
         return f"Gist created: {res.get('html_url')}"
