@@ -1,11 +1,9 @@
 import os
-from typing import Optional
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response, JSONResponse
+from starlette.responses import JSONResponse
 
 from .auth_db import get_session, get_user_by_id, cleanup_expired_sessions
-from .config import ConfigManager
 
 
 class AuthMiddleware(BaseHTTPMiddleware):

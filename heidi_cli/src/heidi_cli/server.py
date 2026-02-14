@@ -338,7 +338,7 @@ async def auth_callback(provider: str, code: str, state: str):
     if not result:
         raise HTTPException(status_code=400, detail="Login failed")
 
-    response = RedirectResponse(url=f"/ui/?logged_in=true")
+    response = RedirectResponse(url="/ui/?logged_in=true")
     response.set_cookie(
         key="heidi_session",
         value=result["session_id"],
@@ -358,7 +358,6 @@ async def auth_logout(request: Request):
 
         logout_session(session_id)
 
-    response = {"status": "logged_out"}
     redirect_url = request.query_params.get("redirect", "/")
     redirect_response = RedirectResponse(url=redirect_url)
     redirect_response.delete_cookie("heidi_session")

@@ -733,7 +733,7 @@ def auth_status() -> None:
             data = response.json()
             if data.get("authenticated"):
                 user = data.get("user", {})
-                console.print(f"[green]Session: authenticated[/green]")
+                console.print("[green]Session: authenticated[/green]")
                 console.print(f"[cyan]User: {user.get('name')} ({user.get('email')})[/cyan]")
             else:
                 console.print("[yellow]Session: not authenticated[/yellow]")
