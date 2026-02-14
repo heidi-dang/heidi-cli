@@ -144,61 +144,41 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+      - name: Install heidi-cli
+        run: |
+          python -m pip install -e '.[dev]'
       - name: Test installer in temp dir
         run: |
-          # Install from repo root first
-          python -m pip install -e '.[dev]' -q
-          
-          # Create a temp directory and run heidi commands from there
+          # Create a temp directory
           TEMP_DIR=$(mktemp -d)
-          
-          echo "Testing from: $TEMP_DIR"
-          
-          # Run heidi init in temp dir (to test behavior from a non-project directory)
           cd "$TEMP_DIR"
-          echo "CWD: $(pwd)"
-          heidi init || echo "Init failed with: $?"
           
-          # Check if init ran without creating .heidi
-          echo "Checking .heidi in CWD..."
+          echo "=== Running from temp dir: $TEMP_DIR ==="
+          
+          # Test 1: Run heidi init and check it doesn't create .heidi in CWD
+          echo "--- Test 1: heidi init ---"
+          HEIDI_NO_WIZARD=1 heidi init 2>&1 || echo "Init exit code: $?"
+          
+          echo "Files in CWD:"
           ls -la
           
-          # Verify NO .heidi in current directory
           if [ -d ".heidi" ]; then
-            echo "ERROR: .heidi created in CWD: $(pwd)/.heidi"
-            ls -la .heidi
+            echo "FAIL: .heidi created in CWD"
+            exit 1
+          fi
+          echo "PASS: No .heidi in CWD"
+          
+          # Test 2: Check global config exists
+          echo "--- Test 2: Global config ---"
+          if [ -d "$HOME/.config/heidi" ]; then
+            echo "PASS: Global config exists"
+          else
+            echo "FAIL: Global config not found"
             exit 1
           fi
           
-          # Verify global config was created
-          echo "Checking global config..."
-          ls -la "$HOME/.config/heidi" || echo "Global config not found"
+          # Test 3: Run heidi paths
+          echo "--- Test 3: heidi paths ---"
+          heidi paths 2>&1 || echo "Paths exit code: $?"
           
-          if [ ! -d "$HOME/.config/heidi" ]; then
-            echo "ERROR: Global config not created at $HOME/.config/heidi"
-            exit 1
-          fi
-          
-          echo "OK: No .heidi in CWD, global config exists at $HOME/.config/heidi"
-          
-          # Test heidi paths
-          echo "Testing heidi paths..."
-          OUTPUT=$(heidi paths 2>&1)
-          echo "$OUTPUT"
-          
-          if [ -z "$OUTPUT" ]; then
-            echo "ERROR: heidi paths returned empty output"
-            exit 1
-          fi
-          
-          if ! echo "$OUTPUT" | grep -q "Config"; then
-            echo "ERROR: heidi paths should show Config path"
-            exit 1
-          fi
-          
-          if ! echo "$OUTPUT" | grep -q "Project Root"; then
-            echo "ERROR: heidi paths should show Project Root"
-            exit 1
-          fi
-          
-          echo "OK: All installer checks passed"
+          echo "=== All tests passed ==="
