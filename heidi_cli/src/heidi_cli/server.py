@@ -24,25 +24,20 @@ HEIDI_API_KEY = os.getenv("HEIDI_API_KEY", "").strip()
 
 # CORS allowlist:
 # - If HEIDI_CORS_ORIGINS is set (comma-separated), it overrides everything.
-# - Otherwise:
-#     - If auth enabled -> default to localhost UI
-#     - If auth disabled -> allow all (current behavior for local dev)
+# - Otherwise defaults to localhost UI origins for development.
+# Note: With credentials (cookies), browsers reject wildcard "*" origins.
 _cors_env = os.getenv("HEIDI_CORS_ORIGINS", "").strip()
 if _cors_env:
     ALLOW_ORIGINS = [o.strip() for o in _cors_env.split(",") if o.strip()]
 else:
-    ALLOW_ORIGINS = (
-        [
-            "http://localhost:3002",
-            "http://127.0.0.1:3002",
-            "http://localhost:3001",
-            "http://127.0.0.1:3001",
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-        ]
-        if HEIDI_API_KEY
-        else ["*"]
-    )
+    ALLOW_ORIGINS = [
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
 app = FastAPI(title="Heidi CLI Server")
 
@@ -62,12 +57,26 @@ app.add_middleware(AuthMiddleware)
 init_db()
 
 
+def _check_auth(request: Request, stream_key: Optional[str] = None) -> bool:
+    """Check if request is authorized via session OR API key.
+
+    Returns True if authorized, False otherwise.
+    """
+    if hasattr(request.state, "user") and request.state.user is not None:
+        return True
+
+    if not HEIDI_API_KEY:
+        return False
+
+    header_key = request.headers.get("x-heidi-key", "")
+    effective = (header_key or stream_key or "").strip()
+    return bool(effective and effective == HEIDI_API_KEY)
+
+
 def _require_api_key(request: Request, stream_key: Optional[str] = None) -> None:
     if not HEIDI_API_KEY:
         return
-    header_key = request.headers.get("x-heidi-key", "")
-    effective = (header_key or stream_key or "").strip()
-    if not effective or effective != HEIDI_API_KEY:
+    if not _check_auth(request, stream_key):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -98,14 +107,12 @@ async def serve_ui(path: str):
             status_code=200,
         )
 
-    from fastapi.staticfiles import StaticFiles
-
-    # Let StaticFiles handle the file serving
     file_path = UI_DIST / path
     if file_path.is_file():
-        return StaticFiles(directory=str(UI_DIST)).get_path(path)
+        from starlette.responses import FileResponse
 
-    # For SPA, serve index.html for non-file paths
+        return FileResponse(file_path)
+
     index_path = UI_DIST / "index.html"
     if index_path.exists():
         return HTMLResponse(index_path.read_text())
