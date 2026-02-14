@@ -1541,11 +1541,20 @@ def backups_cmd(
 def serve(
     host: str = typer.Option("0.0.0.0", help="Host to bind to"),
     port: int = typer.Option(7777, help="Port to bind to"),
-    ui: bool = typer.Option(False, "--ui", help="Also start UI dev server"),
+    ui: bool = typer.Option(False, "--ui", help="Also start UI"),
+    force: bool = typer.Option(False, "--force", "-f", help="Kill existing server if running"),
 ) -> None:
     """Start Heidi CLI server."""
     import subprocess
     import threading
+
+    # Kill existing server if --force
+    if force:
+        subprocess.run(["pkill", "-f", "heidi serve"], capture_output=True)
+        subprocess.run(["pkill", "-f", "uvicorn"], capture_output=True)
+        import time
+
+        time.sleep(1)
 
     def start_backend():
         from .server import start_server
@@ -1561,10 +1570,11 @@ def serve(
         xdg_cache = os.getenv("XDG_CACHE_HOME", str(Path.home() / ".cache"))
         ui_cache = Path(xdg_cache) / "heidi" / "ui" / "dist"
         ui_path = Path.cwd() / "ui"
+        use_cached = ui_cache.exists()
 
-        if ui_cache.exists():
+        if use_cached:
             console.print(f"[green]Using cached UI: {ui_cache}[/green]")
-            # Backend will serve UI from cache
+            console.print(f"[green]UI served at: http://localhost:{port}/ui/[/green]")
         elif not ui_path.exists():
             console.print("[yellow]UI not found. Run: heidi ui build[/yellow]")
             console.print("[cyan]Starting backend only...[/cyan]")
@@ -1586,11 +1596,16 @@ def serve(
             ui_thread = threading.Thread(target=start_ui, daemon=True)
             ui_thread.start()
 
+        if use_cached:
+            ui_url = f"http://localhost:{port}/ui/"
+        else:
+            ui_url = "http://localhost:3002"
+
         console.print(
             Panel.fit(
                 "[green]Heidi is running!\n\n"
-                "Backend: http://localhost:7777\n"
-                "UI: http://localhost:3002\n\n"
+                f"Backend: http://localhost:{port}\n"
+                f"UI: {ui_url}\n\n"
                 "Press Ctrl+C to stop",
                 title="Heidi CLI",
             )
