@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { api, getSettings } from '../api/heidi';
+import { api, getSettings } from '../services/heidi';
 import { Agent, AppMode, RunEvent, RunStatus } from '../types';
 import { 
   Send, Repeat, StopCircle, CheckCircle, AlertCircle, Loader2, PlayCircle, PanelLeft,
@@ -340,6 +340,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                 onClick={onToggleSidebar} 
                 className="text-slate-400 hover:text-white transition-colors p-1 rounded hover:bg-white/5"
                 title="Open Sidebar"
+                aria-label="Open sidebar"
                >
                    <PanelLeft size={20} />
                </button>
@@ -464,18 +465,21 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                     <div className="flex bg-black/40 rounded-lg p-1 border border-white/5">
                         <button 
                             onClick={() => setMode(AppMode.CHAT)}
+                            aria-pressed={mode === AppMode.CHAT}
                             className={`px-4 py-1.5 rounded-md transition-all font-medium ${mode === AppMode.CHAT ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'hover:text-white hover:bg-white/5'}`}
                         >
                             <span className="flex items-center gap-1.5"><MessageSquare size={14} /> Chat</span>
                         </button>
                         <button 
                             onClick={() => setMode(AppMode.RUN)}
+                            aria-pressed={mode === AppMode.RUN}
                             className={`px-4 py-1.5 rounded-md transition-all font-medium ${mode === AppMode.RUN ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/50' : 'hover:text-white hover:bg-white/5'}`}
                         >
                             <span className="flex items-center gap-1.5"><PlayCircle size={14} /> Run</span>
                         </button>
                         <button 
                             onClick={() => setMode(AppMode.LOOP)}
+                            aria-pressed={mode === AppMode.LOOP}
                             className={`px-4 py-1.5 rounded-md transition-all font-medium ${mode === AppMode.LOOP ? 'bg-pink-600 text-white shadow-lg shadow-pink-900/50' : 'hover:text-white hover:bg-white/5'}`}
                         >
                             <span className="flex items-center gap-1.5"><Repeat size={14} /> Loop</span>
@@ -486,8 +490,11 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
 
                     {/* Executor Select */}
                     <div className="flex items-center gap-2">
-                        <span className="text-xs uppercase font-bold tracking-wider text-slate-500">Agent</span>
+                        <span className="text-xs uppercase font-bold tracking-wider text-slate-500">
+                            <label htmlFor="agent-select">Agent</label>
+                        </span>
                         <select 
+                            id="agent-select"
                             value={executor} 
                             onChange={(e) => setExecutor(e.target.value)}
                             className="bg-white/5 border border-white/10 rounded px-2 py-1.5 text-slate-200 text-xs focus:ring-1 focus:ring-purple-500 outline-none hover:bg-white/10 transition-colors"
@@ -538,6 +545,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                         }
                     }}
                     placeholder={mode === AppMode.LOOP ? "Describe the task you want Heidi to complete..." : "Ask Heidi a question or give a command..."}
+                    aria-label="Prompt input"
                     disabled={isSending || isRunning}
                     className="w-full bg-black/20 border border-white/10 text-white placeholder-slate-500/70 rounded-xl p-4 pr-16 focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 outline-none resize-none min-h-[60px] max-h-[200px] shadow-inner disabled:opacity-50 disabled:cursor-not-allowed transition-all group-hover:bg-black/30"
                     rows={1}
@@ -549,6 +557,8 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                         <button
                             onClick={handleStart}
                             disabled={!prompt.trim() || isSending}
+                            aria-label={isSending ? "Sending..." : "Send message"}
+                            title={mode === AppMode.LOOP ? "Start task" : "Send message"}
                             className={`p-2.5 rounded-lg flex items-center justify-center transition-all duration-300 ${
                                 prompt.trim() && !isSending ? 'bg-gradient-to-tr from-purple-600 to-pink-600 hover:shadow-lg hover:shadow-purple-500/30 text-white transform hover:scale-105' : 'bg-white/10 text-slate-500 cursor-not-allowed'
                             }`}
@@ -565,6 +575,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                                 : 'bg-red-500/10 hover:bg-red-500/20 text-red-300 border-red-500/20 hover:border-red-500/40'
                             }`}
                             title="Stop Run"
+                            aria-label={isCancelling ? "Stopping..." : "Stop run"}
                         >
                            {isCancelling ? <Loader2 size={20} className="animate-spin" /> : <StopCircle size={20} />}
                         </button>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { RunSummary } from '../types';
-import { api } from '../api/heidi';
+import { api } from '../services/heidi';
 import { RefreshCw, Settings, MessageSquare, Circle, CheckCircle, XCircle, AlertTriangle, PanelLeft, User, Sparkles } from 'lucide-react';
 
 interface SidebarProps {
@@ -61,6 +61,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
             onClick={onToggle}
             className="text-slate-400 hover:text-white transition-colors p-1 rounded-md hover:bg-white/5"
             title="Close Sidebar"
+            aria-label="Close sidebar"
         >
             <PanelLeft size={20} />
         </button>
@@ -70,6 +71,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
       <div className="p-2 space-y-1 mt-2">
         <button
           onClick={() => onNavigate('chat')}
+          aria-current={currentView === 'chat' ? 'page' : undefined}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
             currentView === 'chat' && !selectedRunId 
             ? 'bg-gradient-to-r from-purple-900/50 to-pink-900/20 text-pink-200 border border-purple-500/30' 
@@ -82,6 +84,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
 
         <button
           onClick={() => onNavigate('settings')}
+          aria-current={currentView === 'settings' ? 'page' : undefined}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
             currentView === 'settings' 
             ? 'bg-gradient-to-r from-purple-900/50 to-pink-900/20 text-pink-200 border border-purple-500/30' 
@@ -96,7 +99,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
       {/* History Header */}
       <div className="px-4 pt-6 pb-2 flex items-center justify-between text-slate-400">
         <span className="text-xs font-bold uppercase tracking-wider text-purple-300/70">Recent Runs</span>
-        <button onClick={fetchRuns} className="hover:text-pink-300 transition-colors" title="Refresh history">
+        <button
+          onClick={fetchRuns}
+          className="hover:text-pink-300 transition-colors"
+          title="Refresh history"
+          aria-label="Refresh history"
+        >
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
