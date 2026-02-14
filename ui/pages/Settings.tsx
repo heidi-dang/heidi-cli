@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getSettings, saveSettings, api } from '../api/heidi';
+import { getSettings, saveSettings, api } from '../services/heidi';
 import { Save, Server, Wifi, AlertTriangle, PanelLeft } from 'lucide-react';
 
 interface SettingsProps {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { api, getSettings } from '../api/heidi';
+import { api, getSettings } from '../services/heidi';
 import { Agent, AppMode, RunEvent, RunStatus } from '../types';
 import { 
   Send, Repeat, StopCircle, CheckCircle, AlertCircle, Loader2, PlayCircle, PanelLeft,
@@ -340,6 +340,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                 onClick={onToggleSidebar} 
                 className="text-slate-400 hover:text-white transition-colors p-1 rounded hover:bg-white/5"
                 title="Open Sidebar"
+                aria-label="Open Sidebar"
                >
                    <PanelLeft size={20} />
                </button>
