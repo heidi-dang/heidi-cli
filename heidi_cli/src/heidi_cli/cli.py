@@ -1111,6 +1111,12 @@ def copilot_chat(
     """Send a single prompt and print the assistant response."""
     from .copilot_runtime import CopilotRuntime
     from .logging import redact_secrets
+    from .orchestrator.artifacts import TaskArtifact
+    from datetime import datetime
+
+    slug = prompt[:50].lower().replace(" ", "_")
+    artifact = TaskArtifact(slug=f"chat_{slug}")
+    artifact.content = f"# Chat: {prompt}\n\nCreated: {datetime.utcnow().isoformat()}\n\n"
 
     async def _run():
         rt = CopilotRuntime(model=model)
@@ -1119,17 +1125,26 @@ def copilot_chat(
             try:
                 text = await rt.send_and_wait(prompt, timeout_s=timeout)
                 console.print(text)
+                sys.stdout.flush()
+                artifact.content += f"## Response\n{text}\n"
+                artifact.status = "completed"
             except asyncio.TimeoutError:
                 console.print(f"[yellow]Chat timed out after {timeout} seconds[/yellow]")
+                artifact.content += f"## Error\nTimed out after {timeout} seconds\n"
+                artifact.status = "failed"
                 raise typer.Exit(1)
             except Exception as e:
                 console.print(f"[red]Chat error: {redact_secrets(str(e))}[/red]")
+                artifact.content += f"## Error\n{str(e)}\n"
+                artifact.status = "failed"
                 raise typer.Exit(1)
         except Exception as e:
             console.print(f"[red]Failed to start Copilot: {redact_secrets(str(e))}[/red]")
+            artifact.status = "failed"
             raise typer.Exit(1)
         finally:
             await rt.stop()
+            artifact.save()
 
     asyncio.run(_run())
 
@@ -1338,6 +1353,13 @@ def run(
     setup_global_logging()
     run_id = HeidiLogger.init_run()
 
+    from .orchestrator.artifacts import TaskArtifact
+    from datetime import datetime
+
+    slug = prompt[:50].lower().replace(" ", "_")
+    artifact = TaskArtifact(slug=f"run_{slug}")
+    artifact.content = f"# Run: {prompt}\n\nCreated: {datetime.utcnow().isoformat()}\n\nExecutor: {executor}\nWorkdir: {workdir}\n\n"
+
     HeidiLogger.write_run_meta(
         {
             "run_id": run_id,
@@ -1352,12 +1374,19 @@ def run(
         try:
             result = await exec_impl.run(prompt, workdir)
             console.print(result.output)
+            sys.stdout.flush()
+            artifact.content += f"## Result\n{result.output}\n"
+            artifact.status = "completed" if result.ok else "failed"
             HeidiLogger.write_run_meta({"status": "completed", "ok": result.ok})
         except Exception as e:
             error_msg = f"Run failed: {e}"
             HeidiLogger.error(error_msg)
+            artifact.content += f"## Error\n{str(e)}\n"
+            artifact.status = "failed"
             HeidiLogger.write_run_meta({"status": "failed", "error": str(e)})
             raise typer.Exit(1)
+        finally:
+            artifact.save()
 
     asyncio.run(_run())
 
