@@ -4,8 +4,6 @@ import os
 import shutil
 import subprocess
 import time
-from pathlib import Path
-from typing import Optional
 
 import httpx
 from rich.console import Console
@@ -80,7 +78,7 @@ class SetupWizard:
 
         # Check for legacy .heidi/
         if self.legacy_heidi:
-            table.add_row(f"Legacy ./.heidi/", f"⚠️  Found at {self.legacy_heidi}")
+            table.add_row("Legacy ./.heidi/", f"⚠️  Found at {self.legacy_heidi}")
 
         # Check tasks dir (project)
         tasks_dir = ConfigManager.tasks_dir()
@@ -180,7 +178,6 @@ class SetupWizard:
 
         # Test Copilot status first
         console.print("\nRunning Copilot status...")
-        copilot_status_ok = False
         copilot_status_output = ""
         try:
             result = subprocess.run(
@@ -193,7 +190,6 @@ class SetupWizard:
             copilot_status_output = result.stdout + result.stderr
             if result.returncode == 0 and "isAuthenticated=True" in copilot_status_output:
                 console.print("✅ heidi copilot status: PASS")
-                copilot_status_ok = True
             else:
                 console.print("⚠️  heidi copilot status: FAIL")
         except subprocess.TimeoutExpired:

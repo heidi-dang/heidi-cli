@@ -80,7 +80,7 @@ def open_url(url: str) -> None:
 
         webbrowser.open(url)
     except Exception:
-        console.print(f"[yellow]Could not open browser automatically.[/yellow]")
+        console.print("[yellow]Could not open browser automatically.[/yellow]")
         console.print(f"[cyan]Open manually: {url}[/cyan]")
 
 
@@ -1008,7 +1008,6 @@ def ui_cmd(
         stop_backend,
         stop_ui,
     )
-    import webbrowser
     from rich.panel import Panel
     import signal
     import sys
@@ -1162,7 +1161,6 @@ def start_ui(
 
     ui_dir_path = Path(ui_dir) if ui_dir else None
 
-    import webbrowser
     from .launcher import (
         start_backend,
         start_ui_dev_server,
@@ -1273,7 +1271,6 @@ def start_backend_cmd(
 ) -> None:
     """Start the Heidi API server only."""
     from .launcher import start_backend, is_backend_running
-    import webbrowser
 
     if is_backend_running(host, port):
         console.print(f"[yellow]Backend already running on http://{host}:{port}[/yellow]")

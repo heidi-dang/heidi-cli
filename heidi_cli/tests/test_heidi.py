@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-from pathlib import Path
 from heidi_cli.orchestrator.plan import extract_routing, parse_routing
 from heidi_cli.logging import redact_secrets
 from heidi_cli.orchestrator.workspace import PatchApplicator
