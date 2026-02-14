@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 
-
 PERSONAS = {
     "default": {
         "system_prefix": "You are a helpful coding assistant.",

@@ -2024,7 +2024,7 @@ def ui_build_cmd(
 
     if ui_cache.exists() and not force:
         console.print(f"[green]UI already built at: {ui_cache}[/green]")
-        console.print(f"Use --force to rebuild")
+        console.print("Use --force to rebuild")
         return
 
     console.print(f"Building UI from: {ui_source}")
