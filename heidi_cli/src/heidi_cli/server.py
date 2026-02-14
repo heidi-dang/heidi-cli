@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
 from pathlib import Path
 from typing import Optional, List
 
@@ -750,6 +751,34 @@ async def auth_status(request: Request):
     }
 
 
+async def _run_subprocess_async(
+    cmd: List[str], timeout: float = 30
+) -> subprocess.CompletedProcess:
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=proc.returncode,
+            stdout=stdout.decode() if stdout else "",
+            stderr=stderr.decode() if stderr else "",
+        )
+    except asyncio.TimeoutError:
+        if proc:
+            try:
+                proc.kill()
+                await proc.communicate()
+            except ProcessLookupError:
+                pass
+        raise subprocess.TimeoutExpired(cmd, timeout)
+    except Exception as e:
+        raise e
+
+
 # UI calls /api/* only - add aliases for OpenCode endpoints
 @app.get("/api/connect/opencode/openai/status")
 async def api_opencode_openai_status():
@@ -793,13 +822,9 @@ async def opencode_openai_status():
             "models": [],
         }
 
-    import subprocess
-
     try:
-        result = subprocess.run(
+        result = await _run_subprocess_async(
             ["opencode", "models", "openai"],
-            capture_output=True,
-            text=True,
             timeout=30,
         )
         if result.returncode == 0 and result.stdout.strip():
@@ -829,13 +854,10 @@ async def opencode_openai_status():
 @app.post("/connect/opencode/openai/test")
 async def opencode_openai_test():
     """Test OpenCode OpenAI connection."""
-    import subprocess
 
     try:
-        result = subprocess.run(
+        result = await _run_subprocess_async(
             ["opencode", "models", "openai"],
-            capture_output=True,
-            text=True,
             timeout=30,
         )
         if result.returncode != 0:
@@ -851,10 +873,8 @@ async def opencode_openai_test():
         return {"pass": False, "error": str(e), "output": ""}
 
     try:
-        result = subprocess.run(
+        result = await _run_subprocess_async(
             ["opencode", "run", "say ok", f"--model=openai/{first_model.split('/')[-1]}"],
-            capture_output=True,
-            text=True,
             timeout=60,
         )
         if result.returncode == 0:
