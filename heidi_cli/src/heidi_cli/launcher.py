@@ -14,6 +14,8 @@ from typing import Dict, Optional, Tuple
 from rich.console import Console
 from rich.progress import SpinnerColumn, TextColumn, Progress
 
+from .config import ConfigManager
+
 console = Console()
 
 
@@ -53,8 +55,8 @@ def find_repo_root(start_path: Optional[Path] = None) -> Optional[Path]:
 
 
 def get_heidi_dir() -> Path:
-    """Get the .heidi directory path."""
-    return Path.cwd() / ".heidi"
+    """Get the global config directory path."""
+    return ConfigManager.config_dir()
 
 
 def get_pids_file() -> Path:

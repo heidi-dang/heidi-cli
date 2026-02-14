@@ -19,37 +19,76 @@ class CopilotRuntime:
         cwd: Optional[Path] = None,
     ):
         self.model = model or os.getenv("COPILOT_MODEL", "gpt-5")
-        
-        # Try env vars first, then fall back to ConfigManager
-        self.github_token = (
-            github_token
-            or os.getenv("COPILOT_GITHUB_TOKEN")
-            or os.getenv("GH_TOKEN")
-            or os.getenv("GITHUB_TOKEN")
-        )
-        
+
+        # Token precedence (highest to lowest):
+        # 1. Explicit parameter passed to constructor
+        # 2. GH_TOKEN env var (GitHub CLI token)
+        # 3. GITHUB_TOKEN env var (GitHub Actions / general use)
+        # 4. Token stored via ConfigManager (keyring or secrets file)
+        # Note: If multiple env vars are set, GH_TOKEN takes precedence and a warning is logged.
+        gh_token_env = os.getenv("GH_TOKEN")
+        github_token_env = os.getenv("GITHUB_TOKEN")
+
+        if gh_token_env and github_token_env:
+            import sys
+
+            print(
+                "[yellow]Warning: Both GH_TOKEN and GITHUB_TOKEN are set.[/yellow]",
+                "[yellow]Using GH_TOKEN (GH_TOKEN takes precedence).[/yellow]",
+                file=sys.stderr,
+            )
+
+        # Use parameter if provided, otherwise fall back to env vars
+        if github_token:
+            self.github_token = github_token
+            self._token_source = "constructor argument"
+        elif gh_token_env:
+            self.github_token = gh_token_env
+            self._token_source = "GH_TOKEN"
+            import sys
+
+            print(
+                "[yellow]Warning: Using token from GH_TOKEN env var.[/yellow]",
+                "[yellow]This overrides stored OAuth token. Copilot may fail if env var token lacks Copilot scope.[/yellow]",
+                file=sys.stderr,
+            )
+        elif github_token_env:
+            self.github_token = github_token_env
+            self._token_source = "GITHUB_TOKEN"
+            import sys
+
+            print(
+                "[yellow]Warning: Using token from GITHUB_TOKEN env var.[/yellow]",
+                "[yellow]This overrides stored OAuth token. Copilot may fail if env var token lacks Copilot scope.[/yellow]",
+                file=sys.stderr,
+            )
+        else:
+            self.github_token = None
+            self._token_source = None
+
         if not self.github_token:
             try:
                 from .config import ConfigManager
+
                 self.github_token = ConfigManager.get_github_token()
             except Exception:
                 pass
-        
+
         self.cwd = cwd or Path.cwd()
-        
+
         client_config = {
             "log_level": log_level,
         }
-        
+
         if self.github_token:
             client_config["github_token"] = self.github_token
             client_config["use_logged_in_user"] = False
         else:
             client_config["use_logged_in_user"] = True
-        
+
         # Add workspace/cwd if supported by SDK
         client_config["cwd"] = str(self.cwd)
-        
+
         self.client = CopilotClient(client_config)
         self._session = None
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-from pathlib import Path
 from heidi_cli.orchestrator.plan import extract_routing, parse_routing
 from heidi_cli.logging import redact_secrets
 from heidi_cli.orchestrator.workspace import PatchApplicator
@@ -100,19 +99,96 @@ class TestWorkspace:
 
 
 class TestArtifacts:
-    def test_tasks_dir_is_repo_root(self):
+    def test_tasks_dir_is_in_project_root(self):
         from heidi_cli.config import ConfigManager
-        tasks_dir = ConfigManager.TASKS_DIR
-        assert tasks_dir == Path("./tasks")
 
-    def test_heidi_dir_is_project_local(self):
+        tasks_dir = ConfigManager.tasks_dir()
+        assert tasks_dir.name == "tasks"
+        assert tasks_dir.parent == ConfigManager.project_root()
+
+    def test_heidi_dir_is_global_config(self):
         import os
-        from heidi_cli.config import ConfigManager
+        from heidi_cli.config import ConfigManager, heidi_config_dir
+
         original_cwd = os.getcwd()
         try:
             os.chdir("/tmp")
             heidi_dir = ConfigManager.heidi_dir()
-            assert str(heidi_dir).startswith("/tmp")
+            expected = heidi_config_dir()
+            assert heidi_dir == expected
+        finally:
+            os.chdir(original_cwd)
+
+    def test_config_dir_is_global_not_cwd(self, tmp_path):
+        import os
+        from heidi_cli.config import ConfigManager, heidi_config_dir
+
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            config_dir = ConfigManager.config_dir()
+            expected = heidi_config_dir()
+            assert config_dir == expected
+            assert not str(config_dir).startswith(str(tmp_path))
+        finally:
+            os.chdir(original_cwd)
+
+    def test_secrets_file_permissions_0600(self, tmp_path):
+        import os
+        import stat
+        from heidi_cli.config import ConfigManager
+
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            ConfigManager.ensure_dirs()
+            secrets_file = ConfigManager.secrets_file()
+            if secrets_file.exists():
+                mode = stat.S_IMODE(secrets_file.stat().st_mode)
+                assert mode == 0o600, f"Expected 0o600, got {oct(mode)}"
+        finally:
+            os.chdir(original_cwd)
+
+    def test_legacy_heidi_detection(self, tmp_path):
+        import os
+        from heidi_cli.config import check_legacy_heidi_dir
+
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            legacy = check_legacy_heidi_dir()
+            assert legacy is None
+            (tmp_path / ".heidi").mkdir()
+            legacy = check_legacy_heidi_dir()
+            assert legacy is not None
+            assert legacy.name == ".heidi"
+        finally:
+            os.chdir(original_cwd)
+
+    def test_project_root_detection_git(self, tmp_path):
+        import os
+        from heidi_cli.config import find_project_root
+
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = find_project_root()
+            assert result == tmp_path
+            (tmp_path / ".git").mkdir()
+            result = find_project_root()
+            assert result == tmp_path
+        finally:
+            os.chdir(original_cwd)
+
+    def test_project_root_detection_cwd_fallback(self, tmp_path):
+        import os
+        from heidi_cli.config import find_project_root
+
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = find_project_root()
+            assert result == tmp_path
         finally:
             os.chdir(original_cwd)
 
@@ -128,7 +204,7 @@ class TestArtifacts:
             artifact = TaskArtifact(
                 slug="test-task",
                 content="Token: ghp_abcdefghijklmnopqrstuvwxyz1234567890\nHello world",
-                audit_content="COPILOT_TOKEN=sk-test123\nAudit result: pass"
+                audit_content="COPILOT_TOKEN=sk-test123\nAudit result: pass",
             )
             artifact.save()
 
@@ -170,7 +246,7 @@ class TestArtifacts:
             artifact = TaskArtifact(
                 slug="test-all-patterns",
                 content="\n".join(secret_patterns),
-                audit_content="\n".join(secret_patterns)
+                audit_content="\n".join(secret_patterns),
             )
             artifact.save()
 
@@ -202,9 +278,7 @@ class TestArtifacts:
             slug = sanitize_slug(task_text)
 
             artifact = TaskArtifact(
-                slug=slug,
-                content="# Task content",
-                audit_content="# Audit content"
+                slug=slug, content="# Task content", audit_content="# Audit content"
             )
             artifact.save()
 

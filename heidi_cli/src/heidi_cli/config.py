@@ -2,11 +2,104 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 from pathlib import Path
 from typing import Any, Optional
 
 import keyring
 from pydantic import BaseModel
+
+
+def find_project_root(start_path: Optional[Path] = None) -> Path:
+    """Find the project root by walking up for .git folder, else fallback to cwd."""
+    if start_path is None:
+        start_path = Path.cwd()
+
+    current = start_path.resolve()
+    while current != current.parent:
+        if (current / ".git").exists():
+            return current
+        current = current.parent
+
+    return Path.cwd()
+
+
+def heidi_config_dir() -> Path:
+    """Get the global config directory for Heidi CLI.
+
+    Priority:
+    1. HEIDI_HOME env var (power users / CI override)
+    2. OS default:
+       - Linux: ${XDG_CONFIG_HOME:-$HOME/.config}/heidi
+       - macOS: ~/Library/Application Support/Heidi
+       - Windows: %APPDATA%/Heidi (Roaming)
+    """
+    override = os.environ.get("HEIDI_HOME")
+    if override:
+        return Path(override).expanduser().resolve()
+
+    system = platform.system().lower()
+
+    if system == "windows":
+        base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+        return Path(base) / "Heidi"
+
+    if system == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Heidi"
+
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg) if xdg else (Path.home() / ".config")
+    return base / "heidi"
+
+
+def heidi_state_dir() -> Optional[Path]:
+    """Get the optional state directory for Heidi CLI.
+
+    - Linux: ${XDG_STATE_HOME:-$HOME/.local/state}/heidi
+    - macOS: ~/Library/Application Support/Heidi (uses same as config)
+    - Windows: %LOCALAPPDATA%/Heidi
+    """
+    system = platform.system().lower()
+
+    if system == "windows":
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return Path(base) / "Heidi"
+
+    if system == "darwin":
+        return None
+
+    xdg_state = os.environ.get("XDG_STATE_HOME")
+    base = Path(xdg_state) if xdg_state else (Path.home() / ".local" / "state")
+    return base / "heidi"
+
+
+def heidi_cache_dir() -> Optional[Path]:
+    """Get the optional cache directory for Heidi CLI.
+
+    - Linux: ${XDG_CACHE_HOME:-$HOME/.cache}/heidi
+    - macOS: ~/Library/Caches/Heidi
+    - Windows: %LOCALAPPDATA%/Heidi/Cache
+    """
+    system = platform.system().lower()
+
+    if system == "windows":
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return Path(base) / "Heidi" / "Cache"
+
+    if system == "darwin":
+        return Path.home() / "Library" / "Caches" / "Heidi"
+
+    xdg_cache = os.environ.get("XDG_CACHE_HOME")
+    base = Path(xdg_cache) if xdg_cache else (Path.home() / ".cache")
+    return base / "heidi"
+
+
+def check_legacy_heidi_dir() -> Optional[Path]:
+    """Check for legacy ./.heidi/ in current project directory."""
+    legacy_path = Path.cwd() / ".heidi"
+    if legacy_path.exists() and legacy_path.is_dir():
+        return legacy_path
+    return None
 
 
 class HeidiConfig(BaseModel):
@@ -48,33 +141,51 @@ class HeidiSecrets(BaseModel):
 
 
 class ConfigManager:
-    TASKS_DIR = Path("./tasks")
+    TASKS_DIR_NAME = "tasks"
+
+    @classmethod
+    def config_dir(cls) -> Path:
+        """Get the global config directory (for secrets/config)."""
+        return heidi_config_dir()
+
+    @classmethod
+    def project_root(cls) -> Path:
+        """Get the project root (where tasks are stored)."""
+        return find_project_root()
+
+    @classmethod
+    def tasks_dir(cls) -> Path:
+        """Get the tasks directory (always in project root)."""
+        return cls.project_root() / cls.TASKS_DIR_NAME
 
     @classmethod
     def heidi_dir(cls) -> Path:
-        return Path.cwd() / ".heidi"
+        """Get the global config directory (legacy alias for compatibility)."""
+        return cls.config_dir()
 
     @classmethod
     def config_file(cls) -> Path:
-        return cls.heidi_dir() / "config.json"
+        return cls.config_dir() / "config.json"
 
     @classmethod
     def secrets_file(cls) -> Path:
-        return cls.heidi_dir() / "secrets.json"
+        return cls.config_dir() / "secrets.json"
 
     @classmethod
     def runs_dir(cls) -> Path:
-        return cls.heidi_dir() / "runs"
+        return cls.config_dir() / "runs"
 
     @classmethod
     def backups_dir(cls) -> Path:
-        return cls.heidi_dir() / "backups"
+        return cls.config_dir() / "backups"
 
     @classmethod
     def ensure_dirs(cls) -> None:
-        cls.heidi_dir().mkdir(parents=True, exist_ok=True)
+        cls.config_dir().mkdir(parents=True, exist_ok=True)
         cls.runs_dir().mkdir(parents=True, exist_ok=True)
         cls.backups_dir().mkdir(parents=True, exist_ok=True)
+        cls.tasks_dir().mkdir(parents=True, exist_ok=True)
+        os.chmod(cls.secrets_file(), 0o600) if cls.secrets_file().exists() else None
 
     @classmethod
     def load_config(cls) -> HeidiConfig:

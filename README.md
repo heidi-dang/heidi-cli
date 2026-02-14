@@ -55,7 +55,7 @@ Heidi-CLI provides a flexible system for running AI-powered agent workflows with
 
 **Linux/macOS:**
 ```bash
-curl -sSL https://raw.githubusercontent.com/heidi-dang/heidi-cli/main/install.sh | bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/heidi-dang/heidi-cli/main/install.sh)"
 ```
 
 **Windows (PowerShell):**

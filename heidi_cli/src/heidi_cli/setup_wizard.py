@@ -4,8 +4,6 @@ import os
 import shutil
 import subprocess
 import time
-from pathlib import Path
-from typing import Optional
 
 import httpx
 from rich.console import Console
@@ -14,45 +12,10 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
-from .config import ConfigManager
+from .config import ConfigManager, check_legacy_heidi_dir, find_project_root, heidi_config_dir
 
 
 console = Console()
-
-
-def find_repo_root(start_path: Optional[Path] = None) -> Optional[Path]:
-    """Find the repo root by walking up for .git + heidi_cli or pyproject.toml."""
-    if start_path is None:
-        start_path = Path.cwd()
-
-    current = start_path.resolve()
-    while current != current.parent:
-        has_git = (current / ".git").exists()
-        has_pyproject = (current / "pyproject.toml").exists()
-        has_heidi = (current / "heidi_cli").exists() or (current / "ui").exists()
-
-        if (has_git and has_heidi) or has_pyproject:
-            return current
-        current = current.parent
-
-    has_git = (current / ".git").exists()
-    has_pyproject = (current / "pyproject.toml").exists()
-    has_heidi = (current / "heidi_cli").exists() or (current / "ui").exists()
-
-    if (has_git and has_heidi) or has_pyproject:
-        return current
-
-    common_paths = [
-        Path.home() / "heidi-cli",
-        Path.home() / "dev" / "heidi-cli",
-        Path.home() / "projects" / "heidi-cli",
-        Path("/workspace/heidi-cli"),
-    ]
-    for path in common_paths:
-        if (path / ".git").exists() and ((path / "heidi_cli").exists() or (path / "ui").exists()):
-            return path
-
-    return None
 
 
 class SetupWizard:
@@ -61,7 +24,8 @@ class SetupWizard:
         self.openwebui_url = "http://localhost:3000"
         self.openwebui_token = None
         self.github_token = None
-        self.project_root = find_repo_root() or Path.cwd()
+        self.project_root = find_project_root()
+        self.legacy_heidi = check_legacy_heidi_dir()
 
     def run(self) -> None:
         """Run the complete setup wizard."""
@@ -106,16 +70,20 @@ class SetupWizard:
         python_ok = bool(shutil.which("python") or shutil.which("python3") or shutil.which("py"))
         table.add_row("Python", "✅ OK" if python_ok else "❌ Missing")
 
-        # Check state dir
-        state_dir = self.project_root / ".heidi"
+        # Check config dir (global)
+        config_dir = heidi_config_dir()
         table.add_row(
-            "State dir: ./.heidi/", "✅ Exists" if state_dir.exists() else "ℹ️  Will create"
+            "Config dir (global)", "✅ Exists" if config_dir.exists() else "ℹ️  Will create"
         )
 
-        # Check tasks dir
-        tasks_dir = self.project_root / "tasks"
+        # Check for legacy .heidi/
+        if self.legacy_heidi:
+            table.add_row("Legacy ./.heidi/", f"⚠️  Found at {self.legacy_heidi}")
+
+        # Check tasks dir (project)
+        tasks_dir = ConfigManager.tasks_dir()
         table.add_row(
-            "Tasks dir: ./tasks/", "✅ Exists" if tasks_dir.exists() else "ℹ️  Will create"
+            "Tasks dir (project)", "✅ Exists" if tasks_dir.exists() else "ℹ️  Will create"
         )
 
         # Heidi server base
@@ -124,17 +92,23 @@ class SetupWizard:
         console.print(table)
 
     def _step2_initialize_project(self) -> None:
-        """Step 2: Initialize project state - Create ./.heidi/ and required config files."""
-        console.print("\n[bold]Step 2: Initialize Project State[/bold]")
+        """Step 2: Initialize config and state directories."""
+        console.print("\n[bold]Step 2: Initialize Heidi Configuration[/bold]")
+
+        # Check for legacy .heidi/ and warn
+        if self.legacy_heidi:
+            console.print(f"\n[yellow]Found legacy .heidi/ at {self.legacy_heidi}[/yellow]")
+            console.print(f"[dim]New default is {heidi_config_dir()}[/dim]")
+            console.print("[dim]Run 'heidi migrate' later to move config if desired.[/dim]\n")
 
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            task = progress.add_task("Creating project directories...", total=None)
+            task = progress.add_task("Creating configuration directories...", total=None)
 
-            # Create .heidi/ directory
+            # Create global config directory
             ConfigManager.ensure_dirs()
 
             # Ensure secrets file permissions 0600
@@ -142,42 +116,13 @@ class SetupWizard:
             if secrets_file.exists():
                 secrets_file.chmod(0o600)
 
-            progress.update(task, description="Ensuring .heidi/ is gitignored...")
+            progress.update(task, description="Ensuring tasks dir exists...")
 
-            gitignore_path = self.project_root / ".gitignore"
-            heidi_ignored = False
-            gitignore_content = ""
+            # Create tasks dir in project
+            tasks_dir = ConfigManager.tasks_dir()
+            tasks_dir.mkdir(parents=True, exist_ok=True)
 
-            if gitignore_path.exists():
-                gitignore_content = gitignore_path.read_text()
-                if ".heidi/" in gitignore_content or ".heidi" in gitignore_content:
-                    heidi_ignored = True
-
-            if not heidi_ignored:
-                console.print("\n[yellow]Warning: .heidi/ is not in .gitignore[/yellow]")
-                if Confirm.ask("Add '.heidi/' to .gitignore now?", default=True):
-                    try:
-                        with open(gitignore_path, "a") as f:
-                            if gitignore_content and not gitignore_content.endswith("\n"):
-                                f.write("\n")
-                            elif not gitignore_content:
-                                f.write("# Heidi CLI\n")
-                            f.write(".heidi/\n")
-                        console.print("[green]Added .heidi/ to .gitignore[/green]")
-                        heidi_ignored = True
-                    except Exception as e:
-                        console.print(f"[red]Failed to update .gitignore: {e}[/red]")
-                        console.print(
-                            "Please add '.heidi/' manually to avoid committing sensitive data."
-                        )
-                else:
-                    console.print(
-                        "Please add '.heidi/' manually to avoid committing sensitive data."
-                    )
-            else:
-                console.print("[dim].heidi/ is properly gitignored[/dim]")
-
-            progress.update(task, description="Project initialized!")
+            progress.update(task, description="Configuration initialized!")
 
         console.print("✅ Project state initialized")
 
@@ -233,7 +178,6 @@ class SetupWizard:
 
         # Test Copilot status first
         console.print("\nRunning Copilot status...")
-        copilot_status_ok = False
         copilot_status_output = ""
         try:
             result = subprocess.run(
@@ -246,7 +190,6 @@ class SetupWizard:
             copilot_status_output = result.stdout + result.stderr
             if result.returncode == 0 and "isAuthenticated=True" in copilot_status_output:
                 console.print("✅ heidi copilot status: PASS")
-                copilot_status_ok = True
             else:
                 console.print("⚠️  heidi copilot status: FAIL")
         except subprocess.TimeoutExpired:

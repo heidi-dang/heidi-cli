@@ -18,6 +18,7 @@ console = Console()
 
 SECRET_PATTERNS = [
     (re.compile(r"(ghp_[a-zA-Z0-9]{36})"), "***REDACTED***"),
+    (re.compile(r"(gho_[a-zA-Z0-9]{36})"), "***REDACTED***"),
     (re.compile(r"(github_pat_[a-zA-Z0-9_]{22,})"), "***REDACTED***"),
     (re.compile(r"(COPILOT_GITHUB_TOKEN=)([^\s]*)"), r"\1***REDACTED***"),
     (re.compile(r"(COPILOT_TOKEN=)([^\s]*)"), r"\1***REDACTED***"),
@@ -26,7 +27,7 @@ SECRET_PATTERNS = [
     (re.compile(r"(GITHUB_PAT=)([^\s]*)"), r"\1***REDACTED***"),
     (re.compile(r"(OPENAI_API_KEY=)([^\s]*)"), r"\1***REDACTED***"),
     (re.compile(r"(ANTHROPIC_API_KEY=)([^\s]*)"), r"\1***REDACTED***"),
-    (re.compile(r'("token":\s*")[^"]+'), r'\1***REDACTED***'),
+    (re.compile(r'("token":\s*")[^"]+'), r"\1***REDACTED***"),
 ]
 
 

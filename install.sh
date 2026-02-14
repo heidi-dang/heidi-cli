@@ -4,6 +4,28 @@ set -e
 # Heidi CLI One-Click Installer for Linux/macOS
 # Clones repo and installs in editable mode with venv
 
+# Save terminal state for cleanup
+ORIG_STTY=""
+if [ -t 0 ]; then
+    ORIG_STTY="$(stty -g 2>/dev/null || true)"
+fi
+
+# Prevent Ctrl+S freeze during install
+stty -ixon 2>/dev/null || true
+
+# Cleanup function to restore terminal state
+cleanup() {
+    if [ -n "$ORIG_STTY" ]; then
+        stty "$ORIG_STTY" 2>/dev/null || true
+    else
+        stty sane 2>/dev/null || true
+        stty echo 2>/dev/null || true
+    fi
+    tput cnorm 2>/dev/null || true
+}
+
+trap cleanup EXIT INT TERM
+
 echo "Heidi CLI Installer"
 echo "===================="
 
@@ -69,7 +91,7 @@ if [ "$EXISTING_INSTALL" = true ] || [ "$EXISTING_VENV" = true ]; then
     echo "  [2] Update existing installation"
     echo "  [3] Cancel"
     echo ""
-    read -p "Choose option [1]: " -r choice
+    read -r -p "Choose option [1]: " -r choice < /dev/tty
     choice=${choice:-1}
 
     case $choice in
