@@ -196,6 +196,25 @@ else
     git clone --depth 1 https://github.com/heidi-dang/heidi-cli-ui.git "$UI_DIR"
 fi
 
+# Create global config/state/cache dirs (no secrets) so CI + UX are deterministic
+create_global_dirs() {
+    if [ -n "$HEIDI_HOME" ]; then
+        mkdir -p "$HEIDI_HOME"
+        return
+    fi
+
+    if [ "$(uname -s)" = "Darwin" ]; then
+        mkdir -p "$HOME/Library/Application Support/Heidi" \
+                 "$HOME/Library/Caches/Heidi"
+    else
+        mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/heidi" \
+                 "${XDG_STATE_HOME:-$HOME/.local/state}/heidi" \
+                 "${XDG_CACHE_HOME:-$HOME/.cache}/heidi"
+    fi
+}
+
+create_global_dirs
+
 echo ""
 echo "Heidi CLI installed successfully!"
 echo ""
@@ -209,3 +228,4 @@ echo ""
 echo "To start the UI:"
 echo "  heidi serve --ui"
 echo "  # Or: heidi start ui"
+# trigger CI

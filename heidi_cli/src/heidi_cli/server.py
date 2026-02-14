@@ -8,9 +8,12 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 from pydantic import BaseModel
 import uvicorn
+
+from .auth_db import init_db
+from .auth_middleware import AuthMiddleware
 
 # Optional API key protection:
 # - If HEIDI_API_KEY is set, protected endpoints require:
@@ -53,6 +56,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(AuthMiddleware)
+
+init_db()
 
 
 def _require_api_key(request: Request, stream_key: Optional[str] = None) -> None:
@@ -305,3 +312,83 @@ async def loop(request: LoopRequest, http_request: Request):
 
 def start_server(host: str = "0.0.0.0", port: int = 7777):
     uvicorn.run(app, host=host, port=port)
+
+
+@app.get("/auth/login/{provider}")
+async def auth_login(provider: str):
+    """Initiate OAuth login."""
+    from .auth_oauth import create_github_auth_url
+
+    if provider != "github":
+        raise HTTPException(status_code=400, detail="Unsupported provider")
+
+    auth_url, state = create_github_auth_url()
+    return {"auth_url": auth_url, "state": state}
+
+
+@app.get("/auth/callback/{provider}")
+async def auth_callback(provider: str, code: str, state: str):
+    """OAuth callback handler."""
+    from .auth_oauth import complete_github_login
+
+    if provider != "github":
+        raise HTTPException(status_code=400, detail="Unsupported provider")
+
+    result = await complete_github_login(code, state)
+    if not result:
+        raise HTTPException(status_code=400, detail="Login failed")
+
+    response = RedirectResponse(url="/ui/?logged_in=true")
+    response.set_cookie(
+        key="heidi_session",
+        value=result["session_id"],
+        httponly=True,
+        samesite="lax",
+        max_age=60 * 60 * 24 * 7,
+    )
+    return response
+
+
+@app.post("/auth/logout")
+async def auth_logout(request: Request):
+    """Logout endpoint."""
+    session_id = request.cookies.get("heidi_session")
+    if session_id:
+        from .auth_oauth import logout_session
+
+        logout_session(session_id)
+
+    redirect_url = request.query_params.get("redirect", "/")
+    redirect_response = RedirectResponse(url=redirect_url)
+    redirect_response.delete_cookie("heidi_session")
+    return redirect_response
+
+
+@app.get("/auth/me")
+async def auth_me(request: Request):
+    """Get current user."""
+    if request.state.user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    return {
+        "id": request.state.user.id,
+        "email": request.state.user.email,
+        "name": request.state.user.name,
+        "avatar_url": request.state.user.avatar_url,
+    }
+
+
+@app.get("/auth/status")
+async def auth_status(request: Request):
+    """Get auth status."""
+    return {
+        "authenticated": request.state.user is not None,
+        "user": {
+            "id": request.state.user.id,
+            "email": request.state.user.email,
+            "name": request.state.user.name,
+            "avatar_url": request.state.user.avatar_url,
+        }
+        if request.state.user
+        else None,
+    }

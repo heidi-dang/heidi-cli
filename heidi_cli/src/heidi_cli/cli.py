@@ -725,6 +725,23 @@ def auth_status() -> None:
     else:
         console.print("[yellow]GitHub token: not configured[/yellow]")
 
+    try:
+        import httpx
+
+        response = httpx.get("http://localhost:7777/auth/status", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("authenticated"):
+                user = data.get("user", {})
+                console.print("[green]Session: authenticated[/green]")
+                console.print(f"[cyan]User: {user.get('name')} ({user.get('email')})[/cyan]")
+            else:
+                console.print("[yellow]Session: not authenticated[/yellow]")
+        else:
+            console.print("[yellow]Server auth status: unavailable[/yellow]")
+    except Exception:
+        console.print("[dim]Server not running - start with 'heidi serve' or 'heidi ui'[/dim]")
+
 
 @copilot_app.command("doctor")
 def copilot_doctor() -> None:
@@ -1368,10 +1385,14 @@ def serve(
         console.print("[cyan]Starting UI dev server on http://localhost:3002...[/cyan]")
 
         def start_ui():
+            env = os.environ.copy()
+            env["API_URL"] = f"http://{host}:{port}"
+            env["VITE_HEIDI_SERVER_BASE"] = f"http://{host}:{port}"
+            env["HEIDI_SERVER_BASE"] = f"http://{host}:{port}"
             subprocess.run(
                 ["npm", "run", "dev", "--", "--port", "3002"],
                 cwd=ui_path,
-                env={**os.environ, "API_URL": f"http://{host}:{port}"},
+                env=env,
             )
 
         ui_thread = threading.Thread(target=start_ui, daemon=True)
@@ -1574,7 +1595,9 @@ def start_ui(
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open browser automatically"),
     tunnel: bool = typer.Option(False, "--tunnel", help="Start Cloudflare tunnel"),
     api_url: str = typer.Option(
-        "", "--api-url", help="API URL for UI (default: http://localhost:PORT)"
+        "",
+        "--api-url",
+        help="Backend URL (default: http://localhost:7777, or set HEIDI_SERVER_BASE env)",
     ),
 ) -> None:
     """Start Heidi backend and UI dev server."""
@@ -1664,6 +1687,9 @@ def start_ui(
                             f"[dim]Use this URL in UI Settings if needed[/dim]",
                             title="Cloudflare Tunnel",
                         )
+                    )
+                    console.print(
+                        "\n[yellow]Tip:[/yellow] For production, set HEIDI_AUTH_MODE=required to enforce authentication"
                     )
                     if open_browser:
                         public_ui_url = f"{public_url}/?baseUrl={public_url}"
