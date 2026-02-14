@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List
 
@@ -598,6 +599,7 @@ async def list_models_v1():
     from .copilot_runtime import list_copilot_models
 
     models = []
+    ts = int(datetime.now(timezone.utc).timestamp())
 
     try:
         copilot_models = await list_copilot_models()
@@ -608,7 +610,7 @@ async def list_models_v1():
                     {
                         "id": f"copilot/{mid}",
                         "object": "model",
-                        "created": 1677610602,
+                        "created": ts,
                         "owned_by": "github/copilot",
                     }
                 )
@@ -621,7 +623,7 @@ async def list_models_v1():
                 {
                     "id": f"copilot/{m}",
                     "object": "model",
-                    "created": 1677610602,
+                    "created": ts,
                     "owned_by": "github/copilot",
                 }
             )
@@ -630,7 +632,7 @@ async def list_models_v1():
         {
             "id": "jules/default",
             "object": "model",
-            "created": 1677610602,
+            "created": ts,
             "owned_by": "google/jules",
         }
     )
@@ -659,6 +661,7 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
             executor_name = "ollama"
 
     prompt = "\n".join([f"{m.role}: {m.content}" for m in request.messages])
+    ts = int(datetime.now(timezone.utc).timestamp())
 
     if request.stream:
 
@@ -673,7 +676,7 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
                     await rt.start()
                     try:
                         session = await rt.client.create_session({"model": actual_model or "gpt-5"})
-                        chunks = []
+                        queue = asyncio.Queue()
                         done = asyncio.Event()
 
                         def on_event(event):
@@ -683,11 +686,10 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
                             if t == "assistant.message":
                                 content = getattr(getattr(event, "data", None), "content", None)
                                 if content:
-                                    chunks.append(content)
                                     chunk = {
                                         "id": f"chatcmpl-{run_id[:8]}",
                                         "object": "chat.completion.chunk",
-                                        "created": 1677652288,
+                                        "created": ts,
                                         "model": request.model,
                                         "choices": [
                                             {
@@ -697,16 +699,29 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
                                             }
                                         ],
                                     }
-                                    yield f"data: {json.dumps(chunk)}\n\n"
+                                    queue.put_nowait(f"data: {json.dumps(chunk)}\n\n")
                             elif t == "session.idle":
+                                done.set()
+                            elif t == "session.error":
+                                error_msg = getattr(getattr(event, "data", None), "message", "Unknown error")
+                                queue.put_nowait(f"data: {json.dumps({'error': {'message': error_msg}})}\n\n")
                                 done.set()
 
                         session.on(on_event)
-                        await session.send({"prompt": prompt})
-                        try:
-                            await asyncio.wait_for(done.wait(), timeout=300)
-                        except asyncio.TimeoutError:
-                            pass
+                        asyncio.create_task(session.send({"prompt": prompt}))
+
+                        while not done.is_set():
+                            try:
+                                chunk = await asyncio.wait_for(queue.get(), timeout=1.0)
+                                yield chunk
+                            except asyncio.TimeoutError:
+                                if done.is_set():
+                                    break
+                                continue
+
+                        while not queue.empty():
+                            yield queue.get_nowait()
+
                         yield "data: [DONE]\n\n"
                     finally:
                         await rt.stop()
@@ -716,7 +731,7 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
                     chunk = {
                         "id": f"chatcmpl-{run_id[:8]}",
                         "object": "chat.completion.chunk",
-                        "created": 1677652288,
+                        "created": ts,
                         "model": request.model,
                         "choices": [
                             {"index": 0, "delta": {"content": content}, "finish_reason": "stop"}
@@ -741,7 +756,7 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
         response = {
             "id": f"chatcmpl-{HeidiLogger.init_run()[:8]}",
             "object": "chat.completion",
-            "created": 1677652288,
+            "created": ts,
             "model": request.model,
             "choices": [
                 {
