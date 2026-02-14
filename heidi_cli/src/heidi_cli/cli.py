@@ -39,6 +39,7 @@ persona_app = typer.Typer(help="Persona management")
 start_app = typer.Typer(help="Start services (UI, backend, etc.)", no_args_is_help=True)
 connect_app = typer.Typer(help="Connect to external services (Ollama, OpenCode)")
 opencode_app = typer.Typer(help="OpenCode connections (local, server, OpenAI)")
+ui_app = typer.Typer(help="UI build and management")
 
 app.add_typer(copilot_app, name="copilot")
 app.add_typer(auth_app, name="auth")
@@ -49,6 +50,7 @@ app.add_typer(persona_app, name="persona")
 app.add_typer(start_app, name="start")
 app.add_typer(connect_app, name="connect")
 app.add_typer(opencode_app, name="opencode")
+app.add_typer(ui_app, name="ui")
 
 console = Console()
 json_output = False
@@ -1990,6 +1992,76 @@ def start_server_cmd(
     from .server import start_server
 
     start_server(host=host, port=port)
+
+
+# UI Management Commands
+@ui_app.command("build")
+def ui_build_cmd(
+    force: bool = typer.Option(False, "--force", "-f", help="Force rebuild even if dist exists"),
+) -> None:
+    """Build the UI and output to cache directory."""
+    import shutil
+
+    # Find UI source
+    ui_source = Path(__file__).parent.parent / "ui"
+    if not ui_source.exists():
+        ui_source = Path.cwd() / "ui"
+    if not ui_source.exists():
+        console.print("[red]UI source not found![/red]")
+        raise typer.Exit(1)
+
+    # Determine output directory
+    xdg_cache = os.getenv("XDG_CACHE_HOME", str(Path.home() / ".cache"))
+    ui_cache = Path(xdg_cache) / "heidi" / "ui" / "dist"
+
+    if ui_cache.exists() and not force:
+        console.print(f"[green]UI already built at: {ui_cache}[/green]")
+        console.print(f"Use --force to rebuild")
+        return
+
+    console.print(f"Building UI from: {ui_source}")
+    console.print(f"Output to: {ui_cache}")
+
+    # Install deps and build
+    if not (ui_source / "node_modules").exists():
+        console.print("Installing dependencies...")
+        subprocess.run(["npm", "install"], cwd=ui_source, check=True)
+
+    console.print("Building...")
+    subprocess.run(["npm", "run", "build"], cwd=ui_source, check=True)
+
+    # Copy to cache
+    ui_cache.parent.mkdir(parents=True, exist_ok=True)
+    if ui_cache.exists():
+        shutil.rmtree(ui_cache)
+    shutil.copytree(ui_source / "dist", ui_cache)
+
+    console.print(f"[green]UI built successfully at: {ui_cache}[/green]")
+    console.print(f"\nTo serve with backend, set HEIDI_UI_DIST={ui_cache} or restart heidi serve")
+
+
+@ui_app.command("path")
+def ui_path_cmd() -> None:
+    """Show UI dist path."""
+    xdg_cache = os.getenv("XDG_CACHE_HOME", str(Path.home() / ".cache"))
+    ui_cache = Path(xdg_cache) / "heidi" / "ui" / "dist"
+
+    if ui_cache.exists():
+        console.print(f"[green]UI dist: {ui_cache}[/green]")
+    else:
+        console.print("[yellow]UI not built. Run: heidi ui build[/yellow]")
+
+
+@ui_app.command("status")
+def ui_status_cmd() -> None:
+    """Show UI build status."""
+    xdg_cache = os.getenv("XDG_CACHE_HOME", str(Path.home() / ".cache"))
+    ui_cache = Path(xdg_cache) / "heidi" / "ui" / "dist"
+    ui_source = Path(__file__).parent.parent / "ui"
+
+    console.print("UI Status:")
+    console.print(f"  Source: {ui_source} [{'exists' if ui_source.exists() else 'missing'}]")
+    console.print(f"  Dist:   {ui_cache} [{'built' if ui_cache.exists() else 'not built'}]")
 
 
 if __name__ == "__main__":

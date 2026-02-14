@@ -41,8 +41,38 @@ else:
 
 app = FastAPI(title="Heidi CLI Server")
 
-# UI distribution directory - can be overridden for development
-UI_DIST = Path(__file__).parent / "ui_dist"
+
+# UI distribution directory - check multiple locations
+def _get_ui_dist() -> Optional[Path]:
+    # 1. HEIDI_UI_DIST env var
+    env_path = os.getenv("HEIDI_UI_DIST")
+    if env_path:
+        p = Path(env_path)
+        if p.exists():
+            return p
+
+    # 2. HEIDI_HOME/ui/dist
+    heidi_home = os.getenv("HEIDI_HOME")
+    if heidi_home:
+        p = Path(heidi_home) / "ui" / "dist"
+        if p.exists():
+            return p
+
+    # 3. XDG_CACHE_HOME/heidi/ui/dist
+    xdg_cache = os.getenv("XDG_CACHE_HOME", str(Path.home() / ".cache"))
+    p = Path(xdg_cache) / "heidi" / "ui" / "dist"
+    if p.exists():
+        return p
+
+    # 4. Fallback: bundled ui_dist (for local dev)
+    bundled = Path(__file__).parent / "ui_dist"
+    if bundled.exists():
+        return bundled
+
+    return None
+
+
+UI_DIST = _get_ui_dist()
 
 app.add_middleware(
     CORSMiddleware,
@@ -83,7 +113,7 @@ def _require_api_key(request: Request, stream_key: Optional[str] = None) -> None
 @app.get("/")
 async def root():
     """Redirect root to /ui/ for the UI"""
-    if UI_DIST.exists():
+    if UI_DIST and UI_DIST.exists():
         from fastapi.responses import RedirectResponse
 
         return RedirectResponse(url="/ui/")
@@ -101,7 +131,7 @@ async def ui_index():
 @app.get("/ui/{path:path}")
 async def serve_ui(path: str):
     """Serve UI static files from ui_dist"""
-    if not UI_DIST.exists():
+    if not UI_DIST or not UI_DIST.exists():
         return HTMLResponse(
             "<html><body><h1>UI Not Built</h1><p>Run <code>heidi ui build</code> to build the UI.</p></body></html>",
             status_code=200,
@@ -397,6 +427,55 @@ async def loop(request: LoopRequest, http_request: Request):
 
     asyncio.create_task(_loop_background())
     return RunResponse(run_id=run_id, status="running")
+
+
+# API Aliases - UI served by backend uses /api/* prefix
+@app.get("/api/health")
+async def api_health():
+    return await health()
+
+
+@app.get("/api/agents")
+async def api_list_agents():
+    from .orchestrator.registry import AgentRegistry
+
+    agents = AgentRegistry.list_agents()
+    return [{"name": name, "description": desc} for name, desc in agents]
+
+
+@app.post("/api/run")
+async def api_run(request: RunRequest, http_request: Request):
+    return await run(request, http_request)
+
+
+@app.post("/api/loop")
+async def api_loop(request: LoopRequest, http_request: Request):
+    return await loop(request, http_request)
+
+
+@app.post("/api/chat")
+async def api_chat(request: ChatRequest, http_request: Request):
+    return await chat(request, http_request)
+
+
+@app.get("/api/runs")
+async def api_list_runs(limit: int = 10, request: Request = None):
+    return await list_runs(limit, request)
+
+
+@app.get("/api/runs/{run_id}")
+async def api_get_run(run_id: str, request: Request):
+    return await get_run(run_id, request)
+
+
+@app.get("/api/runs/{run_id}/stream")
+async def api_stream_run(run_id: str, request: Request, key: Optional[str] = None):
+    return await stream_run(run_id, request, key)
+
+
+@app.post("/api/runs/{run_id}/cancel")
+async def api_cancel_run(run_id: str, request: Request):
+    return await cancel_run(run_id, request)
 
 
 def start_server(host: str = "0.0.0.0", port: int = 7777):

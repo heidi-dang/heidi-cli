@@ -125,7 +125,17 @@ class HeidiLogger:
             return
         redacted_meta = {k: redact_secrets(str(v)) for k, v in metadata.items()}
         run_file = cls._run_dir / "run.json"
-        run_file.write_text(json.dumps(redacted_meta, indent=2))
+
+        # Merge with existing metadata instead of overwriting
+        existing = {}
+        if run_file.exists():
+            try:
+                existing = json.loads(run_file.read_text())
+            except:
+                pass
+
+        merged = {**existing, **redacted_meta}
+        run_file.write_text(json.dumps(merged, indent=2))
 
 
 def setup_global_logging(level: str = "INFO") -> None:
