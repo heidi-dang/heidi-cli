@@ -450,68 +450,91 @@ def copilot_login(
         console.print("[dim]Either unset the env var or use --pat with a different token.[/dim]")
         console.print()
 
+    token_used_source = None
+
     if use_gh:
         if not gh_path:
-            console.print("[red]GH CLI not found.[/red]")
-            console.print("Install it: https://cli.github.com")
-            console.print("Or use --pat for PAT-based authentication.")
-            raise typer.Exit(1)
+            console.print("[cyan]GitHub CLI not found → falling back to PAT mode[/cyan]")
+            use_gh = False
+        else:
+            console.print("[cyan]Starting GitHub OAuth login via GH CLI...[/cyan]")
+            console.print("[dim]This will open a browser window for authentication.[/dim]")
 
-        console.print("[cyan]Starting GitHub OAuth login via GH CLI...[/cyan]")
-        console.print("[dim]This will open a browser window for authentication.[/dim]")
+            try:
+                result = subprocess.run(
+                    ["gh", "auth", "login", "--web"],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0:
+                    console.print(f"[red]GH auth login failed: {result.stderr}[/red]")
+                    console.print("[cyan]Falling back to PAT mode...[/cyan]")
+                    use_gh = False
+                else:
+                    token_result = subprocess.run(
+                        ["gh", "auth", "token"],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if token_result.returncode != 0:
+                        console.print(f"[red]Failed to get token: {token_result.stderr}[/red]")
+                        console.print("[cyan]Falling back to PAT mode...[/cyan]")
+                        use_gh = False
+                    else:
+                        token = token_result.stdout.strip()
+                        if not token:
+                            console.print("[red]No token returned from gh auth token[/red]")
+                            console.print("[cyan]Falling back to PAT mode...[/cyan]")
+                            use_gh = False
+                        else:
+                            token_used_source = "gh auth token"
 
-        try:
-            result = subprocess.run(
-                ["gh", "auth login", "--web"],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                console.print(f"[red]GH auth login failed: {result.stderr}[/red]")
-                raise typer.Exit(1)
+            except subprocess.TimeoutExpired:
+                console.print("[red]GH auth login timed out[/red]")
+                console.print("[cyan]Falling back to PAT mode...[/cyan]")
+                use_gh = False
+            except FileNotFoundError:
+                console.print("[red]GH CLI not found at runtime[/red]")
+                console.print("[cyan]Falling back to PAT mode...[/cyan]")
+                use_gh = False
+            except Exception as e:
+                console.print(f"[red]GH auth error: {e}[/red]")
+                console.print("[cyan]Falling back to PAT mode...[/cyan]")
+                use_gh = False
 
-            token_result = subprocess.run(
-                ["gh", "auth", "token"],
-                capture_output=True,
-                text=True,
-            )
-            if token_result.returncode != 0:
-                console.print(f"[red]Failed to get token: {token_result.stderr}[/red]")
-                raise typer.Exit(1)
-
-            token = token_result.stdout.strip()
+    if not use_gh or not token:
+        env_token = os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN")
+        if env_token:
+            token = env_token
+            token_used_source = "GH_TOKEN/GITHUB_TOKEN env var"
+            console.print("[dim]Using token from environment variable[/dim]")
+        elif token:
+            token_used_source = "--token argument"
+        else:
             if not token:
-                console.print("[red]No token returned from gh auth token[/red]")
+                token = typer.prompt(
+                    "Enter GitHub fine-grained PAT (with Copilot:read permission)",
+                    hide_input=True,
+                )
+            if not token:
+                console.print("[red]Token required[/red]")
                 raise typer.Exit(1)
+            token_used_source = "interactive prompt"
 
-            console.print("[green]OAuth login successful![/green]")
-
-        except subprocess.TimeoutExpired:
-            console.print("[red]GH auth login timed out[/red]")
-            raise typer.Exit(1)
-        except Exception as e:
-            console.print(f"[red]GH auth error: {e}[/red]")
-            raise typer.Exit(1)
-    else:
-        if not token:
-            token = typer.prompt(
-                "Enter GitHub fine-grained PAT (with Copilot:read permission)",
-                hide_input=True,
-            )
-
-        if not token:
-            console.print("[red]Token required[/red]")
-            raise typer.Exit(1)
-
-        console.print("[dim]Validating PAT...[/dim]")
+    if not token:
+        console.print("[red]Token required[/red]")
+        raise typer.Exit(1)
 
     ConfigManager.set_github_token(token, store_keyring=store_keyring)
-    console.print("[green]GitHub token stored successfully[/green]")
 
+    source_msg = f"Token source: {token_used_source}" if token_used_source else ""
+    console.print("[green]GitHub token stored successfully[/green]")
     if store_keyring:
         console.print("[dim]Token stored in OS keyring[/dim]")
     else:
-        console.print("[dim]Token stored only in secrets file[/dim]")
+        console.print("[dim]Token stored only in secrets file (0600 perms)[/dim]")
+    if source_msg:
+        console.print(f"[dim]{source_msg}[/dim]")
 
     console.print()
     console.print("[cyan]To verify authentication, run:[/cyan]")

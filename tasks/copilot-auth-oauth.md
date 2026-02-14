@@ -24,6 +24,7 @@ def copilot_login(
 - Run `gh auth login` (web-based OAuth is default)
 - Read token via `gh auth token`
 - Store token in ConfigManager (keyring if available)
+- **Fallback to PAT mode** if gh is not available or login fails
 
 **If `--pat`:**
 - Accept token via `--token` flag or prompt
@@ -55,9 +56,18 @@ if os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN"):
 - [x] Fresh install + no token → `heidi copilot login` opens device/web flow
 - [x] `heidi copilot status` shows authenticated after login (shows warning if GH_TOKEN set)
 - [x] If GH_TOKEN is set, CLI prints warning
-- [ ] CI path still works with PAT + Copilot Requests permission (manual test)
+- [x] gh not found → falls back to PAT mode (no crash)
+- [x] gh found but auth fails → falls back to PAT mode
+- [x] CI path works with PAT + Copilot Requests permission (manual test)
 
-## Files Modified
+## Token Source Precedence
 
-- `heidi_cli/src/heidi_cli/cli.py` - Added `heidi copilot login` command
-- `heidi_cli/src/heidi_cli/copilot_runtime.py` - Added env var warning
+The token source priority (highest to lowest):
+1. Explicit `github_token` parameter passed to CopilotRuntime
+2. `GH_TOKEN` env var (GitHub CLI token)
+3. `GITHUB_TOKEN` env var (GitHub Actions / general use)
+4. Token stored via ConfigManager (keyring or secrets file)
+
+When multiple env vars are set, `GH_TOKEN` takes precedence and a warning is logged.
+
+**Note:** Device flow (gh auth login) does not require a local callback - it uses GitHub's hosted verification URI.
