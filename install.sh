@@ -91,7 +91,7 @@ if [ "$EXISTING_INSTALL" = true ] || [ "$EXISTING_VENV" = true ]; then
     echo "  [2] Update existing installation"
     echo "  [3] Cancel"
     echo ""
-    read -r -p "Choose option [1]: " -r choice < /dev/tty
+    read -r -p "Choose option [1]: " choice < /dev/tty
     choice=${choice:-1}
 
     case $choice in
@@ -156,11 +156,17 @@ fi
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
-# Clone repo
-echo ""
-echo "Cloning heidi-cli..."
-git clone https://github.com/heidi-dang/heidi-cli.git
-cd heidi-cli/heidi_cli
+# Clone repo directly into INSTALL_DIR (not a nested folder)
+if [ -d ".git" ]; then
+    echo "Repo already exists, pulling latest..."
+    git pull origin main
+else
+    echo ""
+    echo "Cloning heidi-cli..."
+    rm -rf ./*
+    git clone https://github.com/heidi-dang/heidi-cli.git .
+fi
+cd heidi_cli
 
 # Create virtual environment
 echo "Creating virtual environment..."
