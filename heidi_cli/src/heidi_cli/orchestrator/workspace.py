@@ -83,37 +83,45 @@ class WorkspaceManager:
         # New files
         for f, content in current_files.items():
             if f not in snapshot.files:
-                changes.append(FileChange(
-                    path=Path(f),
-                    operation="add",
-                    new_content=content,
-                ))
+                changes.append(
+                    FileChange(
+                        path=Path(f),
+                        operation="add",
+                        new_content=content,
+                    )
+                )
 
         # Modified files
         for f, content in current_files.items():
             if f in snapshot.files and snapshot.files[f] != content:
-                diff = "".join(difflib.unified_diff(
-                    snapshot.files[f].splitlines(keepends=True),
-                    content.splitlines(keepends=True),
-                    fromfile=f"a/{f}",
-                    tofile=f"b/{f}",
-                ))
-                changes.append(FileChange(
-                    path=Path(f),
-                    operation="modify",
-                    old_content=snapshot.files[f],
-                    new_content=content,
-                    diff=diff,
-                ))
+                diff = "".join(
+                    difflib.unified_diff(
+                        snapshot.files[f].splitlines(keepends=True),
+                        content.splitlines(keepends=True),
+                        fromfile=f"a/{f}",
+                        tofile=f"b/{f}",
+                    )
+                )
+                changes.append(
+                    FileChange(
+                        path=Path(f),
+                        operation="modify",
+                        old_content=snapshot.files[f],
+                        new_content=content,
+                        diff=diff,
+                    )
+                )
 
         # Deleted files
         for f in snapshot.files:
             if f not in current_files:
-                changes.append(FileChange(
-                    path=Path(f),
-                    operation="delete",
-                    old_content=snapshot.files[f],
-                ))
+                changes.append(
+                    FileChange(
+                        path=Path(f),
+                        operation="delete",
+                        old_content=snapshot.files[f],
+                    )
+                )
 
         return changes
 
@@ -179,12 +187,14 @@ class PatchApplicator:
     def _create_change(cls, path: str, old_lines: list[str], new_lines: list[str]) -> FileChange:
         old_content = "".join(old_lines)
         new_content = "".join(new_lines)
-        diff = "".join(difflib.unified_diff(
-            old_content.splitlines(keepends=True),
-            new_content.splitlines(keepends=True),
-            fromfile=f"a/{path}",
-            tofile=f"b/{path}",
-        ))
+        diff = "".join(
+            difflib.unified_diff(
+                old_content.splitlines(keepends=True),
+                new_content.splitlines(keepends=True),
+                fromfile=f"a/{path}",
+                tofile=f"b/{path}",
+            )
+        )
         return FileChange(
             path=Path(path),
             operation="modify" if old_content else "add",

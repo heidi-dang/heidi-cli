@@ -77,8 +77,10 @@ class VscodeExecutor(BaseExecutor):
         try:
             proc = await asyncio.create_subprocess_exec(
                 "code",
-                "--folder-uri", f"vscode-remote://localhost+{workdir}",
-                "--command", "heidi-vscode.execute",
+                "--folder-uri",
+                f"vscode-remote://localhost+{workdir}",
+                "--command",
+                "heidi-vscode.execute",
                 "--",
                 prompt,
                 stdout=asyncio.subprocess.PIPE,
@@ -98,6 +100,7 @@ class OllamaExecutor(BaseExecutor):
 
     async def run(self, prompt: str, workdir: Path) -> ExecResult:
         import aiohttp
+
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -121,6 +124,7 @@ class LMStudioExecutor(BaseExecutor):
 
     async def run(self, prompt: str, workdir: Path) -> ExecResult:
         import aiohttp
+
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(

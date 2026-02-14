@@ -18,10 +18,10 @@ def _test_openwebui_connection(url: str, token: str | None = None) -> tuple[bool
         headers = {}
         if token:
             headers["Authorization"] = f"Bearer {token}"
-        
+
         # Test the /api/models endpoint as documented
         response = httpx.get(f"{url}/api/models", headers=headers, timeout=10)
-        
+
         if response.status_code == 200:
             return True, "OpenWebUI API: OK"
         elif response.status_code == 401:
@@ -43,25 +43,25 @@ def openwebui_status() -> None:
     - 3: unauthorized
     """
     config = ConfigManager.load_config()
-    
+
     # Get OpenWebUI URL from config or use default
-    openwebui_url = getattr(config, 'openwebui_url', 'http://localhost:3000')
-    openwebui_token = getattr(config, 'openwebui_token', None)
-    
+    openwebui_url = getattr(config, "openwebui_url", "http://localhost:3000")
+    openwebui_token = getattr(config, "openwebui_token", None)
+
     if not openwebui_url:
         console.print("[yellow]OpenWebUI not configured[/yellow]")
         raise typer.Exit(1)
-    
+
     # Test connection
     success, message = _test_openwebui_connection(openwebui_url, openwebui_token)
-    
+
     # Print single-line status
     if success:
         console.print(f"[green]✅ {message}[/green]")
         raise typer.Exit(0)
     else:
         console.print(f"[red]❌ {message}[/red]")
-        
+
         # Determine exit code based on error type
         if "unauthorized" in message.lower() or "401" in message:
             raise typer.Exit(3)
@@ -74,18 +74,20 @@ def openwebui_status() -> None:
 @openwebui_app.command("guide")
 def openwebui_guide() -> None:
     """Print exact OpenWebUI connection instructions + URLs (no network calls)."""
-    console.print(Panel.fit(
-        "[bold cyan]OpenWebUI Integration Guide[/bold cyan]\n\n"
-        "To connect Heidi CLI as OpenAPI tools in OpenWebUI:\n\n"
-        "1. Open OpenWebUI in your browser\n"
-        "2. Navigate to: [cyan]Settings → Connections → OpenAPI Servers[/cyan]\n"
-        "3. Click [bold]Add Server[/bold] and configure:\n"
-        "   • Name: [green]Heidi CLI[/green]\n"
-        "   • OpenAPI Spec URL: [green]http://localhost:7777/openapi.json[/green]\n"
-        "4. Save and test the connection",
-        title="OpenWebUI Configuration"
-    ))
-    
+    console.print(
+        Panel.fit(
+            "[bold cyan]OpenWebUI Integration Guide[/bold cyan]\n\n"
+            "To connect Heidi CLI as OpenAPI tools in OpenWebUI:\n\n"
+            "1. Open OpenWebUI in your browser\n"
+            "2. Navigate to: [cyan]Settings → Connections → OpenAPI Servers[/cyan]\n"
+            "3. Click [bold]Add Server[/bold] and configure:\n"
+            "   • Name: [green]Heidi CLI[/green]\n"
+            "   • OpenAPI Spec URL: [green]http://localhost:7777/openapi.json[/green]\n"
+            "4. Save and test the connection",
+            title="OpenWebUI Configuration",
+        )
+    )
+
     console.print("\n[bold]Quick Test URLs:[/bold]")
     console.print("• Health: http://localhost:7777/health")
     console.print("• Agents: http://localhost:7777/agents")
@@ -100,22 +102,22 @@ def openwebui_configure(
 ) -> None:
     """Configure OpenWebUI settings."""
     config = ConfigManager.load_config()
-    
+
     # Store OpenWebUI settings
     config.openwebui_url = url
     if token:
         config.openwebui_token = token
-    
+
     ConfigManager.save_config(config)
-    
+
     console.print("[green]OpenWebUI configured[/green]")
     console.print(f"URL: {url}")
     console.print(f"Token: {'[green]configured[/green]' if token else '[yellow]not set[/yellow]'}")
-    
+
     # Test connection
     console.print("\nTesting connection...")
     success, message = _test_openwebui_connection(url, token)
-    
+
     if success:
         console.print(f"[green]✅ {message}[/green]")
     else:

@@ -131,7 +131,7 @@ class HeidiLogger:
         if run_file.exists():
             try:
                 existing = json.loads(run_file.read_text())
-            except:
+            except (json.JSONDecodeError, OSError):
                 pass
 
         merged = {**existing, **redacted_meta}
