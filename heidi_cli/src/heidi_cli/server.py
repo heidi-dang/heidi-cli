@@ -401,6 +401,19 @@ async def auth_status(request: Request):
     }
 
 
+# UI calls /api/* only - add aliases for OpenCode endpoints
+@app.get("/api/connect/opencode/openai/status")
+async def api_opencode_openai_status():
+    """Alias for /connect/opencode/openai/status (UI compatibility)."""
+    return await opencode_openai_status()
+
+
+@app.post("/api/connect/opencode/openai/test")
+async def api_opencode_openai_test():
+    """Alias for /connect/opencode/openai/test (UI compatibility)."""
+    return await opencode_openai_test()
+
+
 @app.get("/connect/opencode/openai/status")
 async def opencode_openai_status():
     """Check OpenCode OpenAI connection status for UI."""

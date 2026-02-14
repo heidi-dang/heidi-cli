@@ -38,6 +38,7 @@ valves_app = typer.Typer(help="Configuration valves")
 persona_app = typer.Typer(help="Persona management")
 start_app = typer.Typer(help="Start services (UI, backend, etc.)", no_args_is_help=True)
 connect_app = typer.Typer(help="Connect to external services (Ollama, OpenCode)")
+opencode_app = typer.Typer(help="OpenCode connections (local, server, OpenAI)")
 
 app.add_typer(copilot_app, name="copilot")
 app.add_typer(auth_app, name="auth")
@@ -47,6 +48,7 @@ app.add_typer(openwebui_app, name="openwebui")
 app.add_typer(persona_app, name="persona")
 app.add_typer(start_app, name="start")
 app.add_typer(connect_app, name="connect")
+app.add_typer(opencode_app, name="opencode")
 
 console = Console()
 json_output = False
@@ -547,8 +549,13 @@ def connect_opencode(
         raise typer.Exit(1)
 
 
-@connect_app.command("openai")
-def connect_opencode_openai() -> None:
+@opencode_app.command("openai")
+def connect_opencode_openai(
+    verify: bool = typer.Option(False, "--verify", help="Only verify existing connection"),
+    reconnect: bool = typer.Option(False, "--reconnect", help="Force re-auth even if connected"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip prompts"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
+) -> None:
     """Connect to OpenAI (ChatGPT Plus/Pro) via OpenCode OAuth.
 
     This command:
@@ -557,66 +564,137 @@ def connect_opencode_openai() -> None:
     3. Verifies the connection works
 
     After connecting, you can use ChatGPT models through OpenCode.
+
+    For headless environments, use: codex login --device-auth
     """
+    # Import inside function to avoid circular imports
     from .connect import (
         check_opencode_openai,
         connect_opencode_openai as do_connect,
+        get_openai_models,
+        get_opencode_auth_path,
         test_openai_connection,
     )
-
-    console.print("[cyan]Connecting to OpenAI (ChatGPT Plus/Pro) via OpenCode...[/cyan]")
-    console.print("")
-    console.print("This will:")
-    console.print("  1. Install OpenCode OpenAI plugin")
-    console.print("  2. Open browser for OAuth login")
-    console.print("  3. Verify models are available")
-    console.print("")
 
     # Check prerequisites
     opencode_path = shutil.which("opencode")
     if not opencode_path:
-        console.print("[red]OpenCode CLI not found![/red]")
-        console.print("[yellow]Install from: https://opencode.ai[/yellow]")
+        msg = "OpenCode CLI not found. Install from https://opencode.ai"
+        if json_output:
+            print_json({"ok": False, "error": msg})
+        else:
+            console.print(f"[red]✗ {msg}[/red]")
         raise typer.Exit(1)
 
     npx_path = shutil.which("npx")
     if not npx_path:
-        console.print("[red]npx not found![/red]")
-        console.print("[yellow]Install Node.js to use OpenAI provider.[/yellow]")
+        msg = "npx not found. Install Node.js to use OpenAI provider."
+        if json_output:
+            print_json({"ok": False, "error": msg})
+        else:
+            console.print(f"[red]✗ {msg}[/red]")
         raise typer.Exit(1)
 
-    # Check if already connected
-    console.print("[cyan]Checking existing connection...[/cyan]")
-    success, msg = check_opencode_openai()
-    if success:
-        console.print(f"[green]✓ {msg}[/green]")
-        console.print(
-            "[dim]Already connected. Use 'heidi connect opencode openai --reconnect' to reconnect.[/dim]"
-        )
+    # Verify only mode
+    if verify:
+        auth_path = get_opencode_auth_path()
+        models = get_openai_models()
+        success, msg = check_opencode_openai()
+
+        if json_output:
+            print_json(
+                {
+                    "ok": success,
+                    "authPath": str(auth_path) if auth_path else None,
+                    "models": models,
+                    "error": None if success else msg,
+                }
+            )
+        else:
+            if success:
+                console.print(f"[green]✓ {msg}[/green]")
+                console.print(f"[dim]Auth: {auth_path}[/dim]")
+                console.print(f"[dim]Models: {len(models)} available[/dim]")
+            else:
+                console.print(f"[red]✗ {msg}[/red]")
+                console.print("[yellow]Run without --verify to connect.[/yellow]")
         return
 
-    # Do the connection
-    console.print("")
-    success, msg = do_connect()
-    if success:
-        console.print(f"[green]✓ {msg}[/green]")
+    # Check existing connection
+    if not reconnect:
+        success, msg = check_opencode_openai()
+        if success:
+            if json_output:
+                auth_path = get_opencode_auth_path()
+                models = get_openai_models()
+                print_json(
+                    {
+                        "ok": True,
+                        "message": "Already connected",
+                        "authPath": str(auth_path) if auth_path else None,
+                        "models": models,
+                    }
+                )
+            else:
+                console.print(f"[green]✓ Already connected: {msg}[/green]")
+                console.print("[dim]Use --reconnect to force re-auth[/dim]")
+            return
 
-        # Test the connection
+    # Show what will happen
+    if not json_output:
+        console.print("[cyan]Connecting to OpenAI (ChatGPT Plus/Pro) via OpenCode...[/cyan]")
         console.print("")
-        console.print("[cyan]Testing connection...[/cyan]")
-        test_success, test_msg = test_openai_connection()
-        if test_success:
-            console.print(f"[green]✓ {test_msg}[/green]")
+        console.print("This will:")
+        console.print("  1. Install OpenCode OpenAI plugin")
+        console.print("  2. Open browser for OAuth login")
+        console.print("  3. Verify models are available")
+        console.print("")
+
+    if not yes:
+        confirm = input("Continue? [y/N]: ")
+        if confirm.lower() not in ("y", "yes"):
+            if json_output:
+                print_json({"ok": False, "error": "Cancelled"})
+            else:
+                console.print("[yellow]Cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+    # Do the connection
+    success, msg = do_connect()
+
+    if success:
+        if json_output:
+            auth_path = get_opencode_auth_path()
+            models = get_openai_models()
+            print_json(
+                {
+                    "ok": True,
+                    "message": "Connected successfully",
+                    "authPath": str(auth_path) if auth_path else None,
+                    "models": models,
+                }
+            )
         else:
-            console.print(f"[yellow]⚠ {test_msg}[/yellow]")
-            console.print("[dim]You may need to wait for OAuth to complete or try again.[/dim]")
+            console.print(f"[green]✓ {msg}[/green]")
+
+            # Test the connection
+            console.print("")
+            console.print("[cyan]Testing connection...[/cyan]")
+            test_success, test_msg = test_openai_connection()
+            if test_success:
+                console.print(f"[green]✓ {test_msg}[/green]")
+            else:
+                console.print(f"[yellow]⚠ {test_msg}[/yellow]")
     else:
-        console.print(f"[red]✗ {msg}[/red]")
-        console.print("")
-        console.print("[yellow]If browser didn't open, try these alternatives:[/yellow]")
-        console.print("  1. Run: opencode auth login")
-        console.print("  2. For headless: codex login --device-auth")
-        console.print("  3. Then run: heidi connect opencode openai --verify")
+        if json_output:
+            print_json({"ok": False, "error": msg})
+        else:
+            console.print(f"[red]✗ {msg}[/red]")
+            console.print("")
+            console.print("[yellow]If browser didn't open, try these alternatives:[/yellow]")
+            console.print("  1. Run: opencode auth login")
+            console.print("  2. For headless: codex login --device-auth")
+            console.print("  3. Then run: heidi connect opencode openai --verify")
         raise typer.Exit(1)
 
 

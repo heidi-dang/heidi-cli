@@ -61,6 +61,7 @@ def connect_opencode_openai() -> tuple[bool, str]:
 
     Returns (success, message).
     """
+
     opencode_path = shutil.which("opencode")
     if not opencode_path:
         return False, "OpenCode CLI not found. Install from https://opencode.ai"
@@ -69,39 +70,61 @@ def connect_opencode_openai() -> tuple[bool, str]:
     if not npx_path:
         return False, "npx not found. Install Node.js to use OpenAI provider."
 
-    # Install OpenCode OpenAI plugin
+    # Install OpenCode OpenAI plugin (with output visible)
     print("Installing OpenCode OpenAI plugin...")
+    print("  $ npx -y opencode-openai-codex-auth@latest")
     try:
         result = subprocess.run(
             ["npx", "-y", "opencode-openai-codex-auth@latest"],
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=300,  # 5 min for first install
         )
         if result.returncode != 0:
-            return False, f"Plugin install failed: {result.stderr}"
+            if result.stderr:
+                print(f"[red]Plugin install error: {result.stderr[:200]}[/red]")
+            return False, "Plugin install failed"
+    except subprocess.TimeoutExpired:
+        return False, "Plugin install timed out (network issue?)"
     except Exception as e:
         return False, f"Plugin install error: {e}"
 
-    # Launch OpenCode login
-    print("Launching OpenCode login (browser should open)...")
-    print("If no browser opens, try: opencode auth login")
+    print("")
+
+    # Launch OpenCode login - run interactively so user sees prompts
+    print("Launching OpenCode login...")
+    print("  $ opencode auth login")
+    print("")
+    print("If browser doesn't open, the terminal will show a device code.")
+    print("For headless: run 'codex login --device-auth' in another terminal.")
+    print("")
+    print("Waiting for login... (this may take a minute)")
+    print("(Press Ctrl+C to cancel and try again)")
+    print("")
+
     try:
+        # Run without capture so user sees login flow
         result = subprocess.run(
             ["opencode", "auth", "login"],
-            capture_output=True,
-            text=True,
-            timeout=120,
+            timeout=180,  # 3 min for OAuth
         )
+        print("")
     except subprocess.TimeoutExpired:
-        pass  # Login may take a while, timeout is OK
+        print("")
+        print("[yellow]Login timed out. Checking if connection was established...[/yellow]")
+    except KeyboardInterrupt:
+        print("")
+        return (
+            False,
+            "Login cancelled by user. Run 'heidi connect opencode openai --verify' to check.",
+        )
 
     # Verify connection
     success, msg = check_opencode_openai()
     if success:
-        return True, f"Connected: OpenCode → OpenAI (ChatGPT Plus/Pro)\n{msg}"
+        return True, "Connected: OpenAI (ChatGPT Plus/Pro)"
     else:
-        return False, f"Connection failed. Try 'codex login --device-auth' for headless.\n{msg}"
+        return False, "Connection not established. Try: codex login --device-auth"
 
 
 def get_openai_models() -> list[str]:
