@@ -8,32 +8,31 @@ export default defineConfig({
     port: 3002,
     strictPort: true,
     proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:7777',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
-      },
-      '/health': {
+      '^/health': {
         target: 'http://127.0.0.1:7777',
         changeOrigin: true,
       },
-      '/agents': {
+      '^/agents': {
         target: 'http://127.0.0.1:7777',
         changeOrigin: true,
       },
-      '/run': {
+      '^/run': {
         target: 'http://127.0.0.1:7777',
         changeOrigin: true,
       },
-      '/loop': {
+      '^/loop': {
         target: 'http://127.0.0.1:7777',
         changeOrigin: true,
       },
-      '/runs': {
+      '^/runs': {
         target: 'http://127.0.0.1:7777',
         changeOrigin: true,
       },
-      '/auth': {
+      '^/auth': {
+        target: 'http://127.0.0.1:7777',
+        changeOrigin: true,
+      },
+      '^/connect': {
         target: 'http://127.0.0.1:7777',
         changeOrigin: true,
       },
