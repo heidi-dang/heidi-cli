@@ -39,7 +39,7 @@ persona_app = typer.Typer(help="Persona management")
 start_app = typer.Typer(help="Start services (UI, backend, etc.)", no_args_is_help=True)
 connect_app = typer.Typer(help="Connect to external services (Ollama, OpenCode)")
 opencode_app = typer.Typer(help="OpenCode connections (local, server, OpenAI)")
-ui_app = typer.Typer(help="UI build and management")
+ui_mgmt_app = typer.Typer(help="UI build and management")
 
 app.add_typer(copilot_app, name="copilot")
 app.add_typer(auth_app, name="auth")
@@ -50,7 +50,7 @@ app.add_typer(persona_app, name="persona")
 app.add_typer(start_app, name="start")
 app.add_typer(connect_app, name="connect")
 app.add_typer(opencode_app, name="opencode")
-app.add_typer(ui_app, name="ui")
+app.add_typer(ui_mgmt_app, name="ui")
 
 console = Console()
 json_output = False
@@ -1995,7 +1995,7 @@ def start_server_cmd(
 
 
 # UI Management Commands
-@ui_app.command("build")
+@ui_mgmt_app.command("build")
 def ui_build_cmd(
     force: bool = typer.Option(False, "--force", "-f", help="Force rebuild even if dist exists"),
 ) -> None:
@@ -2040,7 +2040,7 @@ def ui_build_cmd(
     console.print(f"\nTo serve with backend, set HEIDI_UI_DIST={ui_cache} or restart heidi serve")
 
 
-@ui_app.command("path")
+@ui_mgmt_app.command("path")
 def ui_path_cmd() -> None:
     """Show UI dist path."""
     xdg_cache = os.getenv("XDG_CACHE_HOME", str(Path.home() / ".cache"))
@@ -2052,7 +2052,7 @@ def ui_path_cmd() -> None:
         console.print("[yellow]UI not built. Run: heidi ui build[/yellow]")
 
 
-@ui_app.command("status")
+@ui_mgmt_app.command("status")
 def ui_status_cmd() -> None:
     """Show UI build status."""
     xdg_cache = os.getenv("XDG_CACHE_HOME", str(Path.home() / ".cache"))
