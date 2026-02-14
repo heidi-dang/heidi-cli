@@ -134,8 +134,8 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
         const chatRes = await api.chat(prompt, executor);
         setTranscript([{
           type: 'assistant',
-          content: chatRes.response,
-          timestamp: Date.now()
+          message: chatRes.response,
+          ts: Date.now().toString()
         }]);
         setStatus(RunStatus.COMPLETED);
         setResult(chatRes.response);
