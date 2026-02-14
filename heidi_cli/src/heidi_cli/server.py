@@ -242,10 +242,11 @@ async def get_run(run_id: str, request: Request):
 
     if transcript.exists():
         events = []
-        for line in transcript.read_text().strip().split("\n"):
+        for idx, line in enumerate(transcript.read_text().strip().split("\n")):
             if line:
                 raw = json.loads(line)
                 event = {
+                    "id": raw.get("id") or f"{raw.get('timestamp', '')}-{idx}",
                     "type": raw.get("type", ""),
                     "ts": raw.get("timestamp", ""),
                     "message": raw.get("data", {}).get("message", ""),

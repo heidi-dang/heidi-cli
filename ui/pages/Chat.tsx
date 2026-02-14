@@ -386,7 +386,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                 if (!event.message) return null;
                 
                 return (
-                    <div key={idx} className="flex gap-4 max-w-[90%] animate-in fade-in slide-in-from-bottom-2 duration-300 group">
+                    <div key={event.id || `${event.ts}-${idx}`} className="flex gap-4 max-w-[90%] animate-in fade-in slide-in-from-bottom-2 duration-300 group">
                          <div className="flex-shrink-0 mt-1">
                              <div className="w-10 h-10 rounded-xl bg-black/40 flex items-center justify-center border border-white/10 shadow-lg overflow-hidden">
                               {event.type === 'error' 

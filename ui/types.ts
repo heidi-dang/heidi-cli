@@ -39,6 +39,7 @@ export interface RunResponse {
 }
 
 export interface RunEvent {
+  id?: string;
   type: string;
   message: string;
   ts: string;

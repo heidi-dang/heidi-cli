@@ -112,6 +112,7 @@ class HeidiLogger:
         redacted_data = {k: redact_secrets(str(v)) for k, v in data.items()}
         transcript_file = cls._run_dir / "transcript.jsonl"
         event = {
+            "id": str(uuid.uuid4()),
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "type": event_type,
             "data": redacted_data,
