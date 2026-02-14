@@ -19,6 +19,102 @@ from .config import ConfigManager
 console = Console()
 
 
+def ensure_ui_repo(ui_path: Optional[Path] = None, no_update: bool = False) -> Optional[Path]:
+    """Ensure UI repo exists and is up-to-date.
+
+    If ui_path is None, uses heidi_ui_dir() (default cache location).
+    If directory doesn't exist, clones the repo.
+    If directory exists, tries to update via git pull.
+
+    Returns the Path to UI directory or None on failure.
+    """
+    from .config import heidi_ui_dir as _heidi_ui_dir
+
+    if ui_path is None:
+        ui_path = _heidi_ui_dir()
+
+    ui_path = Path(ui_path)
+
+    if not ui_path.exists():
+        console.print(f"[cyan]Cloning UI repo to {ui_path}...[/cyan]")
+        ui_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            result = subprocess.run(
+                [
+                    "git",
+                    "clone",
+                    "--depth",
+                    "1",
+                    "https://github.com/heidi-dang/heidi-cli-ui.git",
+                    str(ui_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if result.returncode != 0:
+                console.print(f"[red]Failed to clone UI: {result.stderr}[/red]")
+                return None
+            console.print("[green]UI cloned successfully[/green]")
+            return ui_path
+        except subprocess.TimeoutExpired:
+            console.print("[red]Clone timed out[/red]")
+            return None
+        except Exception as e:
+            console.print(f"[red]Error cloning UI: {e}[/red]")
+            return None
+
+    if no_update:
+        console.print("[dim]Skipping UI update (--no-ui-update)[/dim]")
+        return ui_path if ui_path.exists() else None
+
+    # Try to update
+    if (ui_path / ".git").exists():
+        console.print(f"[cyan]Updating UI repo at {ui_path}...[/cyan]")
+        try:
+            result = subprocess.run(
+                ["git", "fetch", "origin"],
+                cwd=str(ui_path),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                console.print(f"[yellow]Git fetch failed: {result.stderr}[/yellow]")
+                return ui_path
+
+            result = subprocess.run(
+                ["git", "pull", "--ff-only", "origin", "main"],
+                cwd=str(ui_path),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                console.print(f"[yellow]Git pull failed: {result.stderr}[/yellow]")
+            else:
+                console.print("[green]UI updated successfully[/green]")
+
+            # Check if package-lock changed, suggest npm install
+            if (ui_path / "package-lock.json").exists():
+                console.print("[dim]Checking npm dependencies...[/dim]")
+                # Just run npm install quietly
+                subprocess.run(
+                    ["npm", "ci"],
+                    cwd=str(ui_path),
+                    capture_output=True,
+                    timeout=120,
+                )
+        except subprocess.TimeoutExpired:
+            console.print("[yellow]UI update timed out[/yellow]")
+        except Exception as e:
+            console.print(f"[yellow]Error updating UI: {e}[/yellow]")
+    else:
+        console.print(f"[yellow]UI path exists but is not a git repo: {ui_path}[/yellow]")
+
+    return ui_path if ui_path.exists() else None
+
+
 def find_repo_root(start_path: Optional[Path] = None) -> Optional[Path]:
     """Find the repo root by walking up for .git + heidi_cli or pyproject.toml."""
     if start_path is None:
@@ -243,11 +339,13 @@ def start_ui_dev_server(
         console.print(
             f"[yellow]UI folder exists but missing package.json at {ui_path / 'package.json'}[/yellow]"
         )
-        console.print("[dim]Run: git clone https://github.com/heidi-dang/Heidi-cli-ui ui[/dim]")
+        console.print("[dim]Run: git clone https://github.com/heidi-dang/heidi-cli-ui.git ui[/dim]")
         return None
 
     env = os.environ.copy()
     env["API_URL"] = api_url
+    env["VITE_HEIDI_SERVER_BASE"] = api_url
+    env["HEIDI_SERVER_BASE"] = api_url
     env["PORT"] = str(port)
 
     log_file = get_logs_dir() / "ui.log"

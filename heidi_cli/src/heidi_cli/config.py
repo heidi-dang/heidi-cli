@@ -94,6 +94,25 @@ def heidi_cache_dir() -> Optional[Path]:
     return base / "heidi"
 
 
+def heidi_ui_dir() -> Path:
+    """Get the UI directory for Heidi CLI.
+
+    Priority:
+    1. $HEIDI_HOME/ui (if HEIDI_HOME set)
+    2. <cache_dir>/ui (e.g., ~/.cache/heidi/ui on Linux)
+    """
+    heidi_home = os.environ.get("HEIDI_HOME")
+    if heidi_home:
+        return Path(heidi_home) / "ui"
+
+    cache = heidi_cache_dir()
+    if cache:
+        return cache / "ui"
+
+    # Fallback to config dir
+    return heidi_config_dir() / "ui"
+
+
 def check_legacy_heidi_dir() -> Optional[Path]:
     """Check for legacy ./.heidi/ in current project directory."""
     legacy_path = Path.cwd() / ".heidi"

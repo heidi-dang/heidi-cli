@@ -20,13 +20,23 @@ from .orchestrator.loop import run_loop, pick_executor as _pick_executor
 from .orchestrator.registry import AgentRegistry
 from .openwebui_commands import openwebui_app
 
-app = typer.Typer(add_completion=False, help="Heidi CLI - Copilot/Jules/OpenCode orchestrator")
+app = typer.Typer(
+    add_completion=False,
+    help="Heidi CLI - Copilot/Jules/OpenCode orchestrator",
+    epilog="""
+Common commands:
+  heidi start ui       Start UI dev server (port 3002)
+  heidi start backend  Start backend API server (port 7777)
+  heidi copilot chat   Chat with GitHub Copilot
+  heidi setup          Interactive first-time setup
+""",
+)
 copilot_app = typer.Typer(help="Copilot (Copilot CLI via GitHub Copilot SDK)")
 auth_app = typer.Typer(help="Authentication commands")
 agents_app = typer.Typer(help="Agent management")
 valves_app = typer.Typer(help="Configuration valves")
 persona_app = typer.Typer(help="Persona management")
-start_app = typer.Typer(help="Start services")
+start_app = typer.Typer(help="Start services (UI, backend, etc.)", no_args_is_help=True)
 
 app.add_typer(copilot_app, name="copilot")
 app.add_typer(auth_app, name="auth")
@@ -193,6 +203,146 @@ def init(
     console.print(f"  Secrets: {ConfigManager.secrets_file()}")
     console.print(f"  Runs: {ConfigManager.runs_dir()}")
     console.print(f"  Tasks: {ConfigManager.tasks_dir()}")
+
+
+@app.command()
+def update(
+    no_ui: bool = typer.Option(False, "--no-ui", help="Skip UI update"),
+) -> None:
+    """Update UI and optional components to latest version."""
+    from .config import heidi_ui_dir
+    from .launcher import ensure_ui_repo
+
+    console.print("[cyan]Running heidi update...[/cyan]")
+
+    if not no_ui:
+        console.print("\n[cyan]Updating UI...[/cyan]")
+        ui_dir = heidi_ui_dir()
+        ensure_ui_repo(ui_dir, no_update=False)
+    else:
+        console.print("[dim]Skipping UI update (--no-ui)[/dim]")
+
+    console.print("\n[green]Update complete![/green]")
+
+
+@app.command()
+def upgrade() -> None:
+    """Upgrade Heidi CLI to latest version."""
+    console.print("[cyan]Running heidi upgrade...[/cyan]")
+
+    # Detect install method
+    # Check if pipx
+    pipx_which = shutil.which("pipx")
+    is_pipx = pipx_which is not None
+
+    # Check if editable install (git checkout)
+    import heidi_cli
+
+    cli_path = Path(heidi_cli.__file__).parent
+    is_git_checkout = (cli_path.parent / ".git").exists()
+
+    if is_pipx:
+        console.print("[cyan]Upgrading via pipx...[/cyan]")
+        result = subprocess.run(["pipx", "upgrade", "heidi-cli"], capture_output=True, text=True)
+        if result.returncode != 0:
+            console.print(f"[red]pipx upgrade failed: {result.stderr}[/red]")
+            raise typer.Exit(1)
+    elif is_git_checkout:
+        console.print("[cyan]Upgrading from git checkout...[/cyan]")
+        # Try git pull
+        result = subprocess.run(
+            ["git", "pull", "--ff-only", "origin", "main"],
+            cwd=str(cli_path.parent),
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            console.print(f"[yellow]Git pull failed: {result.stderr}[/yellow]")
+
+        # Reinstall in editable mode
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-e", ".[dev]", "-q"],
+            cwd=str(cli_path.parent),
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            console.print(f"[red]pip install failed: {result.stderr}[/red]")
+            raise typer.Exit(1)
+    else:
+        # Regular pip install
+        console.print("[cyan]Upgrading via pip...[/cyan]")
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-U", "heidi-cli", "-q"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            console.print(f"[red]pip upgrade failed: {result.stderr}[/red]")
+            raise typer.Exit(1)
+
+    console.print("[green]Upgrade complete![/green]")
+    console.print("[dim]Run 'heidi update' to update UI and other components.[/dim]")
+
+
+@app.command()
+def uninstall(
+    purge: bool = typer.Option(False, "--purge", help="Also remove all config, state, and cache"),
+) -> None:
+    """Uninstall Heidi CLI."""
+    import shutil as _shutil
+    from .config import heidi_config_dir, heidi_state_dir, heidi_cache_dir, heidi_ui_dir
+
+    if not purge:
+        console.print("[yellow]This will remove Heidi CLI but keep config/state/cache.[/yellow]")
+        console.print("[dim]Use --purge to remove everything.[/dim]")
+
+    console.print("\n[cyan]Stopping services...[/cyan]")
+    # Try to stop any running services
+    try:
+        from .launcher import stop_all
+
+        stop_all()
+    except Exception:
+        pass
+
+    # Detect and remove CLI
+    cli_path = Path(__file__).parent
+    is_git_checkout = (cli_path.parent / ".git").exists()
+    is_pipx = _shutil.which("pipx") is not None
+
+    if is_pipx:
+        console.print("[cyan]Removing via pipx...[/cyan]")
+        subprocess.run(["pipx", "uninstall", "heidi-cli"], capture_output=True)
+    elif is_git_checkout:
+        console.print("[yellow]Heidi was installed via git clone.[/yellow]")
+        console.print(f"[dim]Remove manually: rm -rf {cli_path.parent.parent}[/dim]")
+    else:
+        console.print("[cyan]Removing via pip...[/cyan]")
+        subprocess.run(
+            [sys.executable, "-m", "pip", "uninstall", "heidi-cli", "-y"], capture_output=True
+        )
+
+    if purge:
+        console.print("\n[cyan]Removing config, state, cache...[/cyan]")
+        for path in [heidi_config_dir(), heidi_state_dir(), heidi_cache_dir(), heidi_ui_dir()]:
+            if path and path.exists():
+                console.print(f"  Removing {path}")
+                import shutil
+
+                try:
+                    shutil.rmtree(path)
+                except Exception as e:
+                    console.print(f"  [yellow]Failed to remove {path}: {e}[/yellow]")
+
+    console.print("\n[green]Heidi CLI uninstalled![/green]")
+    if not purge:
+        console.print("[dim]Config/state/cached at:[/dim]")
+        console.print(f"  Config: {heidi_config_dir()}")
+        if heidi_state_dir():
+            console.print(f"  State: {heidi_state_dir()}")
+        if heidi_cache_dir():
+            console.print(f"  Cache: {heidi_cache_dir()}")
 
 
 @app.command()
@@ -1164,7 +1314,7 @@ Provide:
         raise typer.Exit(1)
 
 
-@start_app.command("ui")
+@start_app.command("ui", help="Start UI dev server (default port 3002)")
 def start_ui(
     backend: bool = typer.Option(True, "--backend/--no-backend", help="Start backend server"),
     ui: bool = typer.Option(True, "--ui/--no-ui", help="Start UI dev server"),
@@ -1173,7 +1323,12 @@ def start_ui(
     ui_dir: Optional[str] = typer.Option(
         None,
         "--ui-dir",
-        help="UI directory (clone: git clone https://github.com/heidi-dang/Heidi-cli-ui ui)",
+        help="UI directory (default: auto-managed in cache dir)",
+    ),
+    no_ui_update: bool = typer.Option(
+        False,
+        "--no-ui-update",
+        help="Skip auto-update of UI repo",
     ),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open browser automatically"),
     tunnel: bool = typer.Option(False, "--tunnel", help="Start Cloudflare tunnel"),
@@ -1184,9 +1339,9 @@ def start_ui(
     """Start Heidi backend and UI dev server."""
     from pathlib import Path
 
-    ui_dir_path = Path(ui_dir) if ui_dir else None
-
+    from .config import heidi_ui_dir
     from .launcher import (
+        ensure_ui_repo,
         start_backend,
         start_ui_dev_server,
         is_backend_running,
@@ -1194,6 +1349,13 @@ def start_ui(
         stop_backend,
         stop_ui,
     )
+
+    # Use provided ui_dir or default to heidi_ui_dir()
+    if ui_dir:
+        ui_dir_path = Path(ui_dir)
+    else:
+        ui_dir_path = heidi_ui_dir()
+        console.print(f"[dim]Using UI directory: {ui_dir_path}[/dim]")
     from .tunnel import start_tunnel, stop_tunnel, is_cloudflared_installed, get_tunnel_instructions
     from rich.panel import Panel
     import signal
@@ -1216,6 +1378,13 @@ def start_ui(
                 )
 
         if ui:
+            # Ensure UI repo exists and is up-to-date
+            if not ui_dir_path.exists():
+                ensure_result = ensure_ui_repo(ui_dir_path, no_ui_update)
+                if ensure_result is None:
+                    console.print("[red]Failed to get UI repo[/red]")
+                    raise typer.Exit(1)
+
             api_base = api_url if api_url else f"http://localhost:{actual_port}"
             if is_ui_running(ui_port):
                 console.print(f"[yellow]UI already running on http://127.0.0.1:{ui_port}[/yellow]")
