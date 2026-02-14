@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -19,7 +20,7 @@ class CopilotRuntime:
         cwd: Optional[Path] = None,
     ):
         self.model = model or os.getenv("COPILOT_MODEL", "gpt-5")
-        
+
         # Try env vars first, then fall back to ConfigManager
         self.github_token = (
             github_token
@@ -27,29 +28,38 @@ class CopilotRuntime:
             or os.getenv("GH_TOKEN")
             or os.getenv("GITHUB_TOKEN")
         )
-        
+
+        # Warn about env var override
+        if os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN"):
+            print(
+                "[yellow]Warning: GH_TOKEN or GITHUB_TOKEN env var is set.[/yellow]",
+                "[yellow]This overrides OAuth token. Copilot may fail if env var token lacks Copilot scope.[/yellow]",
+                file=sys.stderr,
+            )
+
         if not self.github_token:
             try:
                 from .config import ConfigManager
+
                 self.github_token = ConfigManager.get_github_token()
             except Exception:
                 pass
-        
+
         self.cwd = cwd or Path.cwd()
-        
+
         client_config = {
             "log_level": log_level,
         }
-        
+
         if self.github_token:
             client_config["github_token"] = self.github_token
             client_config["use_logged_in_user"] = False
         else:
             client_config["use_logged_in_user"] = True
-        
+
         # Add workspace/cwd if supported by SDK
         client_config["cwd"] = str(self.cwd)
-        
+
         self.client = CopilotClient(client_config)
         self._session = None
 

@@ -106,7 +106,7 @@ async def complete_device_login(client_id: str) -> Optional[str]:
     if not client_id:
         console.print("[red]No GitHub client ID configured.[/red]")
         console.print(
-            "[dim]Set HEIDI_GITHUB_CLIENT_ID env var or configure in .heidi/config.json[/dim]"
+            "[dim]Set HEIDI_GITHUB_CLIENT_ID env var or configure via 'heidi config set github_client_id <id>'[/dim]"
         )
         return None
 
@@ -155,7 +155,7 @@ def login_with_device_flow() -> Optional[str]:
         console.print("1. Create a GitHub OAuth App at: https://github.com/settings/developers")
         console.print("2. Set the client ID via:")
         console.print("   - Environment variable: HEIDI_GITHUB_CLIENT_ID")
-        console.print("   - Or add 'github_client_id' to .heidi/config.json")
+        console.print("   - Or use: heidi config set github_client_id <id>")
         console.print("\nAlternatively, you can paste a GitHub PAT directly:")
 
         from .config import ConfigManager

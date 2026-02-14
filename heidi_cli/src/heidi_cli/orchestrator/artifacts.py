@@ -22,7 +22,7 @@ class TaskArtifact:
     updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
     def save(self) -> Path:
-        tasks_dir = ConfigManager.TASKS_DIR
+        tasks_dir = ConfigManager.tasks_dir()
         tasks_dir.mkdir(parents=True, exist_ok=True)
 
         task_file = tasks_dir / f"{self.slug}.md"
@@ -43,7 +43,7 @@ class TaskArtifact:
 
     @classmethod
     def load(cls, slug: str) -> Optional[TaskArtifact]:
-        tasks_dir = ConfigManager.TASKS_DIR
+        tasks_dir = ConfigManager.tasks_dir()
         if not tasks_dir.exists():
             return None
 
@@ -76,7 +76,9 @@ def sanitize_slug(text: str) -> str:
 
 def create_task_artifact(task: str) -> TaskArtifact:
     slug = sanitize_slug(task)
-    artifact = TaskArtifact(slug=slug, content=f"# Task: {task}\n\nCreated: {datetime.utcnow().isoformat()}\n")
+    artifact = TaskArtifact(
+        slug=slug, content=f"# Task: {task}\n\nCreated: {datetime.utcnow().isoformat()}\n"
+    )
     artifact.save()
     HeidiLogger.write_event("task_created", {"slug": slug, "task": task})
     return artifact
@@ -93,15 +95,19 @@ def update_task_progress(slug: str, progress: str) -> None:
 def update_task_audit(slug: str, audit_result: str, passed: bool) -> None:
     artifact = TaskArtifact.load(slug)
     if artifact:
-        artifact.audit_content += f"\n{datetime.utcnow().isoformat()} - {'PASS' if passed else 'FAIL'}: {audit_result}"
+        artifact.audit_content += (
+            f"\n{datetime.utcnow().isoformat()} - {'PASS' if passed else 'FAIL'}: {audit_result}"
+        )
         artifact.status = "passed" if passed else "failed"
         artifact.save()
-        HeidiLogger.write_event("audit_update", {"slug": slug, "passed": passed, "result": audit_result})
+        HeidiLogger.write_event(
+            "audit_update", {"slug": slug, "passed": passed, "result": audit_result}
+        )
 
 
 def save_audit_to_task(slug: str, decision) -> None:
     """Save audit decision to the task audit file."""
-    tasks_dir = ConfigManager.TASKS_DIR
+    tasks_dir = ConfigManager.tasks_dir()
     tasks_dir.mkdir(parents=True, exist_ok=True)
 
     content = f"""# Audit: {slug}

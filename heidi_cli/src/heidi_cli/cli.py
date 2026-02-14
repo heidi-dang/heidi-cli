@@ -106,6 +106,10 @@ def main(
     if len(sys.argv) > 1 and sys.argv[1] == "start":
         return
 
+    # Skip wizard for read-only commands that don't require config
+    if len(sys.argv) > 1 and sys.argv[1] in ("paths", "doctor"):
+        return
+
     if not ConfigManager.config_file().exists() and not os.environ.get("HEIDI_NO_WIZARD"):
         console.print(
             Panel.fit(
@@ -130,6 +134,46 @@ def setup() -> None:
 
 
 @app.command()
+def paths() -> None:
+    """Show where Heidi stores configuration and data."""
+    from .config import (
+        ConfigManager,
+        check_legacy_heidi_dir,
+        heidi_config_dir,
+        heidi_state_dir,
+        heidi_cache_dir,
+    )
+
+    table = Table(title="Heidi CLI Paths")
+    table.add_column("Location", style="cyan")
+    table.add_column("Path", style="white")
+
+    table.add_row("Config (global)", str(heidi_config_dir()))
+
+    state_dir = heidi_state_dir()
+    if state_dir:
+        table.add_row("State (global)", str(state_dir))
+
+    cache_dir = heidi_cache_dir()
+    if cache_dir:
+        table.add_row("Cache (global)", str(cache_dir))
+
+    table.add_row("Project Root", str(ConfigManager.project_root()))
+    table.add_row("Tasks (project)", str(ConfigManager.tasks_dir()))
+
+    console.print(table)
+
+    legacy = check_legacy_heidi_dir()
+    if legacy:
+        console.print(f"[yellow]Warning: Found legacy ./.heidi/ at {legacy}[/yellow]")
+        console.print(
+            "[dim]New default is {}. Run 'heidi migrate' to move config.[/dim]".format(
+                heidi_config_dir()
+            )
+        )
+
+
+@app.command()
 def init(
     force: bool = typer.Option(False, "--force", help="Overwrite existing config"),
 ) -> None:
@@ -142,11 +186,11 @@ def init(
 
     config = ConfigManager.load_config()
     ConfigManager.save_config(config)
-    console.print(f"[green]Initialized Heidi at {ConfigManager.heidi_dir()}[/green]")
+    console.print(f"[green]Initialized Heidi at {ConfigManager.config_dir()}[/green]")
     console.print(f"  Config: {ConfigManager.config_file()}")
     console.print(f"  Secrets: {ConfigManager.secrets_file()}")
     console.print(f"  Runs: {ConfigManager.runs_dir()}")
-    console.print(f"  Tasks: {ConfigManager.TASKS_DIR}")
+    console.print(f"  Tasks: {ConfigManager.tasks_dir()}")
 
 
 @app.command()
@@ -191,17 +235,17 @@ def doctor() -> None:
     result = shutil.which("code")
     checks.append(("VS Code", "ok" if result else "not found", result or ""))
 
-    heidi_dir = ConfigManager.heidi_dir()
-    tasks_dir = ConfigManager.TASKS_DIR
-    if heidi_dir.exists():
-        checks.append((".heidi/ dir", "ok", str(heidi_dir)))
+    config_dir = ConfigManager.config_dir()
+    tasks_dir = ConfigManager.tasks_dir()
+    if config_dir.exists():
+        checks.append(("Config dir", "ok", str(config_dir)))
     else:
-        checks.append((".heidi/ dir", "warning", "not initialized (run heidi init)"))
+        checks.append(("Config dir", "warning", "not initialized (run heidi init)"))
 
     if tasks_dir.exists():
-        checks.append(("./tasks/ dir", "ok", str(tasks_dir)))
+        checks.append(("Tasks dir", "ok", str(tasks_dir)))
     else:
-        checks.append(("./tasks/ dir", "warning", "not created yet"))
+        checks.append(("Tasks dir", "warning", "not created yet"))
 
     config = ConfigManager.load_config()
     checks.append(
@@ -352,6 +396,14 @@ def copilot_status() -> None:
     from .copilot_runtime import CopilotRuntime
     from .logging import redact_secrets
 
+    # Check for env var override
+    if os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN"):
+        console.print("[yellow]Warning: GH_TOKEN or GITHUB_TOKEN env var is set.[/yellow]")
+        console.print(
+            "[yellow]This overrides OAuth token. Copilot may fail if env var token lacks Copilot scope.[/yellow]"
+        )
+        console.print()
+
     async def _run():
         rt = CopilotRuntime()
         try:
@@ -377,6 +429,93 @@ def copilot_status() -> None:
             await rt.stop()
 
     asyncio.run(_run())
+
+
+@copilot_app.command("login")
+def copilot_login(
+    use_gh: bool = typer.Option(True, "--gh/--pat", help="Use GH CLI OAuth (default) or PAT"),
+    token: Optional[str] = typer.Option(None, "--token", help="PAT token (only if --pat)"),
+    store_keyring: bool = typer.Option(True, help="Store token in OS keyring"),
+) -> None:
+    """Authenticate with GitHub for Copilot using OAuth (GH CLI) or PAT."""
+    import shutil as _shutil
+
+    gh_path = _shutil.which("gh")
+
+    if os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN"):
+        console.print(
+            "[yellow]Warning: GH_TOKEN or GITHUB_TOKEN environment variable is set.[/yellow]"
+        )
+        console.print("[yellow]This will override your OAuth token and Copilot may fail.[/yellow]")
+        console.print("[dim]Either unset the env var or use --pat with a different token.[/dim]")
+        console.print()
+
+    if use_gh:
+        if not gh_path:
+            console.print("[red]GH CLI not found.[/red]")
+            console.print("Install it: https://cli.github.com")
+            console.print("Or use --pat for PAT-based authentication.")
+            raise typer.Exit(1)
+
+        console.print("[cyan]Starting GitHub OAuth login via GH CLI...[/cyan]")
+        console.print("[dim]This will open a browser window for authentication.[/dim]")
+
+        try:
+            result = subprocess.run(
+                ["gh", "auth login", "--web"],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                console.print(f"[red]GH auth login failed: {result.stderr}[/red]")
+                raise typer.Exit(1)
+
+            token_result = subprocess.run(
+                ["gh", "auth", "token"],
+                capture_output=True,
+                text=True,
+            )
+            if token_result.returncode != 0:
+                console.print(f"[red]Failed to get token: {token_result.stderr}[/red]")
+                raise typer.Exit(1)
+
+            token = token_result.stdout.strip()
+            if not token:
+                console.print("[red]No token returned from gh auth token[/red]")
+                raise typer.Exit(1)
+
+            console.print("[green]OAuth login successful![/green]")
+
+        except subprocess.TimeoutExpired:
+            console.print("[red]GH auth login timed out[/red]")
+            raise typer.Exit(1)
+        except Exception as e:
+            console.print(f"[red]GH auth error: {e}[/red]")
+            raise typer.Exit(1)
+    else:
+        if not token:
+            token = typer.prompt(
+                "Enter GitHub fine-grained PAT (with Copilot:read permission)",
+                hide_input=True,
+            )
+
+        if not token:
+            console.print("[red]Token required[/red]")
+            raise typer.Exit(1)
+
+        console.print("[dim]Validating PAT...[/dim]")
+
+    ConfigManager.set_github_token(token, store_keyring=store_keyring)
+    console.print("[green]GitHub token stored successfully[/green]")
+
+    if store_keyring:
+        console.print("[dim]Token stored in OS keyring[/dim]")
+    else:
+        console.print("[dim]Token stored only in secrets file[/dim]")
+
+    console.print()
+    console.print("[cyan]To verify authentication, run:[/cyan]")
+    console.print("  heidi copilot status")
 
 
 @copilot_app.command("chat")
