@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import os
-import pytest
 from unittest.mock import patch, MagicMock
-from pathlib import Path
 
 
 class TestTokenPrecedence:
@@ -168,14 +165,12 @@ class TestNoTokenLeakage:
 
     def test_config_file_never_contains_raw_token(self, monkeypatch, tmp_path):
         """Verify secrets file uses proper permissions and keyring"""
-        import os
         import stat
-        import tempfile
         from heidi_cli.config import ConfigManager
 
-        original_cwd = os.getcwd()
+        original_cwd = __import__("os").getcwd()
         try:
-            os.chdir(tmp_path)
+            __import__("os").chdir(tmp_path)
             ConfigManager.ensure_dirs()
 
             secrets_file = ConfigManager.secrets_file()
@@ -183,4 +178,4 @@ class TestNoTokenLeakage:
                 mode = stat.S_IMODE(secrets_file.stat().st_mode)
                 assert mode == 0o600, f"Secrets file has wrong permissions: {oct(mode)}"
         finally:
-            os.chdir(original_cwd)
+            __import__("os").chdir(original_cwd)
