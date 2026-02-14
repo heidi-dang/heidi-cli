@@ -97,7 +97,7 @@ class AgentRegistry:
 
         cls._agents = DEFAULT_AGENTS.copy()
 
-        agents_dir = ConfigManager.HEIDI_DIR / "agents"
+        agents_dir = ConfigManager.heidi_dir() / "agents"
         if agents_dir.exists():
             for md_file in agents_dir.glob("*.md"):
                 agent_name = md_file.stem

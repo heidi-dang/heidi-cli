@@ -974,7 +974,7 @@ def copilot_status() -> None:
                 auth = await rt.client.get_auth_status()
                 console.print(
                     Panel.fit(
-                        f"state={st.state}\ncliVersion={st.cliVersion}\n\n"
+                        f"version={st.version}\nprotocolVersion={st.protocolVersion}\n\n"
                         + f"isAuthenticated={auth.isAuthenticated}\nlogin={auth.login}",
                         title="Copilot SDK Status",
                     )
@@ -1260,8 +1260,6 @@ def loop(
                 "dry_run": True,
             }
         )
-
-        import asyncio
 
         try:
             result = asyncio.run(_dry_run())
