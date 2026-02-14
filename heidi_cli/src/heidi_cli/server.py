@@ -153,7 +153,22 @@ async def serve_ui(path: str):
             status_code=200,
         )
 
-    file_path = UI_DIST / path
+    # Security check: Ensure path doesn't traverse outside UI_DIST
+    try:
+        file_path = (UI_DIST / path).resolve()
+        if not file_path.is_relative_to(UI_DIST.resolve()):
+            # Path traversal attempt
+            return HTMLResponse(
+                "<html><body><h1>404</h1><p>File not found</p></body></html>",
+                status_code=404,
+            )
+    except Exception:
+        # Handle path resolution errors safely
+        return HTMLResponse(
+            "<html><body><h1>404</h1><p>File not found</p></body></html>",
+            status_code=404,
+        )
+
     if file_path.is_file():
         from starlette.responses import FileResponse
 
