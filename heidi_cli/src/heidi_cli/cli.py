@@ -37,6 +37,7 @@ agents_app = typer.Typer(help="Agent management")
 valves_app = typer.Typer(help="Configuration valves")
 persona_app = typer.Typer(help="Persona management")
 start_app = typer.Typer(help="Start services (UI, backend, etc.)", no_args_is_help=True)
+connect_app = typer.Typer(help="Connect to external services (Ollama, OpenCode)")
 
 app.add_typer(copilot_app, name="copilot")
 app.add_typer(auth_app, name="auth")
@@ -45,6 +46,7 @@ app.add_typer(valves_app, name="valves")
 app.add_typer(openwebui_app, name="openwebui")
 app.add_typer(persona_app, name="persona")
 app.add_typer(start_app, name="start")
+app.add_typer(connect_app, name="connect")
 
 console = Console()
 json_output = False
@@ -358,6 +360,230 @@ def uninstall(
             console.print(f"  State: {heidi_state_dir()}")
         if heidi_cache_dir():
             console.print(f"  Cache: {heidi_cache_dir()}")
+
+
+@connect_app.command("status")
+def connect_status(json_output: bool = typer.Option(False, "--json", help="Output JSON")) -> None:
+    """Show connection status for all configured services."""
+    from .config import ConfigManager
+    from .connect import (
+        check_ollama,
+        check_opencode_cli,
+        check_opencode_server,
+        check_heidi_backend,
+    )
+
+    config = ConfigManager.load_config()
+    secrets = ConfigManager.load_secrets()
+
+    status_data = {}
+    results = []
+
+    # Check Heidi backend
+    backend_url = os.getenv("HEIDI_SERVER_BASE", "http://127.0.0.1:7777")
+    success, msg = check_heidi_backend(backend_url)
+    results.append(
+        {"service": "Heidi Backend", "status": "green" if success else "red", "message": msg}
+    )
+    status_data["heidi_backend"] = {"connected": success, "message": msg}
+
+    # Check Ollama
+    ollama_url = config.ollama_url or "http://127.0.0.1:11434"
+    ollama_token = secrets.ollama_token
+    success, msg = check_ollama(ollama_url, ollama_token)
+    results.append({"service": "Ollama", "status": "green" if success else "red", "message": msg})
+    status_data["ollama"] = {"connected": success, "message": msg, "url": ollama_url}
+
+    # Check OpenCode CLI
+    success, msg = check_opencode_cli()
+    results.append(
+        {"service": "OpenCode CLI", "status": "green" if success else "red", "message": msg}
+    )
+    status_data["opencode_cli"] = {"installed": success, "message": msg}
+
+    # Check OpenCode server
+    if config.opencode_url:
+        success, msg = check_opencode_server(
+            config.opencode_url, config.opencode_username, secrets.opencode_password
+        )
+        results.append(
+            {"service": "OpenCode Server", "status": "green" if success else "red", "message": msg}
+        )
+        status_data["opencode_server"] = {
+            "connected": success,
+            "message": msg,
+            "url": config.opencode_url,
+        }
+    else:
+        results.append(
+            {"service": "OpenCode Server", "status": "yellow", "message": "Not configured"}
+        )
+        status_data["opencode_server"] = {"connected": False, "message": "Not configured"}
+
+    if json_output:
+        import json
+
+        console.print(json.dumps(status_data, indent=2))
+    else:
+        table = Table(title="Connection Status")
+        table.add_column("Service", style="cyan")
+        table.add_column("Status", style="white")
+        table.add_column("Details", style="dim")
+
+        for r in results:
+            style = (
+                "green" if r["status"] == "green" else ("red" if r["status"] == "red" else "yellow")
+            )
+            table.add_row(r["service"], f"[{style}]{r['status'].upper()}[/{style}]", r["message"])
+
+        console.print(table)
+
+
+@connect_app.command("ollama")
+def connect_ollama(
+    url: str = typer.Option("http://127.0.0.1:11434", "--url", help="Ollama URL"),
+    token: Optional[str] = typer.Option(None, "--token", help="Ollama token (optional)"),
+    save: bool = typer.Option(True, "--save/--no-save", help="Save configuration"),
+) -> None:
+    """Connect to Ollama."""
+    from .config import ConfigManager
+    from .connect import check_ollama
+
+    console.print(f"[cyan]Checking Ollama at {url}...[/cyan]")
+
+    success, msg = check_ollama(url, token)
+
+    if success:
+        console.print(f"[green]✓ {msg}[/green]")
+    else:
+        console.print(f"[red]✗ {msg}[/red]")
+        console.print("[yellow]Make sure Ollama is running and try again.[/yellow]")
+        raise typer.Exit(1)
+
+    if save:
+        config = ConfigManager.load_config()
+        config.ollama_url = url
+        ConfigManager.save_config(config)
+
+        if token:
+            secrets = ConfigManager.load_secrets()
+            secrets.ollama_token = token
+            ConfigManager.save_secrets(secrets)
+
+        console.print("[green]Ollama configuration saved[/green]")
+
+
+@connect_app.command("opencode")
+def connect_opencode(
+    mode: str = typer.Option("local", "--mode", help="Mode: local or server"),
+    url: str = typer.Option(
+        "http://127.0.0.1:4096", "--url", help="OpenCode server URL (for server mode)"
+    ),
+    username: Optional[str] = typer.Option(None, "--username", help="Username (for server mode)"),
+    password: Optional[str] = typer.Option(None, "--password", help="Password (for server mode)"),
+    save: bool = typer.Option(True, "--save/--no-save", help="Save configuration"),
+) -> None:
+    """Connect to OpenCode (CLI or server)."""
+    from .config import ConfigManager
+    from .connect import check_opencode_cli, check_opencode_server
+
+    if mode == "local":
+        console.print("[cyan]Checking OpenCode CLI...[/cyan]")
+        success, msg = check_opencode_cli()
+
+        if success:
+            console.print(f"[green]✓ {msg}[/green]")
+        else:
+            console.print(f"[red]✗ {msg}[/red]")
+            console.print("[yellow]Install OpenCode: https://opencode.ai[/yellow]")
+            raise typer.Exit(1)
+
+        if save:
+            config = ConfigManager.load_config()
+            config.opencode_url = None
+            config.opencode_username = None
+            ConfigManager.save_config(config)
+
+            secrets = ConfigManager.load_secrets()
+            secrets.opencode_password = None
+            ConfigManager.save_secrets(secrets)
+
+            console.print("[green]OpenCode CLI configuration saved[/green]")
+
+    elif mode == "server":
+        console.print(f"[cyan]Checking OpenCode server at {url}...[/cyan]")
+
+        # Prompt for credentials if not provided
+        if not username:
+            from rich.prompt import Prompt
+
+            username = Prompt.ask("Username")
+        if not password:
+            from rich.prompt import Prompt
+
+            password = Prompt.ask("Password", password=True)
+
+        success, msg = check_opencode_server(url, username, password)
+
+        if success:
+            console.print(f"[green]✓ {msg}[/green]")
+        else:
+            console.print(f"[red]✗ {msg}[/red]")
+            raise typer.Exit(1)
+
+        if save:
+            config = ConfigManager.load_config()
+            config.opencode_url = url
+            config.opencode_username = username
+            ConfigManager.save_config(config)
+
+            secrets = ConfigManager.load_secrets()
+            secrets.opencode_password = password
+            ConfigManager.save_secrets(secrets)
+
+            console.print("[green]OpenCode server configuration saved[/green]")
+    else:
+        console.print("[red]Invalid mode. Use 'local' or 'server'[/red]")
+        raise typer.Exit(1)
+
+
+@connect_app.command("disconnect")
+def connect_disconnect(
+    service: str = typer.Argument(..., help="Service to disconnect: ollama, opencode"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Disconnect from a service."""
+    from .config import ConfigManager
+
+    if service not in ("ollama", "opencode"):
+        console.print(f"[red]Unknown service: {service}[/red]")
+        console.print("[dim]Valid services: ollama, opencode[/dim]")
+        raise typer.Exit(1)
+
+    if not yes:
+        console.print(f"[yellow]This will remove {service} configuration.[/yellow]")
+        confirm = input("Continue? [y/N]: ")
+        if confirm.lower() not in ("y", "yes"):
+            console.print("[yellow]Cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+    config = ConfigManager.load_config()
+    secrets = ConfigManager.load_secrets()
+
+    if service == "ollama":
+        config.ollama_url = None
+        secrets.ollama_token = None
+        ConfigManager.save_config(config)
+        ConfigManager.save_secrets(secrets)
+        console.print("[green]Ollama disconnected[/green]")
+
+    elif service == "opencode":
+        config.opencode_url = None
+        config.opencode_username = None
+        secrets.opencode_password = None
+        ConfigManager.save_config(config)
+        ConfigManager.save_secrets(secrets)
+        console.print("[green]OpenCode disconnected[/green]")
 
 
 @app.command()
