@@ -77,7 +77,7 @@ done
 # Check if heidi command is available (in PATH)
 if command -v heidi &> /dev/null; then
     echo ""
-    echo "⚠️  Heidi CLI is already installed!"
+    echo "Heidi CLI is already installed!"
     EXISTING_INSTALL=true
 fi
 
@@ -98,12 +98,12 @@ if [ "$EXISTING_INSTALL" = true ] || [ "$EXISTING_VENV" = true ]; then
         1)
             echo ""
             echo "Uninstalling existing installation..."
-            
+
             # Remove existing installation directory
             if [ -d "$INSTALL_DIR" ]; then
                 rm -rf "$INSTALL_DIR"
             fi
-            
+
             # Remove venv in current directory if exists
             if [ -d ".venv" ]; then
                 rm -rf .venv
@@ -111,20 +111,20 @@ if [ "$EXISTING_INSTALL" = true ] || [ "$EXISTING_VENV" = true ]; then
             if [ -d "venv" ]; then
                 rm -rf venv
             fi
-            
+
             # Try to find and remove venv in common locations
             for dir in "$HOME/.local/heidi-cli"; do
                 if [ -d "$dir/.venv" ] || [ -d "$dir/venv" ]; then
                     rm -rf "$dir"
                 fi
             done
-            
-            echo "✅ Existing installation removed."
+
+            echo "Existing installation removed."
             ;;
         2)
             echo ""
             echo "Updating existing installation..."
-            
+
             if [ -d "$INSTALL_DIR" ]; then
                 cd "$INSTALL_DIR"
                 git pull origin main
@@ -134,7 +134,7 @@ if [ "$EXISTING_INSTALL" = true ] || [ "$EXISTING_VENV" = true ]; then
                     pip install -e ".[dev]" -q
                 fi
                 echo ""
-                echo "✅ Heidi CLI updated successfully!"
+                echo "Heidi CLI updated successfully!"
                 echo ""
                 echo "To activate, run:"
                 echo "  cd $INSTALL_DIR/heidi_cli && source .venv/bin/activate"
@@ -180,7 +180,7 @@ pip install --upgrade pip -q
 # Install in editable mode
 pip install -e ".[dev]" -q
 
-# Setup UI (copy from cloned repo)
+# Setup UI
 echo ""
 echo "Setting up UI..."
 
@@ -188,52 +188,38 @@ echo "Setting up UI..."
 if [ -n "$HEIDI_HOME" ]; then
     UI_DIR="$HEIDI_HOME/ui"
 else
-    # Use OS cache dir (XDG_CACHE_HOME or ~/.cache)
     CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}"
     UI_DIR="$CACHE_DIR/heidi/ui"
 fi
 
-# Safety check: UI must exist in cloned repo
+# Safety check
 if [ ! -f "$INSTALL_DIR/ui/package.json" ]; then
     echo "ERROR: UI not bundled in heidi-cli. Expected $INSTALL_DIR/ui/package.json"
     exit 1
 fi
 
-# Get git commit for UI version tracking
+# Version info
 UI_VERSION=$(git -C "$INSTALL_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
 echo "UI source: $INSTALL_DIR/ui"
 echo "UI version: $UI_VERSION"
 echo "UI dest: $UI_DIR"
 
-# Copy UI from repo to cache dir
-if [ -d "$UI_DIR" ]; then
-    echo "Updating UI in $UI_DIR..."
-    rm -rf "$UI_DIR"
-    cp -r "$INSTALL_DIR/ui" "$UI_DIR"
+# Copy UI
+mkdir -p "$(dirname "$UI_DIR")"
+rm -rf "$UI_DIR"
+cp -r "$INSTALL_DIR/ui" "$UI_DIR"
+echo "UI installed."
+
+# Create global config/state/cache dirs
+if [ -n "$HEIDI_HOME" ]; then
+    mkdir -p "$HEIDI_HOME"
 else
-    echo "Installing UI to $UI_DIR..."
-    mkdir -p "$(dirname "$UI_DIR")"
-    cp -r "$INSTALL_DIR/ui" "$UI_DIR"
-fi
-
-# Create global config/state/cache dirs (no secrets) so CI + UX are deterministic
-create_global_dirs() {
-    if [ -n "$HEIDI_HOME" ]; then
-        mkdir -p "$HEIDI_HOME"
-        return
-    fi
-
     if [ "$(uname -s)" = "Darwin" ]; then
-        mkdir -p "$HOME/Library/Application Support/Heidi" \
-                 "$HOME/Library/Caches/Heidi"
+        mkdir -p "$HOME/Library/Application Support/Heidi" "$HOME/Library/Caches/Heidi"
     else
-        mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/heidi" \
-                 "${XDG_STATE_HOME:-$HOME/.local/state}/heidi" \
-                 "${XDG_CACHE_HOME:-$HOME/.cache}/heidi"
+        mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/heidi" "${XDG_STATE_HOME:-$HOME/.local/state}/heidi" "${XDG_CACHE_HOME:-$HOME/.cache}/heidi"
     fi
-}
-
-create_global_dirs
+fi
 
 echo ""
 echo "Heidi CLI installed successfully!"
@@ -248,4 +234,3 @@ echo ""
 echo "To start the UI:"
 echo "  heidi serve --ui"
 echo "  # Or: heidi start ui"
-# trigger CI
