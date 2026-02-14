@@ -93,7 +93,7 @@ def ensure_ui_repo(ui_path: Optional[Path] = None, no_update: bool = False) -> O
             if result.returncode != 0:
                 console.print(f"[yellow]Git pull failed: {result.stderr}[/yellow]")
             else:
-                console.print(f"[green]UI updated successfully[/green]")
+                console.print("[green]UI updated successfully[/green]")
 
             # Check if package-lock changed, suggest npm install
             if (ui_path / "package-lock.json").exists():
