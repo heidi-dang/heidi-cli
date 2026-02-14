@@ -61,3 +61,6 @@ reviews/
 ui/node_modules/
 ui/dist/
 ui/.vite/
+
+# Memory / context
+.memory/
