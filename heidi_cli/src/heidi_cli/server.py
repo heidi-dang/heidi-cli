@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List
 
@@ -14,6 +15,8 @@ import uvicorn
 
 from .auth_db import init_db
 from .auth_middleware import AuthMiddleware
+from .orchestrator.planner import PlannerAgent
+from .orchestrator.session import Session
 
 # Optional API key protection:
 # - If HEIDI_API_KEY is set, protected endpoints require:
@@ -85,6 +88,19 @@ app.add_middleware(
 app.add_middleware(AuthMiddleware)
 
 init_db()
+
+# Global Session Manager
+ACTIVE_SESSIONS: dict[str, PlannerAgent] = {}
+
+
+def get_planner(session_id: str = "default") -> PlannerAgent:
+    if session_id not in ACTIVE_SESSIONS:
+        session = Session.load(session_id)
+        if not session:
+            session = Session(session_id=session_id)
+            session.save()
+        ACTIVE_SESSIONS[session_id] = PlannerAgent(session)
+    return ACTIVE_SESSIONS[session_id]
 
 
 def _check_auth(request: Request, stream_key: Optional[str] = None) -> bool:
@@ -344,15 +360,73 @@ class ChatResponse(BaseModel):
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, http_request: Request):
-    """Simple chat endpoint - no artifacts, no planning, just response."""
-    from .orchestrator.loop import pick_executor
-
+    """Stateful chat endpoint using PlannerAgent."""
     try:
-        executor = pick_executor(request.executor)
-        result = await executor.run(request.message, Path.cwd())
-        return ChatResponse(response=result.output)
+        # Determine session ID (use user ID if auth enabled, else default)
+        session_id = "default"
+        if hasattr(http_request.state, "user") and http_request.state.user:
+            session_id = http_request.state.user.id
+
+        planner = get_planner(session_id)
+        workdir = Path.cwd()
+        response = await planner.process_user_message(request.message, workdir)
+        return ChatResponse(response=response)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/chat/history")
+async def chat_history(http_request: Request):
+    """Get conversation history for current session."""
+    session_id = "default"
+    if hasattr(http_request.state, "user") and http_request.state.user:
+        session_id = http_request.state.user.id
+
+    planner = get_planner(session_id)
+    return planner.session.history
+
+
+@app.post("/plan/approve")
+async def approve_plan(http_request: Request):
+    """Approve current plan and start execution."""
+    session_id = "default"
+    if hasattr(http_request.state, "user") and http_request.state.user:
+        session_id = http_request.state.user.id
+
+    planner = get_planner(session_id)
+    workdir = Path.cwd()
+    result = await planner.approve_plan(workdir)
+    return {"status": "ok", "message": result}
+
+
+@app.post("/plan/reject")
+async def reject_plan(http_request: Request, reason: str = "Rejected by user"):
+    """Reject current plan."""
+    session_id = "default"
+    if hasattr(http_request.state, "user") and http_request.state.user:
+        session_id = http_request.state.user.id
+
+    planner = get_planner(session_id)
+    workdir = Path.cwd()
+    result = await planner.reject_plan(reason, workdir)
+    return {"status": "ok", "message": result}
+
+
+@app.get("/session")
+async def get_session(http_request: Request):
+    """Get current session state."""
+    session_id = "default"
+    if hasattr(http_request.state, "user") and http_request.state.user:
+        session_id = http_request.state.user.id
+
+    planner = get_planner(session_id)
+    return {
+        "session_id": planner.session.session_id,
+        "state": planner.session.state,
+        "task": planner.session.task,
+        "plan": planner.session.plan,
+        "task_slug": planner.session.task_slug,
+    }
 
 
 @app.post("/run", response_model=RunResponse)
@@ -456,6 +530,31 @@ async def api_chat(request: ChatRequest, http_request: Request):
     return await chat(request, http_request)
 
 
+@app.get("/api/chat/history")
+async def api_chat_history(http_request: Request):
+    return await chat_history(http_request)
+
+
+@app.post("/api/plan/approve")
+async def api_approve_plan(http_request: Request):
+    return await approve_plan(http_request)
+
+
+@app.get("/api/tasks/{slug}")
+async def api_get_task_artifacts(slug: str):
+    from .orchestrator.artifacts import TaskArtifact
+
+    artifact = TaskArtifact.load(slug)
+    if not artifact:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {
+        "slug": artifact.slug,
+        "content": artifact.content,
+        "audit": artifact.audit_content,
+        "status": artifact.status,
+    }
+
+
 @app.get("/api/runs")
 async def api_list_runs(limit: int = 10, request: Request = None):
     return await list_runs(limit, request)
@@ -498,6 +597,7 @@ async def list_models_v1():
     from .copilot_runtime import list_copilot_models
 
     models = []
+    ts = int(datetime.now(timezone.utc).timestamp())
 
     try:
         copilot_models = await list_copilot_models()
@@ -508,7 +608,7 @@ async def list_models_v1():
                     {
                         "id": f"copilot/{mid}",
                         "object": "model",
-                        "created": 1677610602,
+                        "created": ts,
                         "owned_by": "github/copilot",
                     }
                 )
@@ -521,7 +621,7 @@ async def list_models_v1():
                 {
                     "id": f"copilot/{m}",
                     "object": "model",
-                    "created": 1677610602,
+                    "created": ts,
                     "owned_by": "github/copilot",
                 }
             )
@@ -530,7 +630,7 @@ async def list_models_v1():
         {
             "id": "jules/default",
             "object": "model",
-            "created": 1677610602,
+            "created": ts,
             "owned_by": "google/jules",
         }
     )
@@ -559,6 +659,7 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
             executor_name = "ollama"
 
     prompt = "\n".join([f"{m.role}: {m.content}" for m in request.messages])
+    ts = int(datetime.now(timezone.utc).timestamp())
 
     if request.stream:
 
@@ -573,7 +674,7 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
                     await rt.start()
                     try:
                         session = await rt.client.create_session({"model": actual_model or "gpt-5"})
-                        chunks = []
+                        queue = asyncio.Queue()
                         done = asyncio.Event()
 
                         def on_event(event):
@@ -583,11 +684,10 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
                             if t == "assistant.message":
                                 content = getattr(getattr(event, "data", None), "content", None)
                                 if content:
-                                    chunks.append(content)
                                     chunk = {
                                         "id": f"chatcmpl-{run_id[:8]}",
                                         "object": "chat.completion.chunk",
-                                        "created": 1677652288,
+                                        "created": ts,
                                         "model": request.model,
                                         "choices": [
                                             {
@@ -597,16 +697,29 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
                                             }
                                         ],
                                     }
-                                    yield f"data: {json.dumps(chunk)}\n\n"
+                                    queue.put_nowait(f"data: {json.dumps(chunk)}\n\n")
                             elif t == "session.idle":
+                                done.set()
+                            elif t == "session.error":
+                                error_msg = getattr(getattr(event, "data", None), "message", "Unknown error")
+                                queue.put_nowait(f"data: {json.dumps({'error': {'message': error_msg}})}\n\n")
                                 done.set()
 
                         session.on(on_event)
-                        await session.send({"prompt": prompt})
-                        try:
-                            await asyncio.wait_for(done.wait(), timeout=300)
-                        except asyncio.TimeoutError:
-                            pass
+                        asyncio.create_task(session.send({"prompt": prompt}))
+
+                        while not done.is_set():
+                            try:
+                                chunk = await asyncio.wait_for(queue.get(), timeout=1.0)
+                                yield chunk
+                            except asyncio.TimeoutError:
+                                if done.is_set():
+                                    break
+                                continue
+
+                        while not queue.empty():
+                            yield queue.get_nowait()
+
                         yield "data: [DONE]\n\n"
                     finally:
                         await rt.stop()
@@ -616,7 +729,7 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
                     chunk = {
                         "id": f"chatcmpl-{run_id[:8]}",
                         "object": "chat.completion.chunk",
-                        "created": 1677652288,
+                        "created": ts,
                         "model": request.model,
                         "choices": [
                             {"index": 0, "delta": {"content": content}, "finish_reason": "stop"}
@@ -641,7 +754,7 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
         response = {
             "id": f"chatcmpl-{HeidiLogger.init_run()[:8]}",
             "object": "chat.completion",
-            "created": 1677652288,
+            "created": ts,
             "model": request.model,
             "choices": [
                 {
