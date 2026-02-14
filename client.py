@@ -6,9 +6,10 @@ version: 2.1.0
 """
 
 import traceback
+import asyncio
 from typing import List, Union, Generator, Iterator
 
-import requests
+import httpx
 from pydantic import BaseModel, Field
 
 
@@ -83,7 +84,7 @@ class Pipe:
             headers["X-Heidi-Key"] = self.valves.HEIDI_API_KEY
         return headers
 
-    def _fetch_models(self) -> List[str]:
+    async def _fetch_models(self) -> List[str]:
         """Fetch available Copilot models from Heidi server."""
         import time
 
@@ -93,7 +94,8 @@ class Pipe:
 
         try:
             url = f"{self.server_url}/models"
-            response = requests.get(url, headers=self._get_headers(), timeout=10)
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=self._get_headers(), timeout=10)
             if response.status_code == 200:
                 models_data = response.json()
                 if isinstance(models_data, list):
@@ -125,7 +127,7 @@ class Pipe:
 
         return self.valves.DEFAULT_EXECUTOR, model_id or self.valves.DEFAULT_MODEL
 
-    def _fetch_agents(self) -> List[tuple]:
+    async def _fetch_agents(self) -> List[tuple]:
         """Fetch agents from Heidi server."""
         import time
 
@@ -136,7 +138,8 @@ class Pipe:
 
         try:
             url = f"{self.server_url}/agents"
-            response = requests.get(url, headers=self._get_headers(), timeout=10)
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=self._get_headers(), timeout=10)
             if response.status_code == 200:
                 agents_data = response.json()
                 self._agents_cache = [
@@ -165,24 +168,20 @@ class Pipe:
 
         # Fetch Copilot models from server
         try:
-            url = f"{self.server_url}/models"
-            response = requests.get(url, headers=self._get_headers(), timeout=10)
-            if response.status_code == 200:
-                copilot_models = response.json()
-                if isinstance(copilot_models, list):
-                    for m in copilot_models:
-                        mid = m.get("id") or m.get("name", "")
-                        if mid and not mid.startswith("error"):
-                            models.append(
-                                {
-                                    "id": f"copilot/{mid}",
-                                    "name": f"Copilot: {mid}",
-                                }
-                            )
+            copilot_models = await self._fetch_models()
+            for mid in copilot_models:
+                if mid and not mid.startswith("error"):
+                    models.append(
+                        {
+                            "id": f"copilot/{mid}",
+                            "name": f"Copilot: {mid}",
+                        }
+                    )
         except Exception:
+            # Fallback handled by _fetch_models
             pass
 
-        # Fallback Copilot models if server unavailable
+        # Ensure fallback models are present if _fetch_models returned nothing or failed completely
         if not models:
             for m in COPILOT_MODELS:
                 models.append(
@@ -195,7 +194,8 @@ class Pipe:
         # Fetch OpenCode models
         if self.valves.ENABLE_OPENCODE:
             try:
-                result = subprocess.run(
+                result = await asyncio.to_thread(
+                    subprocess.run,
                     ["opencode", "models", "openai"],
                     capture_output=True,
                     text=True,
@@ -217,7 +217,8 @@ class Pipe:
         # Add Ollama models if enabled
         if self.valves.ENABLE_OLLAMA:
             try:
-                resp = requests.get(f"{self.valves.OLLAMA_URL}/api/tags", timeout=10)
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(f"{self.valves.OLLAMA_URL}/api/tags", timeout=10)
                 if resp.status_code == 200:
                     data = resp.json()
                     for model in data.get("models", []):
@@ -268,7 +269,7 @@ class Pipe:
                 return await self.execute_run(prompt, executor=executor, model=model)
 
             if last_message.startswith("agents"):
-                return self.list_agents()
+                return await self.list_agents()
 
             if last_message.startswith("runs"):
                 return await self.list_runs()
@@ -279,9 +280,9 @@ class Pipe:
             traceback.print_exc()
             return f"**Heidi CLI Error**\n\n```\n{str(e)}\n```"
 
-    def list_agents(self) -> str:
+    async def list_agents(self) -> str:
         """List available agents."""
-        agents = self._fetch_agents()
+        agents = await self._fetch_agents()
 
         output = "### 🤖 Available Agents\n\n"
         output += "| Agent | Description |\n"
@@ -305,9 +306,10 @@ class Pipe:
         payload = {k: v for k, v in payload.items() if v}
 
         try:
-            response = requests.post(
-                url, json=payload, headers=self._get_headers(), timeout=self.valves.REQUEST_TIMEOUT
-            )
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url, json=payload, headers=self._get_headers(), timeout=self.valves.REQUEST_TIMEOUT
+                )
             response.raise_for_status()
             data = response.json()
 
@@ -331,11 +333,11 @@ class Pipe:
 
             return output
 
-        except requests.exceptions.ConnectionError:
+        except httpx.ConnectError:
             return f"**Connection Error**\n\nCould not connect to Heidi server at {self.server_url}\n\nEnsure `heidi serve` is running."
-        except requests.exceptions.Timeout:
+        except httpx.TimeoutException:
             return f"**Timeout Error**\n\nRequest timed out after {self.valves.REQUEST_TIMEOUT}s.\n\nTry increasing REQUEST_TIMEOUT valve."
-        except requests.exceptions.HTTPError as e:
+        except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
                 return "**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
             return f"**HTTP Error**\n\n{str(e)}\n"
@@ -355,9 +357,10 @@ class Pipe:
         payload = {k: v for k, v in payload.items() if v}
 
         try:
-            response = requests.post(
-                url, json=payload, headers=self._get_headers(), timeout=self.valves.REQUEST_TIMEOUT
-            )
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url, json=payload, headers=self._get_headers(), timeout=self.valves.REQUEST_TIMEOUT
+                )
             response.raise_for_status()
             data = response.json()
 
@@ -380,11 +383,11 @@ class Pipe:
 
             return output
 
-        except requests.exceptions.ConnectionError:
+        except httpx.ConnectError:
             return f"**Connection Error**\n\nCould not connect to Heidi server at {self.server_url}\n\nEnsure `heidi serve` is running."
-        except requests.exceptions.Timeout:
+        except httpx.TimeoutException:
             return f"**Timeout Error**\n\nRequest timed out after {self.valves.REQUEST_TIMEOUT}s."
-        except requests.exceptions.HTTPError as e:
+        except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
                 return "**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
             return f"**HTTP Error**\n\n{str(e)}\n"
@@ -395,7 +398,8 @@ class Pipe:
         """List recent runs."""
         url = f"{self.server_url}/runs"
         try:
-            response = requests.get(url, headers=self._get_headers(), timeout=10)
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=self._get_headers(), timeout=10)
             response.raise_for_status()
             runs = response.json()
 
@@ -412,7 +416,7 @@ class Pipe:
 
             return output
 
-        except requests.exceptions.HTTPError as e:
+        except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
                 return "**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
             return f"**HTTP Error**\n\n{str(e)}\n"
@@ -437,9 +441,10 @@ class Pipe:
         payload = {k: v for k, v in payload.items() if v}
 
         try:
-            response = requests.post(
-                url, json=payload, headers=self._get_headers(), timeout=self.valves.REQUEST_TIMEOUT
-            )
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url, json=payload, headers=self._get_headers(), timeout=self.valves.REQUEST_TIMEOUT
+                )
             response.raise_for_status()
             data = response.json()
 
@@ -448,11 +453,11 @@ class Pipe:
             else:
                 return f"**Error:** {data.get('error', 'Unknown error')}\n"
 
-        except requests.exceptions.ConnectionError:
+        except httpx.ConnectError:
             return f"**Connection Error**\n\nCould not connect to Heidi server at {self.server_url}\n\nEnsure `heidi serve` is running."
-        except requests.exceptions.Timeout:
+        except httpx.TimeoutException:
             return f"**Timeout Error**\n\nRequest timed out after {self.valves.REQUEST_TIMEOUT}s."
-        except requests.exceptions.HTTPError as e:
+        except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
                 return "**Authentication Error**\n\n401 Unauthorized.\n\nEnsure HEIDI_API_KEY valve is set correctly."
             return f"**HTTP Error**\n\n{str(e)}\n"
