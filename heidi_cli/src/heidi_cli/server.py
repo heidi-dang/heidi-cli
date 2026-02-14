@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -476,6 +476,194 @@ async def api_stream_run(run_id: str, request: Request, key: Optional[str] = Non
 @app.post("/api/runs/{run_id}/cancel")
 async def api_cancel_run(run_id: str, request: Request):
     return await cancel_run(run_id, request)
+
+
+# ==================== OpenAI-Compatible Endpoints ====================
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatCompletionRequest(BaseModel):
+    model: str
+    messages: List[ChatMessage]
+    stream: bool = False
+    temperature: Optional[float] = 1.0
+    max_tokens: Optional[int] = None
+
+
+@app.get("/v1/models")
+async def list_models_v1():
+    """OpenAI-compatible /v1/models endpoint."""
+    from .copilot_runtime import list_copilot_models
+
+    models = []
+
+    try:
+        copilot_models = await list_copilot_models()
+        for m in copilot_models:
+            mid = m.get("id") or m.get("name", "")
+            if mid and not mid.startswith("error"):
+                models.append(
+                    {
+                        "id": f"copilot/{mid}",
+                        "object": "model",
+                        "created": 1677610602,
+                        "owned_by": "github/copilot",
+                    }
+                )
+    except Exception:
+        pass
+
+    if not models:
+        for m in ["gpt-5", "claude-sonnet-4-20250514", "gpt-4o", "o3"]:
+            models.append(
+                {
+                    "id": f"copilot/{m}",
+                    "object": "model",
+                    "created": 1677610602,
+                    "owned_by": "github/copilot",
+                }
+            )
+
+    models.append(
+        {
+            "id": "jules/default",
+            "object": "model",
+            "created": 1677610602,
+            "owned_by": "google/jules",
+        }
+    )
+
+    return {"object": "list", "data": models}
+
+
+@app.post("/v1/chat/completions")
+async def chat_completions(request: ChatCompletionRequest, http_request: Request):
+    """OpenAI-compatible /v1/chat/completions endpoint."""
+    from .orchestrator.loop import pick_executor
+    from .logging import HeidiLogger
+    from .copilot_runtime import CopilotRuntime
+
+    model_id = request.model
+    executor_name = "copilot"
+    actual_model = None
+
+    if "/" in model_id:
+        prefix, actual_model = model_id.split("/", 1)
+        if prefix == "jules":
+            executor_name = "jules"
+        elif prefix == "opencode":
+            executor_name = "opencode"
+        elif prefix == "ollama":
+            executor_name = "ollama"
+
+    prompt = "\n".join([f"{m.role}: {m.content}" for m in request.messages])
+
+    if request.stream:
+
+        async def generate():
+            try:
+                executor = pick_executor(executor_name, model=actual_model)
+                workdir = Path.cwd()
+                run_id = HeidiLogger.init_run()
+
+                if executor_name == "copilot":
+                    rt = CopilotRuntime(model=actual_model, cwd=workdir)
+                    await rt.start()
+                    try:
+                        session = await rt.client.create_session({"model": actual_model or "gpt-5"})
+                        chunks = []
+                        done = asyncio.Event()
+
+                        def on_event(event):
+                            t = getattr(getattr(event, "type", None), "value", None) or getattr(
+                                event, "type", None
+                            )
+                            if t == "assistant.message":
+                                content = getattr(getattr(event, "data", None), "content", None)
+                                if content:
+                                    chunks.append(content)
+                                    chunk = {
+                                        "id": f"chatcmpl-{run_id[:8]}",
+                                        "object": "chat.completion.chunk",
+                                        "created": 1677652288,
+                                        "model": request.model,
+                                        "choices": [
+                                            {
+                                                "index": 0,
+                                                "delta": {"content": content},
+                                                "finish_reason": None,
+                                            }
+                                        ],
+                                    }
+                                    yield f"data: {json.dumps(chunk)}\n\n"
+                            elif t == "session.idle":
+                                done.set()
+
+                        session.on(on_event)
+                        await session.send({"prompt": prompt})
+                        try:
+                            await asyncio.wait_for(done.wait(), timeout=300)
+                        except asyncio.TimeoutError:
+                            pass
+                        yield "data: [DONE]\n\n"
+                    finally:
+                        await rt.stop()
+                else:
+                    result = await executor.run(prompt, workdir)
+                    content = result.output if hasattr(result, "output") else str(result)
+                    chunk = {
+                        "id": f"chatcmpl-{run_id[:8]}",
+                        "object": "chat.completion.chunk",
+                        "created": 1677652288,
+                        "model": request.model,
+                        "choices": [
+                            {"index": 0, "delta": {"content": content}, "finish_reason": "stop"}
+                        ],
+                    }
+                    yield f"data: {json.dumps(chunk)}\n\n"
+                    yield "data: [DONE]\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': {'message': str(e)}})}\n\n"
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )
+
+    try:
+        executor = pick_executor(executor_name, model=actual_model)
+        workdir = Path.cwd()
+        result = await executor.run(prompt, workdir)
+
+        response = {
+            "id": f"chatcmpl-{HeidiLogger.init_run()[:8]}",
+            "object": "chat.completion",
+            "created": 1677652288,
+            "model": request.model,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": result.output if hasattr(result, "output") else str(result),
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {
+                "prompt_tokens": len(prompt.split()),
+                "completion_tokens": 0,
+                "total_tokens": len(prompt.split()),
+            },
+        }
+        return response
+    except Exception as e:
+        return {"error": {"message": str(e), "type": "invalid_request_error"}}
 
 
 def start_server(host: str = "0.0.0.0", port: int = 7777):
