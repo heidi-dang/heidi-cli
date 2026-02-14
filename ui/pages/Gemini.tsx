@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ai, checkApiKeySelection } from '../api/gemini';
+import { ai, checkApiKeySelection } from '../services/gemini';
 import { GenerateContentResponse, Modality, LiveServerMessage } from '@google/genai';
 import { PanelLeft, Mic, Send, Image as ImageIcon, Video, Wand2, Sparkles, Loader2, Volume2, Search, MapPin, Play, StopCircle, RefreshCw, Upload, Download, Users, Phone, PhoneOff, Video as VideoIcon } from 'lucide-react';
 import { useCollaboration, Peer } from '../hooks/useCollaboration';
