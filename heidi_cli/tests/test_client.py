@@ -1,5 +1,11 @@
 import pytest
 from unittest.mock import patch, MagicMock
+import sys
+import os
+
+# Add the project root to sys.path so we can import client.py
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
 from client import Pipe
 import requests
 
