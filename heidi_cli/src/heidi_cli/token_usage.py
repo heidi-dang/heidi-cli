@@ -42,10 +42,12 @@ PRICING = {
 }
 
 
-def calculate_cost(prompt_tokens: int, completion_tokens: int, model: str, provider: str = "copilot") -> float:
+def calculate_cost(
+    prompt_tokens: int, completion_tokens: int, model: str, provider: str = "copilot"
+) -> float:
     if provider in ("ollama", "lmstudio"):
         return 0.0
-    
+
     pricing = PRICING.get(model, PRICING["gpt-5"])
     prompt_cost = (prompt_tokens / 1000) * pricing["prompt"]
     completion_cost = (completion_tokens / 1000) * pricing["completion"]
@@ -56,7 +58,7 @@ def record_usage(run_id: str, usage: TokenUsage) -> None:
     runs_dir = ConfigManager.runs_dir()
     run_dir = runs_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-    
+
     usage_file = run_dir / "usage.json"
     usage_file.write_text(json.dumps(usage.to_dict(), indent=2))
 
@@ -64,10 +66,10 @@ def record_usage(run_id: str, usage: TokenUsage) -> None:
 def get_usage(run_id: str) -> Optional[TokenUsage]:
     runs_dir = ConfigManager.runs_dir()
     usage_file = runs_dir / run_id / "usage.json"
-    
+
     if not usage_file.exists():
         return None
-    
+
     data = json.loads(usage_file.read_text())
     return TokenUsage.from_dict(data)
 
@@ -76,11 +78,11 @@ def get_total_usage() -> dict:
     runs_dir = ConfigManager.runs_dir()
     if not runs_dir.exists():
         return {"total_tokens": 0, "total_cost": 0.0, "runs": 0}
-    
+
     total_tokens = 0
     total_cost = 0.0
     runs = 0
-    
+
     for run_dir in runs_dir.iterdir():
         if not run_dir.is_dir():
             continue
@@ -90,7 +92,7 @@ def get_total_usage() -> dict:
             total_tokens += data.get("total_tokens", 0)
             total_cost += data.get("estimated_cost", 0.0)
             runs += 1
-    
+
     return {
         "total_tokens": total_tokens,
         "total_cost": total_cost,
