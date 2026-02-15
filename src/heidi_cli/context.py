@@ -53,6 +53,9 @@ def collect_context(context_path: Path, max_size: int = MAX_CONTEXT_SIZE) -> str
     total_size = 0
 
     for root, dirs, files in os.walk(context_path):
+        if total_size >= max_size:
+            break
+
         root_path = Path(root)
         if should_ignore(root_path):
             continue
@@ -77,6 +80,7 @@ def collect_context(context_path: Path, max_size: int = MAX_CONTEXT_SIZE) -> str
                     contexts.append(
                         f"# {file_path.relative_to(context_path)} (truncated)\n\n{content}\n"
                     )
+                    total_size = max_size
                     break
 
                 rel_path = file_path.relative_to(context_path)
