@@ -18,7 +18,21 @@ from .config import ConfigManager
 from .logging import HeidiLogger, setup_global_logging
 from .orchestrator.loop import run_loop, pick_executor as _pick_executor
 from .orchestrator.registry import AgentRegistry
-from .openwebui_commands import openwebui_app
+
+try:
+    from .openwebui_commands import openwebui_app
+except ImportError as e:
+    openwebui_app = typer.Typer(help="OpenWebUI integration commands (install httpx to enable)")
+    _openwebui_import_error = e
+
+
+def _get_openwebui_app():
+    if "_openwebui_import_error" in globals():
+        raise typer.BadParameter(
+            f"OpenWebUI commands require httpx: {globals()['_openwebui_import_error']}"
+        )
+    return openwebui_app
+
 
 app = typer.Typer(
     add_completion=False,
@@ -55,12 +69,19 @@ app.add_typer(openwebui_app, name="openwebui")
 app.add_typer(persona_app, name="persona")
 app.add_typer(start_app, name="start")
 app.add_typer(connect_app, name="connect")
-app.add_typer(opencode_connect_app, name="opencode_connect")  # Internal alias to avoid conflict
+app.add_typer(opencode_connect_app, name="opencode_connect", hidden=True)
 app.add_typer(ui_mgmt_app, name="ui")
 
 console = Console()
-json_output = False
-verbose_mode = False
+
+
+class GlobalFlags:
+    json_output: bool = False
+    verbose: bool = False
+
+    def __init__(self, json_output: bool = False, verbose: bool = False):
+        self.json_output = json_output
+        self.verbose = verbose
 
 
 def get_version() -> str:
@@ -69,9 +90,16 @@ def get_version() -> str:
     return __version__
 
 
-def print_json(data: Any) -> None:
-    if json_output:
+def print_json(data: Any, ctx: Optional[typer.Context] = None) -> None:
+    if ctx is not None:
+        flags: GlobalFlags = ctx.obj or GlobalFlags()
+        if flags.json_output:
+            print(json.dumps(data, indent=2))
+    elif _global_json_output:
         print(json.dumps(data, indent=2))
+
+
+_global_json_output = False
 
 
 def open_url(url: str) -> None:
@@ -132,29 +160,35 @@ def open_url(url: str) -> None:
     )
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
 def main(
+    ctx: typer.Context,
     version: bool = typer.Option(False, "--version", help="Show version"),
-    json: bool = typer.Option(False, "--json", help="Output JSON"),
+    json_flag: bool = typer.Option(False, "--json", help="Output JSON"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging"),
 ) -> None:
-    global json_output, verbose_mode
-    json_output = json
-    verbose_mode = verbose
-    if verbose:
-        setup_global_logging("DEBUG")
+    global _global_json_output
+    _global_json_output = json_flag
+
+    flags = GlobalFlags(json_output=json_flag, verbose=verbose)
+    ctx.obj = flags
+
     if version:
         console.print(f"Heidi CLI v{get_version()}")
         raise typer.Exit(0)
 
+    if verbose:
+        setup_global_logging("DEBUG")
+
     import os
     import sys
 
-    # Skip wizard for start commands
+    if ctx.invoked_subcommand is None:
+        return
+
     if len(sys.argv) > 1 and sys.argv[1] == "start":
         return
 
-    # Skip wizard for read-only commands that don't require config
     if len(sys.argv) > 1 and sys.argv[1] in ("paths", "doctor"):
         return
 
@@ -399,8 +433,14 @@ def uninstall(
 
 
 @connect_app.command("status")
-def connect_status(json_output: bool = typer.Option(False, "--json", help="Output JSON")) -> None:
+def connect_status(
+    ctx: typer.Context,
+    json_output: Optional[bool] = typer.Option(None, "--json/--no-json", help="Output JSON"),
+) -> None:
     """Show connection status for all configured services."""
+    flags: GlobalFlags = ctx.obj or GlobalFlags()
+    use_json = json_output if json_output is not None else flags.json_output
+
     from .config import ConfigManager
     from .connect import (
         check_ollama,
@@ -456,7 +496,7 @@ def connect_status(json_output: bool = typer.Option(False, "--json", help="Outpu
         )
         status_data["opencode_server"] = {"connected": False, "message": "Not configured"}
 
-    if json_output:
+    if use_json:
         import json
 
         console.print(json.dumps(status_data, indent=2))
@@ -1516,35 +1556,57 @@ def runs_list(
 
 
 @app.command("status")
-def status_cmd() -> None:
+def status_cmd(ctx: typer.Context) -> None:
     """Show Heidi CLI status and token usage."""
+    flags: GlobalFlags = ctx.obj or GlobalFlags()
+    use_json = flags.json_output
+
     from .token_usage import get_total_usage
 
     config = ConfigManager.load_config()
     token = ConfigManager.get_github_token()
 
-    table = Table(title="Heidi CLI Status")
-    table.add_column("Setting", style="cyan")
-    table.add_column("Value", style="white")
-
-    table.add_row("Provider", config.provider or "copilot")
-    table.add_row("Telemetry", "enabled" if config.telemetry_enabled else "disabled")
-    table.add_row("Server URL", config.server_url)
-    table.add_row("GitHub Auth", "configured" if token else "not configured")
-
-    console.print(table)
+    status_data = {
+        "provider": config.provider or "copilot",
+        "telemetry_enabled": config.telemetry_enabled,
+        "server_url": config.server_url,
+        "github_auth": "configured" if token else "not configured",
+    }
 
     usage = get_total_usage()
     if usage["runs"] > 0:
-        usage_table = Table(title="Token Usage Summary")
-        usage_table.add_column("Metric", style="cyan")
-        usage_table.add_column("Value", style="white")
-        usage_table.add_row("Total Runs", str(usage["runs"]))
-        usage_table.add_row("Total Tokens", f"{usage['total_tokens']:,}")
-        usage_table.add_row("Estimated Cost", f"${usage['total_cost']:.4f}")
-        console.print(usage_table)
+        status_data["usage"] = {
+            "runs": usage["runs"],
+            "total_tokens": usage["total_tokens"],
+            "total_cost": usage["total_cost"],
+        }
+
+    if use_json:
+        import json
+
+        console.print(json.dumps(status_data, indent=2))
     else:
-        console.print("[dim]No runs yet. Run 'heidi loop' to get started.[/dim]")
+        table = Table(title="Heidi CLI Status")
+        table.add_column("Setting", style="cyan")
+        table.add_column("Value", style="white")
+
+        table.add_row("Provider", status_data["provider"])
+        table.add_row("Telemetry", "enabled" if status_data["telemetry_enabled"] else "disabled")
+        table.add_row("Server URL", status_data["server_url"])
+        table.add_row("GitHub Auth", status_data["github_auth"])
+
+        console.print(table)
+
+        if usage["runs"] > 0:
+            usage_table = Table(title="Token Usage Summary")
+            usage_table.add_column("Metric", style="cyan")
+            usage_table.add_column("Value", style="white")
+            usage_table.add_row("Total Runs", str(usage["runs"]))
+            usage_table.add_row("Total Tokens", f"{usage['total_tokens']:,}")
+            usage_table.add_row("Estimated Cost", f"${usage['total_cost']:.4f}")
+            console.print(usage_table)
+        else:
+            console.print("[dim]No runs yet. Run 'heidi loop' to get started.[/dim]")
 
 
 @app.command("restore")

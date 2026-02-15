@@ -213,9 +213,15 @@ class HeidiLogger:
         run_file.write_text(json.dumps(merged, indent=2))
 
 
-def setup_global_logging(level: str = "INFO") -> None:
+_log_level = "INFO"
+
+
+def setup_global_logging(level: Optional[str] = None) -> None:
+    global _log_level
+    if level is not None:
+        _log_level = level.upper()
     logging.basicConfig(
-        level=getattr(logging, level.upper()),
+        level=getattr(logging, _log_level),
         format="%(message)s",
         datefmt="[%X]",
         handlers=[RichHandler(console=console, rich_tracebacks=True)],
