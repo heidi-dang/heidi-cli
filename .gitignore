@@ -63,6 +63,16 @@ ui/node_modules/
 ui/dist/
 ui/.vite/
 
+# Open WebUI
+openwebui/node_modules/
+openwebui/dist/
+openwebui/.next/
+openwebui/.svelte-kit/
+openwebui/build/
+openwebui/.cache/
+openwebui/.venv/
+openwebui/backend/data/
+
 # Memory / context
 .memory/
 heidi_cli/src/heidi_cli/ui_dist/
