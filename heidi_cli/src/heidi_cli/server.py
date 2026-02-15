@@ -78,8 +78,15 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOW_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-Heidi-Key",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+    ],
 )
 
 app.add_middleware(AuthMiddleware)
@@ -135,7 +142,22 @@ async def serve_ui(path: str):
             status_code=200,
         )
 
-    file_path = UI_DIST / path
+    # Security check: Ensure path doesn't traverse outside UI_DIST
+    try:
+        file_path = (UI_DIST / path).resolve()
+        if not file_path.is_relative_to(UI_DIST.resolve()):
+            # Path traversal attempt
+            return HTMLResponse(
+                "<html><body><h1>404</h1><p>File not found</p></body></html>",
+                status_code=404,
+            )
+    except Exception:
+        # Handle path resolution errors safely
+        return HTMLResponse(
+            "<html><body><h1>404</h1><p>File not found</p></body></html>",
+            status_code=404,
+        )
+
     if file_path.is_file():
         from starlette.responses import FileResponse
 
@@ -664,7 +686,7 @@ async def chat_completions(request: ChatCompletionRequest, http_request: Request
         return {"error": {"message": str(e), "type": "invalid_request_error"}}
 
 
-def start_server(host: str = "0.0.0.0", port: int = 7777):
+def start_server(host: str = "127.0.0.1", port: int = 7777):
     uvicorn.run(app, host=host, port=port)
 
 
