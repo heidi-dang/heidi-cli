@@ -15,19 +15,19 @@ run_or_fail() {
   "$@" || fail "$label (exit=$?)"
 }
 
-has_escapes() {
-  # returns 0 if ESC found
-  LC_ALL=C grep -q $'\x1b' || return 1
-}
-
 expect_json_only() {
   local out="$1"
-  if ! echo "$out" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' 2>/dev/null; then
-    head=$(echo "$out" | head -c 200 | tr '\n' '\\n')
+
+  # JSON parse
+  if ! python3 -c 'import json,sys; json.loads(sys.stdin.read())' <<<"$out" 2>/dev/null; then
+    local head
+    head="$(printf "%s" "$out" | head -c 200 | tr '\n' '\\n')"
     echo "Invalid JSON. First 200 chars: $head" >&2
     fail "JSON validation failed"
   fi
-  if printf "%s" "$out" | has_escapes; then
+
+  # No ANSI escapes
+  if LC_ALL=C grep -q $'\x1b' <<<"$out"; then
     fail "JSON output contains ANSI escapes"
   fi
 }
@@ -48,16 +48,16 @@ run_or_fail "plain doctor" "$HEIDI_CMD" --plain doctor
 
 echo ""
 echo "=== Test 3: JSON integrity (global --json with status) ==="
-OUT=$($HEIDI_CMD --json status 2>/dev/null) || fail "heidi --json status (exit=$?)"
+OUT="$($HEIDI_CMD --json status 2>/dev/null)" || fail "heidi --json status (exit=$?)"
 [ -n "$OUT" ] || fail "heidi --json status produced no output"
-expect_json_only "$OUT" <<<"$OUT"
+expect_json_only "$OUT"
 echo "OK"
 
 echo ""
 echo "=== Test 4: JSON integrity (connect status --json) ==="
-OUT=$($HEIDI_CMD connect status --json 2>/dev/null) || fail "connect status --json (exit=$?)"
+OUT="$($HEIDI_CMD connect status --json 2>/dev/null)" || fail "connect status --json (exit=$?)"
 [ -n "$OUT" ] || fail "connect status --json produced no output"
-expect_json_only "$OUT" <<<"$OUT"
+expect_json_only "$OUT"
 echo "OK"
 
 echo ""
@@ -79,7 +79,7 @@ echo ""
 echo "JSON Support Notes:"
 echo "  - Global --json works with: status"
 echo "  - Per-command --json works with: connect status"
-echo "  - Commands without JSON: doctor, paths (use --plain for text output)"
+echo "  - Commands without JSON today: doctor, paths (use --plain for text output)"
 echo ""
 echo "Manual Ctrl+C checks to run:"
 echo "  - $HEIDI_CMD setup  (press Ctrl+C during Step 2 spinner)"

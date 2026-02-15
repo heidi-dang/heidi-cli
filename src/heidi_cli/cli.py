@@ -243,8 +243,11 @@ def setup() -> None:
 
 
 @app.command()
-def paths() -> None:
+def paths(ctx: typer.Context) -> None:
     """Show where Heidi stores configuration and data."""
+    flags: GlobalFlags = ctx.obj or GlobalFlags()
+    use_json = flags.json_output
+
     from .config import (
         ConfigManager,
         check_legacy_heidi_dir,
@@ -255,33 +258,51 @@ def paths() -> None:
 
     ConfigManager.ensure_dirs()
 
-    table = Table(title="Heidi CLI Paths")
-    table.add_column("Location", style="cyan")
-    table.add_column("Path", style="white")
-
-    table.add_row("Config (global)", str(heidi_config_dir()))
+    paths_data = {
+        "config": str(heidi_config_dir()),
+        "project_root": str(ConfigManager.project_root()),
+        "tasks": str(ConfigManager.tasks_dir()),
+    }
 
     state_dir = heidi_state_dir()
     if state_dir:
-        table.add_row("State (global)", str(state_dir))
+        paths_data["state"] = str(state_dir)
 
     cache_dir = heidi_cache_dir()
     if cache_dir:
-        table.add_row("Cache (global)", str(cache_dir))
-
-    table.add_row("Project Root", str(ConfigManager.project_root()))
-    table.add_row("Tasks (project)", str(ConfigManager.tasks_dir()))
-
-    console.print(table)
+        paths_data["cache"] = str(cache_dir)
 
     legacy = check_legacy_heidi_dir()
     if legacy:
-        console.print(f"[yellow]Warning: Found legacy ./.heidi/ at {legacy}[/yellow]")
-        console.print(
-            "[dim]New default is {}. Run 'heidi migrate' to move config.[/dim]".format(
-                heidi_config_dir()
+        paths_data["legacy"] = str(legacy)
+
+    if use_json:
+        import json
+
+        console.print(json.dumps(paths_data, indent=2))
+    else:
+        table = Table(title="Heidi CLI Paths")
+        table.add_column("Location", style="cyan")
+        table.add_column("Path", style="white")
+
+        table.add_row("Config (global)", paths_data["config"])
+        table.add_row("Project Root", paths_data["project_root"])
+        table.add_row("Tasks (project)", paths_data["tasks"])
+
+        if "state" in paths_data:
+            table.add_row("State (global)", paths_data["state"])
+        if "cache" in paths_data:
+            table.add_row("Cache (global)", paths_data["cache"])
+
+        console.print(table)
+
+        if legacy:
+            console.print(f"[yellow]Warning: Found legacy ./.heidi/ at {legacy}[/yellow]")
+            console.print(
+                "[dim]New default is {}. Run 'heidi migrate' to move config.[/dim]".format(
+                    heidi_config_dir()
+                )
             )
-        )
 
 
 @app.command()
@@ -839,8 +860,11 @@ def connect_disconnect(
 
 
 @app.command()
-def doctor() -> None:
+def doctor(ctx: typer.Context) -> None:
     """Check health of all executors and dependencies."""
+    flags: GlobalFlags = ctx.obj or GlobalFlags()
+    use_json = flags.json_output
+
     import sys
     from .config import ConfigManager
 
@@ -914,26 +938,35 @@ def doctor() -> None:
     else:
         checks.append(("GitHub Auth", "not configured", "optional for local provider"))
 
-    for name, status, notes in checks:
-        if status == "fail":
-            style = "red"
-            has_failures = True
-        elif status == "warning":
-            style = "yellow"
-        elif status == "ok" or status == "enabled":
-            style = "green"
-        else:
-            style = "white"
-        table.add_row(name, f"[{style}]{status}[/{style}]", notes)
+    if use_json:
+        import json
 
-    console.print(table)
+        doctor_data = {"checks": [], "status": "ok" if not has_failures else "fail"}
+        for name, status, notes in checks:
+            doctor_data["checks"].append({"component": name, "status": status, "notes": notes})
+        console.print(json.dumps(doctor_data, indent=2))
+    else:
+        for name, status, notes in checks:
+            if status == "fail":
+                style = "red"
+                has_failures = True
+            elif status == "warning":
+                style = "yellow"
+            elif status == "ok" or status == "enabled":
+                style = "green"
+            else:
+                style = "white"
+            table.add_row(name, f"[{style}]{status}[/{style}]", notes)
 
-    if has_failures:
-        console.print("[red]Fatal issues found. Run 'heidi init' first.[/red]")
-        raise typer.Exit(1)
+        console.print(table)
 
-    missing = [n for n, s, _ in checks if s in ("missing", "not configured")]
-    if missing:
+        if has_failures:
+            console.print("[red]Fatal issues found. Run 'heidi init' first.[/red]")
+            raise typer.Exit(1)
+
+        missing = [n for n, s, _ in checks if s in ("missing", "not configured")]
+        if missing:
+            console.print(f"[yellow]Warning: Missing components: {', '.join(missing)}[/yellow]")
         console.print(f"[yellow]Warning: Missing components: {', '.join(missing)}[/yellow]")
 
 
