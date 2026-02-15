@@ -221,12 +221,6 @@ async def run_loop(
     artifact.content = f"# {'DRY RUN - ' if dry_run else ''}Task: {task}\n\nCreated\n"
     artifact.save()
 
-    if dry_run:
-        artifact.content += "\n## DRY RUN - Plan Generated\n"
-        artifact.audit_content = "# DRY RUN\n\nPlan generated but not executed.\n"
-        artifact.save()
-        return "DRY_RUN: Plan generated, no execution performed"
-
     while True:
         # 1) Plan
         plan_prompt = build_plan_prompt(task)
@@ -253,7 +247,12 @@ async def run_loop(
         # Save plan output to artifact
         artifact = TaskArtifact(slug=task_slug)
         artifact.content = build_task_content(task, plan_res.output, routing)
+        if dry_run:
+            artifact.content += "\n\n## DRY RUN\nExecution stopped at planning phase.\n"
         artifact.save()
+
+        if dry_run:
+            return "WAITING_FOR_APPROVAL: Plan generated. Run again without dry_run to execute."
 
         # 2) Execute each handoff with reviewer-audit
         all_batches_passed = True
