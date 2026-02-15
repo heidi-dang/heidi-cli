@@ -45,6 +45,17 @@ export interface RunEvent {
   details?: any;
 }
 
+export interface ToolEvent {
+  id: string;
+  name: string;
+  status: 'started' | 'completed' | 'failed';
+  input?: string;
+  output?: string;
+  error?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
 export interface RunDetails {
   run_id: string;
   meta: {
