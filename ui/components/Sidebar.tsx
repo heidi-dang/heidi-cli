@@ -71,7 +71,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
       <div className="p-2 space-y-1 mt-2">
         <button
           onClick={() => onNavigate('chat')}
-          aria-current={currentView === 'chat' ? 'page' : undefined}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
             currentView === 'chat' && !selectedRunId 
             ? 'bg-gradient-to-r from-purple-900/50 to-pink-900/20 text-pink-200 border border-purple-500/30' 
@@ -85,7 +84,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
 
         <button
           onClick={() => onNavigate('settings')}
-          aria-current={currentView === 'settings' ? 'page' : undefined}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
             currentView === 'settings' 
             ? 'bg-gradient-to-r from-purple-900/50 to-pink-900/20 text-pink-200 border border-purple-500/30' 
