@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import subprocess
+from typing import Optional
+
 import httpx
 import typer
 from rich.console import Console
@@ -123,3 +126,117 @@ def openwebui_configure(
     else:
         console.print(f"[red]❌ {message}[/red]")
         console.print("\n[yellow]Tip: Make sure OpenWebUI is running and accessible[/yellow]")
+
+
+def check_docker() -> tuple[bool, str]:
+    """Check if Docker is installed and daemon is running."""
+    try:
+        result = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            return True, "Docker is installed and running"
+        else:
+            return False, "Docker daemon is not running"
+    except FileNotFoundError:
+        return False, "Docker is not installed. Install from https://docs.docker.com/get-docker/"
+    except subprocess.TimeoutExpired:
+        return False, "Docker check timed out"
+    except Exception as e:
+        return False, f"Docker error: {e}"
+
+
+def get_container_info(name: str) -> tuple[Optional[str], str]:
+    """Get container info by name. Returns (container_id, state) or (None, state)."""
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "-a", "--filter", f"name=^{name}$", "--format", "{{.ID}} {{.State}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            parts = result.stdout.strip().split(" ", 1)
+            return parts[0], parts[1] if len(parts) > 1 else "unknown"
+        return None, "not_found"
+    except Exception:
+        return None, "error"
+
+
+def pull_image(image: str) -> bool:
+    """Pull Docker image. Returns True on success."""
+    console.print(f"[dim]Pulling image {image}...[/dim]")
+    try:
+        result = subprocess.run(
+            ["docker", "pull", image],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def create_and_start_container(
+    name: str,
+    image: str,
+    port: int,
+    data_volume: str,
+    env_vars: Optional[dict[str, str]] = None,
+    network: Optional[str] = None,
+) -> bool:
+    """Create and start Docker container. Returns True on success."""
+    cmd = [
+        "docker",
+        "run",
+        "--name",
+        name,
+        "-d",
+        "--restart",
+        "unless-stopped",
+        "-p",
+        f"{port}:3000",
+        "-v",
+        f"{data_volume}:/app/backend/data",
+    ]
+
+    if network:
+        cmd.extend(["--network", network])
+
+    if env_vars:
+        for key, value in env_vars.items():
+            cmd.extend(["-e", f"{key}={value}"])
+
+    cmd.append(image)
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def start_container(name: str) -> bool:
+    """Start existing Docker container. Returns True on success."""
+    try:
+        result = subprocess.run(
+            ["docker", "start", name],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def get_container_url(name: str, port: int) -> tuple[bool, str]:
+    """Check if container is running and return URL."""
+    _, state = get_container_info(name)
+    if state == "running":
+        return True, f"http://localhost:{port}"
+    return False, ""

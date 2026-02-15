@@ -2085,6 +2085,131 @@ def start_server_cmd(
     start_server(host=host, port=port)
 
 
+@start_app.command("open-webui", help="Start Open WebUI via Docker")
+@start_app.command("openwebui", hidden=True)  # Alias
+def start_openwebui_cmd(
+    image: str = typer.Option(
+        "heididang/open-webui:latest",
+        "--image",
+        help="Docker image to use",
+    ),
+    port: int = typer.Option(3000, "--port", help="Host port to expose"),
+    name: str = typer.Option("openwebui", "--name", help="Container name"),
+    pull: bool = typer.Option(True, "--pull/--no-pull", help="Pull image before starting"),
+    restart: bool = typer.Option(False, "--restart", help="Restart container if exists"),
+    detach: bool = typer.Option(
+        True, "--detach/--foreground", help="Run container in detached mode"
+    ),
+    data_volume: str = typer.Option(
+        "openwebui-data",
+        "--data",
+        help="Named volume for data persistence",
+    ),
+    network: Optional[str] = typer.Option(None, "--network", help="Docker network to join"),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open browser automatically"),
+) -> None:
+    """Start Open WebUI via Docker.
+
+    Default image: heididang/open-webui:latest
+    Default port: 3000
+    Data persists in Docker volume 'openwebui-data'
+    """
+    from .openwebui_commands import (
+        check_docker,
+        create_and_start_container,
+        get_container_info,
+        pull_image,
+        start_container,
+    )
+
+    # Check Docker is available
+    docker_ok, docker_msg = check_docker()
+    if not docker_ok:
+        console.print(Panel.fit(f"[red]Docker error:[/red]\n{docker_msg}", title="Error"))
+        console.print(
+            "\n[yellow]Please install Docker:[/yellow] https://docs.docker.com/get-docker/"
+        )
+        raise typer.Exit(1)
+
+    console.print(f"[dim]{docker_msg}[/dim]")
+
+    # Check if container exists
+    container_id, state = get_container_info(name)
+
+    if container_id and state == "running":
+        url = f"http://localhost:{port}"
+        console.print(
+            Panel.fit(
+                f"[green]Open WebUI already running[/green]\n\nURL: [cyan]{url}[/cyan]",
+                title="Open WebUI",
+            )
+        )
+        if open_browser:
+            import webbrowser
+
+            webbrowser.open(url)
+        raise typer.Exit(0)
+
+    if container_id and state == "exited":
+        if restart:
+            console.print(f"[yellow]Restarting container {name}...[/yellow]")
+            if start_container(name):
+                url = f"http://localhost:{port}"
+                console.print(
+                    Panel.fit(
+                        f"[green]Open WebUI started[/green]\n\nURL: [cyan]{url}[/cyan]",
+                        title="Open WebUI",
+                    )
+                )
+                if open_browser:
+                    import webbrowser
+
+                    webbrowser.open(url)
+            else:
+                console.print("[red]Failed to start container[/red]")
+                raise typer.Exit(1)
+        else:
+            console.print(f"[yellow]Container {name} exists but is stopped.[/yellow]")
+            console.print(
+                f"[dim]Use --restart to start it, or remove it manually: docker rm {name}[/dim]"
+            )
+            raise typer.Exit(1)
+
+    # Pull image if requested
+    if pull:
+        if not pull_image(image):
+            console.print(f"[red]Failed to pull image {image}[/red]")
+            raise typer.Exit(1)
+        console.print(f"[green]Image pulled: {image}[/green]")
+
+    # Create and start container
+    console.print(f"[cyan]Starting container {name}...[/cyan]")
+    if create_and_start_container(
+        name=name,
+        image=image,
+        port=port,
+        data_volume=data_volume,
+        network=network,
+    ):
+        url = f"http://localhost:{port}"
+        console.print(
+            Panel.fit(
+                f"[green]Open WebUI started[/green]\n\nURL: [cyan]{url}[/cyan]", title="Open WebUI"
+            )
+        )
+        console.print(f"\n[dim]Data persisted in volume: {data_volume}[/dim]")
+        console.print(f"[dim]View logs: docker logs -f {name}[/dim]")
+        console.print(f"[dim]Stop: docker stop {name}[/dim]")
+
+        if open_browser:
+            import webbrowser
+
+            webbrowser.open(url)
+    else:
+        console.print("[red]Failed to create/start container[/red]")
+        raise typer.Exit(1)
+
+
 # UI Management Commands
 @ui_mgmt_app.command("build")
 def ui_build_cmd(
