@@ -11,7 +11,6 @@ Requirements:
     - Or set TEST_SERVER_URL=http://localhost:7777
 """
 
-import asyncio
 import json
 import os
 import sys
