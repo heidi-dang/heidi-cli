@@ -1,7 +1,7 @@
 import os
 import httpx
 from typing import Optional, Dict, Any
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from .auth_db import create_or_get_user_from_oauth, create_session, get_session, revoke_session
 from .auth_encryption import (
@@ -31,7 +31,7 @@ def create_github_auth_url() -> tuple[str, str]:
     code_verifier = generate_code_verifier()
     code_challenge = generate_code_challenge(code_verifier)
 
-    _states[state] = {"code_verifier": code_verifier, "created_at": datetime.now(timezone.utc)}
+    _states[state] = {"code_verifier": code_verifier, "created_at": datetime.utcnow()}
 
     params = {
         "client_id": GITHUB_CLIENT_ID,
@@ -56,7 +56,7 @@ def validate_state(state: str) -> bool:
     state_data = _states[state]
     created_at = state_data["created_at"]
 
-    if datetime.now(timezone.utc) - created_at > timedelta(minutes=10):
+    if datetime.utcnow() - created_at > timedelta(minutes=10):
         del _states[state]
         return False
 
@@ -166,7 +166,7 @@ async def complete_github_login(code: str, state: str) -> Optional[Dict[str, Any
     expires_in = token_data.get("expires_in")
     token_expires_at = None
     if expires_in:
-        token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+        token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
 
     refresh_token = token_data.get("refresh_token")
     access_token_encrypted = encrypt_token(access_token)

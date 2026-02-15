@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -18,8 +18,8 @@ class TaskArtifact:
     audit_content: str = ""
     progress_content: str = ""
     status: str = "pending"
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
     def save(self) -> Path:
         tasks_dir = ConfigManager.tasks_dir()
@@ -35,7 +35,7 @@ class TaskArtifact:
             "slug": self.slug,
             "status": self.status,
             "created_at": self.created_at,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
         }
         (tasks_dir / f"{self.slug}.meta.json").write_text(json.dumps(meta, indent=2))
 
@@ -77,7 +77,7 @@ def sanitize_slug(text: str) -> str:
 def create_task_artifact(task: str) -> TaskArtifact:
     slug = sanitize_slug(task)
     artifact = TaskArtifact(
-        slug=slug, content=f"# Task: {task}\n\nCreated: {datetime.now(timezone.utc).isoformat()}\n"
+        slug=slug, content=f"# Task: {task}\n\nCreated: {datetime.utcnow().isoformat()}\n"
     )
     artifact.save()
     HeidiLogger.write_event("task_created", {"slug": slug, "task": task})
@@ -87,7 +87,7 @@ def create_task_artifact(task: str) -> TaskArtifact:
 def update_task_progress(slug: str, progress: str) -> None:
     artifact = TaskArtifact.load(slug)
     if artifact:
-        artifact.progress_content += f"\n{datetime.now(timezone.utc).isoformat()}: {progress}"
+        artifact.progress_content += f"\n{datetime.utcnow().isoformat()}: {progress}"
         artifact.save()
         HeidiLogger.write_event("progress_update", {"slug": slug, "progress": progress})
 
@@ -96,7 +96,7 @@ def update_task_audit(slug: str, audit_result: str, passed: bool) -> None:
     artifact = TaskArtifact.load(slug)
     if artifact:
         artifact.audit_content += (
-            f"\n{datetime.now(timezone.utc).isoformat()} - {'PASS' if passed else 'FAIL'}: {audit_result}"
+            f"\n{datetime.utcnow().isoformat()} - {'PASS' if passed else 'FAIL'}: {audit_result}"
         )
         artifact.status = "passed" if passed else "failed"
         artifact.save()
@@ -126,7 +126,7 @@ Why: {decision.why}
 {decision.recommended_next_step}
 
 ## Timestamp
-{datetime.now(timezone.utc).isoformat()}
+{datetime.utcnow().isoformat()}
 """
     audit_file = tasks_dir / f"{slug}.audit.md"
     audit_file.write_text(redact_secrets(content))
