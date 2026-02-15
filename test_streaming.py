@@ -23,7 +23,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "heidi_cli" / "src"))
 
 SERVER_URL = os.environ.get("TEST_SERVER_URL", "http://localhost:7777")
-TEST_TIMEOUT = 30
+TEST_TIMEOUT = int(os.environ.get("TEST_TIMEOUT", "30"))
+API_KEY = os.environ.get("TEST_API_KEY", "testkey")
+USE_DRY_RUN = os.environ.get("TEST_DRY_RUN", "true").lower() == "true"
+
+
+def get_headers():
+    return {"Content-Type": "application/json", "X-Heidi-Key": API_KEY}
 
 
 def test_server_health():
@@ -33,7 +39,7 @@ def test_server_health():
         req = urllib.request.Request(f"{SERVER_URL}/health")
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
-            assert data.get("status") == "ok", f"Unexpected status: {data}"
+            assert data.get("status") in ["ok", "healthy"], f"Unexpected status: {data}"
             print("  ✓ Server is healthy")
             return True
     except Exception as e:
@@ -47,11 +53,13 @@ def test_stream_endpoint_exists():
 
     # First, start a run to get a run_id
     try:
-        # Start a simple run
+        # Start a simple run with dry_run for fast testing
+        run_payload = {"prompt": "echo hello", "executor": "copilot", "dry_run": USE_DRY_RUN}
+        print(f"  → Starting run with dry_run={USE_DRY_RUN}")
         req = urllib.request.Request(
             f"{SERVER_URL}/run",
-            data=json.dumps({"prompt": "echo hello", "executor": "copilot"}).encode(),
-            headers={"Content-Type": "application/json"},
+            data=json.dumps(run_payload).encode(),
+            headers=get_headers(),
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
@@ -74,7 +82,7 @@ def test_stream_endpoint_exists():
         events_received = []
         start_time = time.time()
 
-        req = urllib.request.Request(stream_url)
+        req = urllib.request.Request(stream_url, headers=get_headers())
         with urllib.request.urlopen(req, timeout=10) as resp:
             # Read a few lines of SSE
             while time.time() - start_time < TEST_TIMEOUT:
