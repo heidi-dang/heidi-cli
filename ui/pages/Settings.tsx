@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getSettings, saveSettings, api } from '../api/heidi';
+import { getSettings, saveSettings, api } from '../services/heidi';
 import { Save, Server, Wifi, AlertTriangle, PanelLeft } from 'lucide-react';
 
 interface SettingsProps {
@@ -49,6 +49,7 @@ const Settings: React.FC<SettingsProps> = ({ isSidebarOpen, onToggleSidebar }) =
                 onClick={onToggleSidebar} 
                 className="text-slate-400 hover:text-white transition-colors p-1 rounded hover:bg-white/5"
                 title="Open Sidebar"
+                aria-label="Open sidebar"
                >
                    <PanelLeft size={20} />
                </button>
@@ -100,10 +101,11 @@ const Settings: React.FC<SettingsProps> = ({ isSidebarOpen, onToggleSidebar }) =
 
                     <div className="space-y-6">
                         <div>
-                        <label className="block text-sm font-bold text-purple-200 mb-2 uppercase tracking-wide">
+                        <label htmlFor="base-url" className="block text-sm font-bold text-purple-200 mb-2 uppercase tracking-wide">
                             Heidi Base URL
                         </label>
                         <input
+                            id="base-url"
                             type="text"
                             value={baseUrl}
                             onChange={(e) => setBaseUrl(e.target.value)}
@@ -116,10 +118,11 @@ const Settings: React.FC<SettingsProps> = ({ isSidebarOpen, onToggleSidebar }) =
                         </div>
 
                         <div>
-                        <label className="block text-sm font-bold text-purple-200 mb-2 uppercase tracking-wide">
+                        <label htmlFor="api-key" className="block text-sm font-bold text-purple-200 mb-2 uppercase tracking-wide">
                             API Key (Optional)
                         </label>
                         <input
+                            id="api-key"
                             type="password"
                             value={apiKey}
                             onChange={(e) => setApiKey(e.target.value)}

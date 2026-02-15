@@ -70,34 +70,62 @@ def print_json(data: Any) -> None:
 
 def open_url(url: str) -> None:
     """Open URL in browser - WSL/Linux/Windows compatible."""
+    success = False
+
     if sys.platform == "win32":
-        subprocess.run(["powershell.exe", "-Command", f"Start-Process '{url}'"], check=False)
-        return
+        res = subprocess.run(
+            ["powershell.exe", "-Command", f"Start-Process '{url}'"], check=False
+        )
+        if res.returncode == 0:
+            success = True
     elif shutil.which("wslview"):
-        subprocess.run(["wslview", url], check=False)
-        return
+        res = subprocess.run(["wslview", url], check=False)
+        if res.returncode == 0:
+            success = True
     elif shutil.which("sensible-browser"):
-        subprocess.run(["sensible-browser", url], check=False)
-        return
+        res = subprocess.run(["sensible-browser", url], check=False)
+        if res.returncode == 0:
+            success = True
     elif shutil.which("xdg-open"):
-        subprocess.run(["xdg-open", url], check=False)
-        return
+        res = subprocess.run(["xdg-open", url], check=False)
+        if res.returncode == 0:
+            success = True
     elif shutil.which("gnome-open"):
-        subprocess.run(["gnome-open", url], check=False)
-        return
+        res = subprocess.run(["gnome-open", url], check=False)
+        if res.returncode == 0:
+            success = True
     elif shutil.which("gio"):
-        result = subprocess.run(["gio", "open", url], check=False)
-        if result.returncode == 0:
-            return
+        res = subprocess.run(["gio", "open", url], check=False)
+        if res.returncode == 0:
+            success = True
+
+    if success:
+        return
 
     # Try webbrowser as last resort
     try:
         import webbrowser
 
-        webbrowser.open(url)
+        if webbrowser.open(url):
+            return
     except Exception:
-        console.print("[yellow]Could not open browser automatically.[/yellow]")
-        console.print(f"[cyan]Open manually: {url}[/cyan]")
+        pass
+
+    # Fallback with helpful instructions
+    console.print(
+        Panel.fit(
+            f"[yellow]Couldn't find a suitable web browser![/yellow]\n\n"
+            f"Next steps:\n"
+            f"1. Open this URL manually:\n   [bold cyan]{url}[/bold cyan]\n\n"
+            f"2. Copy to clipboard:\n"
+            f"   [dim]macOS:[/dim]   echo '{url}' | pbcopy\n"
+            f"   [dim]Linux:[/dim]   echo '{url}' | xclip -sel clip\n"
+            f"   [dim]Windows:[/dim] echo {url} | clip\n\n"
+            f"3. Fix for next time:\n"
+            f"   export BROWSER='/usr/bin/firefox'",
+            title="Browser Error",
+        )
+    )
 
 
 @app.callback()
@@ -1539,7 +1567,7 @@ def backups_cmd(
 
 @app.command("serve")
 def serve(
-    host: str = typer.Option("0.0.0.0", help="Host to bind to"),
+    host: str = typer.Option("127.0.0.1", help="Host to bind to"),
     port: int = typer.Option(7777, help="Port to bind to"),
     ui: bool = typer.Option(False, "--ui", help="Also start UI"),
     force: bool = typer.Option(False, "--force", "-f", help="Kill existing server if running"),
@@ -2008,7 +2036,7 @@ def stop_cmd(
 
 @start_app.command("server")
 def start_server_cmd(
-    host: str = typer.Option("0.0.0.0", "--host", help="Host to bind to"),
+    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind to"),
     port: int = typer.Option(7777, "--port", help="Port to bind to"),
 ) -> None:
     """Start the Heidi API server only (without UI)."""
