@@ -1,5 +1,4 @@
 
-import os
 import sys
 import unittest
 from unittest.mock import MagicMock
@@ -31,7 +30,7 @@ class TestSecurityVulnerability(unittest.TestCase):
                 if hasattr(sys.modules['pydantic'], '__file__'):
                     print(f"DEBUG: pydantic file: {sys.modules['pydantic'].__file__}")
                 else:
-                    print(f"DEBUG: pydantic has no __file__")
+                    print("DEBUG: pydantic has no __file__")
             raise e
 
     def tearDown(self):

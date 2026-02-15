@@ -5,7 +5,6 @@ import pytest
 # client.py is in root
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from client import Pipe
 
 
 @pytest.mark.anyio

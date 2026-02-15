@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import pytest
 from pathlib import Path
 from heidi_cli.context import collect_context, is_text_file, should_ignore, IGNORE_DIRS
 

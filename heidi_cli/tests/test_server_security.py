@@ -1,7 +1,5 @@
 
 import sys
-import pytest
-from pathlib import Path
 
 # Ensure pydantic is not mocked (CI Fix)
 try:

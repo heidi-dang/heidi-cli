@@ -5,7 +5,6 @@ author: Heidi
 version: 2.1.0
 """
 
-import traceback
 import asyncio
 import logging
 from typing import List, Union, Generator, Iterator
