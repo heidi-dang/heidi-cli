@@ -2169,12 +2169,32 @@ def start_openwebui_cmd(
     ),
     network: Optional[str] = typer.Option(None, "--network", help="Docker network to join"),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open browser automatically"),
+    ollama_url: Optional[str] = typer.Option(
+        None,
+        "--ollama-url",
+        help="Remote Ollama URL (e.g., http://100.x.x.x:11434). Use for connecting to Ollama on another machine over Tailscale.",
+    ),
+    print_dry_run: bool = typer.Option(
+        False,
+        "--print",
+        help="Print docker command instead of executing",
+    ),
 ) -> None:
     """Start Open WebUI via Docker.
 
     Default image: heididang/open-webui:latest
     Default port: 3000
     Data persists in Docker volume 'openwebui-data'
+
+    Examples:
+        # Start with local Ollama (default)
+        heidi start open-webui
+
+        # Connect to remote Ollama over Tailscale
+        heidi start open-webui --ollama-url http://100.1.2.3:11434
+
+        # Connect to remote Ollama and print docker command
+        heidi start open-webui --ollama-url http://100.1.2.3:11434 --print
     """
     from .openwebui_commands import (
         check_docker,
@@ -2194,6 +2214,24 @@ def start_openwebui_cmd(
         raise typer.Exit(1)
 
     console.print(f"[dim]{docker_msg}[/dim]")
+
+    # Validate ollama_url if provided
+    env_vars = {"PORT": str(port)}
+    if ollama_url:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(ollama_url)
+        if not parsed.scheme or not parsed.netloc:
+            console.print(f"[red]Invalid Ollama URL: {ollama_url}[/red]")
+            console.print(
+                "[yellow]URL must be in format: http://host:port (e.g., http://100.1.2.3:11434)[/yellow]"
+            )
+            raise typer.Exit(1)
+        if parsed.scheme not in ("http", "https"):
+            console.print(f"[red]Invalid scheme: {parsed.scheme}[/red]")
+            console.print("[yellow]Use http or https[/yellow]")
+            raise typer.Exit(1)
+        env_vars["OLLAMA_BASE_URL"] = ollama_url
 
     # Check if container exists
     container_id, state = get_container_info(name)
@@ -2244,6 +2282,31 @@ def start_openwebui_cmd(
             raise typer.Exit(1)
         console.print(f"[green]Image pulled: {image}[/green]")
 
+    # Dry-run: print docker command
+    if print_dry_run:
+        cmd = [
+            "docker",
+            "run",
+            "--name",
+            name,
+            "-d",
+            "--restart",
+            "unless-stopped",
+            "-p",
+            f"{port}:3000",
+            "-v",
+            f"{data_volume}:/app/backend/data",
+        ]
+        if network:
+            cmd.extend(["--network", network])
+        for key, value in env_vars.items():
+            cmd.extend(["-e", f"{key}={value}"])
+        cmd.append(image)
+
+        console.print("[cyan]Docker command (dry-run):[/cyan]")
+        console.print(" ".join(cmd))
+        raise typer.Exit(0)
+
     # Create and start container
     console.print(f"[cyan]Starting container {name}...[/cyan]")
     if create_and_start_container(
@@ -2252,12 +2315,21 @@ def start_openwebui_cmd(
         port=port,
         data_volume=data_volume,
         network=network,
-        env_vars={"PORT": str(port)},
+        env_vars=env_vars,
     ):
         url = f"http://localhost:{port}"
+
+        # Build status message
+        status_lines = [f"URL: [cyan]{url}[/cyan]"]
+        if ollama_url:
+            status_lines.append(f"Ollama: [cyan]{ollama_url}[/cyan] (remote)")
+        else:
+            status_lines.append("Ollama: [dim]local (default)[/dim]")
+
         console.print(
             Panel.fit(
-                f"[green]Open WebUI started[/green]\n\nURL: [cyan]{url}[/cyan]", title="Open WebUI"
+                f"[green]Open WebUI started[/green]\n\n" + "\n".join(status_lines),
+                title="Open WebUI",
             )
         )
         console.print(f"\n[dim]Data persisted in volume: {data_volume}[/dim]")
