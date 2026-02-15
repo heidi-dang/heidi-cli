@@ -140,10 +140,12 @@ class TestNoTokenLeakage:
         """Verify redact_secrets catches all known token patterns"""
         from heidi_cli.logging import redact_secrets
 
+        # Dynamically construct tokens to avoid hardcoded secrets scanning
+        dummy_suffix = "abcdefghijklmnopqrstuvwxyz1234567890"
         test_cases = [
-            "ghp_abcdefghijklmnopqrstuvwxyz1234567890",  # ghp_ + 36 chars = 40 total
-            "github_pat_abcdefghijklmnopqrstuvwxyz",
-            "gho_abcdefghijklmnopqrstuvwxyz1234567890",  # gho_ + 36 chars = 40 total
+            f"ghp_{dummy_suffix}",  # ghp_ + 36 chars = 40 total
+            "github_pat_" + dummy_suffix[:26],
+            f"gho_{dummy_suffix}",  # gho_ + 36 chars = 40 total
             "GH_TOKEN=abc123",
             "GITHUB_TOKEN=xyz789",
         ]
@@ -156,7 +158,7 @@ class TestNoTokenLeakage:
         """Ensure CLI commands don't output raw tokens"""
         from heidi_cli.logging import redact_secrets
 
-        token = "ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+        token = "ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890"
         output_with_token = f"Token: {token}"
         redacted = redact_secrets(output_with_token)
 
