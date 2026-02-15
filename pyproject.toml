@@ -13,25 +13,25 @@ dependencies = [
   "fastapi>=0.109.0",
   "uvicorn>=0.27.0",
   "requests>=2.31.0",
+  "httpx>=0.27.0",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0.0",
   "ruff>=0.3.0",
-  "httpx>=0.27.0",
-  "requests>=2.31.0",
   "pytest-asyncio>=0.23.0",
 ]
 
 [project.scripts]
 heidi = "heidi_cli.cli:app"
 
-[tool.setuptools]
-package-dir = {"" = "heidi_cli/src"}
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["heidi_cli/src"]
+where = ["src"]
 
 [tool.ruff]
 line-length = 100
@@ -43,9 +43,5 @@ ignore = ["E402"]
 "tests/*" = ["E402"]
 
 [tool.pytest.ini_options]
-testpaths = ["heidi_cli/tests"]
-
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+testpaths = ["tests"]
 

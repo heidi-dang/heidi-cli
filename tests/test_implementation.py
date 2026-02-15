@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 
-def test_file_exists(filepath, description):
+def check_file_exists(filepath, description):
     """Test if a file exists."""
     if Path(filepath).exists():
         print(f"✅ {description}: {filepath}")
@@ -18,7 +18,7 @@ def test_file_exists(filepath, description):
         return False
 
 
-def test_import(module_name, description):
+def check_import(module_name, description):
     """Test if a module can be imported."""
     try:
         __import__(module_name)
@@ -36,7 +36,7 @@ def main():
 
     # Get the project root
     project_root = Path(__file__).parent
-    heidi_cli_dir = project_root / "heidi_cli" / "src" / "heidi_cli"
+    heidi_cli_dir = project_root / "src" / "heidi_cli"
 
     tests_passed = 0
     total_tests = 0
@@ -44,9 +44,9 @@ def main():
     # Test 1: Installation scripts
     print("\n📦 Installation Scripts:")
     total_tests += 2
-    if test_file_exists(project_root / "install.sh", "Linux/macOS install script"):
+    if check_file_exists(project_root / "install.sh", "Linux/macOS install script"):
         tests_passed += 1
-    if test_file_exists(project_root / "install.ps1", "Windows install script"):
+    if check_file_exists(project_root / "install.ps1", "Windows install script"):
         tests_passed += 1
 
     # Test 2: Core CLI files
@@ -61,12 +61,12 @@ def main():
 
     for filename, description in core_files:
         total_tests += 1
-        if test_file_exists(heidi_cli_dir / filename, description):
+        if check_file_exists(heidi_cli_dir / filename, description):
             tests_passed += 1
 
     # Test 3: Module imports (if we can import them)
     print("\n📚 Module Imports:")
-    sys.path.insert(0, str(project_root / "heidi_cli" / "src"))
+    sys.path.insert(0, str(project_root / "src"))
 
     modules_to_test = [
         ("heidi_cli.config", "ConfigManager"),
@@ -77,7 +77,7 @@ def main():
 
     for module_name, description in modules_to_test:
         total_tests += 1
-        if test_import(module_name, description):
+        if check_import(module_name, description):
             tests_passed += 1
 
     # Test 4: Configuration structure

@@ -33,7 +33,7 @@ jobs:
           pip install ruff
       - name: Run ruff
         run: |
-          ruff check heidi_cli/src client.py sdk.py
+          ruff check src tests
 
   secrets:
     runs-on: ubuntu-latest

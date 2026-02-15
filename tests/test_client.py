@@ -4,7 +4,7 @@ import os
 
 # Add project root to sys.path to allow importing client.py
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-from client import Pipe
+from tools.client import Pipe
 
 
 @pytest.fixture
