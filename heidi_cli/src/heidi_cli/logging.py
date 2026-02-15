@@ -96,6 +96,81 @@ class HeidiLogger:
     @classmethod
     def emit_status(cls, status: str) -> None:
         cls.info(f"[STATUS] {status}")
+        cls.write_event("run_state", {"status": status, "phase": "status"})
+
+    @classmethod
+    def emit_message_delta(cls, content: str, chunk: str = "") -> None:
+        """Emit a message delta for streaming text updates."""
+        cls.write_event(
+            "message_delta",
+            {
+                "content": content,
+                "chunk": chunk,
+            },
+        )
+
+    @classmethod
+    def emit_tool_start(cls, tool_name: str, tool_input: dict = None) -> None:
+        """Emit tool start event."""
+        cls.write_event(
+            "tool_start",
+            {
+                "tool": tool_name,
+                "input": tool_input or {},
+                "status": "started",
+            },
+        )
+
+    @classmethod
+    def emit_tool_log(cls, tool_name: str, log: str) -> None:
+        """Emit tool log/output event."""
+        cls.write_event(
+            "tool_log",
+            {
+                "tool": tool_name,
+                "log": log,
+            },
+        )
+
+    @classmethod
+    def emit_tool_done(cls, tool_name: str, tool_output: str = "") -> None:
+        """Emit tool completion event."""
+        cls.write_event(
+            "tool_done",
+            {
+                "tool": tool_name,
+                "output": tool_output,
+                "status": "completed",
+            },
+        )
+
+    @classmethod
+    def emit_tool_error(cls, tool_name: str, error: str) -> None:
+        """Emit tool error event."""
+        cls.write_event(
+            "tool_error",
+            {
+                "tool": tool_name,
+                "error": error,
+                "status": "failed",
+            },
+        )
+
+    @classmethod
+    def emit_run_state(cls, state: str, details: dict = None) -> None:
+        """Emit run state change event."""
+        cls.write_event(
+            "run_state",
+            {
+                "state": state,
+                "details": details or {},
+            },
+        )
+
+    @classmethod
+    def emit_thinking(cls, thinking: str) -> None:
+        """Emit thinking state event for streaming UI."""
+        cls.write_event("thinking", {"message": thinking})
 
     @classmethod
     def emit_log(cls, source: str, message: str) -> None:
