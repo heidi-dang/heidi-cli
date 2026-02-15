@@ -8,7 +8,7 @@ Write-Host "======================" -ForegroundColor Cyan
 
 # Verify py exists
 if (-not (Get-Command py -ErrorAction SilentlyContinue)) {
-    Write-Host "❌ Python launcher 'py' not found. Please install Python 3.8+ first." -ForegroundColor Red
+    Write-Host "❌ Python launcher 'py' not found. Please install Python 3.10+ first." -ForegroundColor Red
     exit 1
 }
 
