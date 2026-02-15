@@ -1,6 +1,5 @@
 import os
 import sys
-import pytest
 from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
@@ -12,7 +11,7 @@ os.environ["HEIDI_API_KEY"] = "test-secret"
 os.environ["HEIDI_AUTH_MODE"] = "optional"
 
 # Now import app
-from heidi_cli.server import app, HEIDI_API_KEY
+from heidi_cli.server import app
 
 client = TestClient(app)
 

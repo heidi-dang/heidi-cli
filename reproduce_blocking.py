@@ -3,7 +3,6 @@ import asyncio
 import time
 import client
 import httpx
-import subprocess
 from unittest.mock import MagicMock, AsyncMock, patch
 
 # Mock httpx.AsyncClient to simulate latency

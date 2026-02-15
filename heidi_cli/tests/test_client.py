@@ -1,6 +1,4 @@
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
-import httpx
 import sys
 import os
 

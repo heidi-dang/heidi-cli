@@ -7,7 +7,6 @@ sys.modules["keyring"] = MagicMock()
 # sys.modules["pydantic"] = MagicMock()
 # sys.modules["pydantic"].BaseModel = MagicMock
 
-import pytest
 from heidi_cli.auth_encryption import (
     encrypt_token,
     decrypt_token,

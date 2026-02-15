@@ -1,7 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from heidi_cli.cli import open_url
-import sys
 
 class TestOpenUrl(unittest.TestCase):
     @patch('shutil.which')

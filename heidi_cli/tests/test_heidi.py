@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 from heidi_cli.logging import redact_secrets
 from heidi_cli.orchestrator.workspace import PatchApplicator
 
