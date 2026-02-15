@@ -637,7 +637,6 @@ class Pipe:
                     filename = filename.strip()
                     if filename.startswith("{"):
                         try:
-                            import json
 
                             data = json.loads(filename)
                             if isinstance(data, dict):
@@ -689,7 +688,6 @@ class Pipe:
 
                 if token:
                     try:
-                        import aiohttp
 
                         base_url = str(__request__.base_url).rstrip("/")
                         upload_url = f"{base_url}/api/v1/files/"
@@ -698,7 +696,6 @@ class Pipe:
                             with open(target_path, "rb") as f:
                                 data = aiohttp.FormData()
                                 data.add_field("file", f, filename=target_path.name)
-                                import json
 
                                 data.add_field(
                                     "metadata",
@@ -1804,8 +1801,6 @@ class Pipe:
 
             # Logic to detect and move large files saved to /tmp
             # Pattern: Saved to: /tmp/copilot_result_xxxx.txt
-            import re
-            import shutil
 
             # We search for potential /tmp file paths in the output
             # Common patterns from CLI: "Saved to: /tmp/..." or just "/tmp/..."
@@ -2256,8 +2251,6 @@ class Pipe:
                     .decode()
                     .strip()
                 )
-                import re
-
                 match = re.search(r"(\d+\.\d+\.\d+)", output)
                 return match.group(1) if match else output
             except Exception:
@@ -2782,7 +2775,6 @@ class Pipe:
         # If new session, we send full (accumulated) messages.
 
         # 1. Determine model capabilities and BYOK status
-        import re
 
         m_info = next(
             (
@@ -3597,7 +3589,6 @@ class GitHubSDKRecommendations:
         }
 
     async def _github_request(self, method: str, endpoint: str, json_data: dict = None) -> Any:
-        import aiohttp
 
         if not self.token:
             return {"error": "No GitHub token configured"}
@@ -3618,7 +3609,6 @@ class GitHubSDKRecommendations:
 
     async def fetch_repo_structure(self, repo_url: str) -> str:
         """Retrieve and visualize the file tree of a remote repository (recursive)."""
-        import re
 
         # Extract owner/repo from URL
         match = re.search(r"github\.com/([^/]+)/([^/]+)", repo_url)
@@ -3654,7 +3644,6 @@ class GitHubSDKRecommendations:
 
     async def get_file_content_from_github(self, repo: str, path: str) -> str:
         """Directly fetch file content from GitHub via API. Repo format: 'owner/repo'"""
-        import base64
 
         data = await self._github_request("GET", f"/repos/{repo}/contents/{path}")
         if "error" in data:
@@ -3724,7 +3713,6 @@ class GitHubSDKRecommendations:
 
     def scan_for_secrets(self, code_selection: str) -> List[str]:
         """Local regex scan for potential secrets."""
-        import re
 
         patterns = {
             "AWS Key": r"AKIA[0-9A-Z]{16}",
@@ -3741,8 +3729,6 @@ class GitHubSDKRecommendations:
 
     def save_session_to_disk(self, filename: str) -> bool:
         """Save the current conversation state context to a local file."""
-        import json
-        import os
         from datetime import datetime
 
         state_dump = {
@@ -3764,8 +3750,6 @@ class GitHubSDKRecommendations:
 
     def load_session_from_disk(self, filename: str) -> bool:
         """Restore settings from disk."""
-        import json
-        import os
 
         try:
             cwd = (
@@ -3785,7 +3769,6 @@ class GitHubSDKRecommendations:
 
     def export_chat_to_markdown(self, filename: str, history: List[dict]) -> str:
         """Export provided history list to Markdown."""
-        import os
 
         try:
             cwd = (
@@ -3847,7 +3830,6 @@ class GitHubSDKRecommendations:
 
     def get_system_health(self) -> Dict[str, bool]:
         """Comprehensive check."""
-        import os
 
         cwd = self.pipe._get_workspace_dir() if hasattr(self.pipe, "_get_workspace_dir") else "."
         return {
@@ -3860,7 +3842,6 @@ class GitHubSDKRecommendations:
 
     async def sync_todo_to_issue(self, repo: str, title: str = "TODO Sync") -> str:
         """Convert the TODO.md list directly into a GitHub Issue."""
-        import os
 
         try:
             cwd = (

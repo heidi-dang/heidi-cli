@@ -19,22 +19,24 @@ def should_ignore(path: Path) -> bool:
     return any(ignored in path.parts for ignored in IGNORE_DIRS)
 
 
+TEXT_EXTENSIONS = {
+    ".md",
+    ".txt",
+    ".rst",
+    ".py",
+    ".js",
+    ".ts",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".ini",
+    ".cfg",
+}
+
+
 def is_text_file(path: Path) -> bool:
-    text_extensions = {
-        ".md",
-        ".txt",
-        ".rst",
-        ".py",
-        ".js",
-        ".ts",
-        ".json",
-        ".yaml",
-        ".yml",
-        ".toml",
-        ".ini",
-        ".cfg",
-    }
-    return path.suffix in text_extensions
+    return path.suffix in TEXT_EXTENSIONS
 
 
 def collect_context(context_path: Path, max_size: int = MAX_CONTEXT_SIZE) -> str:
@@ -55,16 +57,19 @@ def collect_context(context_path: Path, max_size: int = MAX_CONTEXT_SIZE) -> str
         if should_ignore(root_path):
             continue
 
-        dirs[:] = [d for d in dirs if not should_ignore(root_path / d)]
+        dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
 
         for f in files:
+            if f in IGNORE_DIRS:
+                continue
+
+            # Optimization: Check extension on string to avoid expensive Path instantiation
+            # for every file, which is significant for large projects.
+            _, ext = os.path.splitext(f)
+            if ext not in TEXT_EXTENSIONS:
+                continue
+
             file_path = root_path / f
-            if should_ignore(file_path):
-                continue
-
-            if not is_text_file(file_path):
-                continue
-
             try:
                 content = file_path.read_text(encoding="utf-8", errors="ignore")
                 if total_size + len(content) > max_size:
