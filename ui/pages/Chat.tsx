@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api, getSettings } from '../services/heidi';
-import { Agent, AppMode, RunEvent, RunStatus } from '../types';
+import { Agent, AppMode, RunEvent, RunStatus, ToolEvent } from '../types';
 import { 
   Send, Repeat, StopCircle, CheckCircle, AlertCircle, Loader2, PlayCircle, PanelLeft,
-  Sparkles, Cpu, Search, Map, Terminal, Eye, Shield, MessageSquare
+  Sparkles, Cpu, Search, Map, Terminal, Eye, Shield, MessageSquare, ArrowDown
 } from 'lucide-react';
 import TranscriptItem from '../components/TranscriptItem';
+import ThinkingBubble from '../components/ThinkingBubble';
+import ToolCard from '../components/ToolCard';
 
 interface ChatProps {
   initialRunId?: string | null;
@@ -27,15 +29,19 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
   const [runId, setRunId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>('idle');
   const [transcript, setTranscript] = useState<RunEvent[]>([]);
+  const [thinking, setThinking] = useState<string>('');
+  const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
 
   // Refs for streaming management
   const eventSourceRef = useRef<EventSource | null>(null);
   const pollingRef = useRef<any>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   // --- Initialization ---
 
@@ -61,6 +67,21 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
     }
   }, [transcript, status]);
 
+  // Auto-scroll detection - show jump-to-bottom when user scrolls up
+  useEffect(() => {
+    const container = chatContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      setShowJumpToBottom(!isNearBottom);
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [transcript]);
+
   useEffect(() => {
     return () => stopStreaming();
   }, []);
@@ -71,6 +92,8 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
     stopStreaming();
     setRunId(null);
     setTranscript([]);
+    setThinking('');
+    setToolEvents([]);
     setStatus('idle');
     setResult(null);
     setError(null);
@@ -213,9 +236,40 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
           const data = JSON.parse(event.data);
           setTranscript((prev) => [...prev, data]);
           
-          // Optionally update status if event contains it, though usually we poll for definitive status
-          if (data.type === 'status') {
-             setStatus(data.message); 
+          // Process structured events for streaming UI
+          if (data.type === 'thinking') {
+            setThinking(data.data?.message || 'Thinking...');
+          } else if (data.type === 'tool_start') {
+            setToolEvents(prev => [...prev, {
+              id: `${data.data?.tool}-${Date.now()}`,
+              name: data.data?.tool || 'Unknown',
+              status: 'started',
+              input: data.data?.input,
+              startedAt: new Date().toISOString()
+            }]);
+          } else if (data.type === 'tool_log') {
+            setToolEvents(prev => prev.map(t => 
+              t.name === data.data?.tool 
+                ? { ...t, output: (t.output || '') + (data.data?.log || '') }
+                : t
+            ));
+          } else if (data.type === 'tool_done') {
+            setToolEvents(prev => prev.map(t => 
+              t.name === data.data?.tool 
+                ? { ...t, status: 'completed', output: data.data?.output, completedAt: new Date().toISOString() }
+                : t
+            ));
+          } else if (data.type === 'tool_error') {
+            setToolEvents(prev => prev.map(t => 
+              t.name === data.data?.tool 
+                ? { ...t, status: 'failed', error: data.data?.error, completedAt: new Date().toISOString() }
+                : t
+            ));
+          } else if (data.type === 'run_state') {
+            setStatus(data.data?.state || data.data?.status || 'running');
+            if (data.data?.state === 'completed') {
+              setThinking('');
+            }
           }
         } catch (e) {
           console.warn("Error parsing SSE data", event.data);
@@ -352,7 +406,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
       </div>
 
       {/* 2. Main Chat / Transcript Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-8 scroll-smooth custom-scrollbar">
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-6 space-y-8 scroll-smooth custom-scrollbar">
         
         {/* User Prompt Bubble */}
         {(prompt || initialRunId) && (runId || transcript.length > 0) && (
@@ -388,7 +442,17 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                 <TranscriptItem key={idx} event={event} />
             ))}
             
-            {/* Loading Indicator for stream */}
+            {/* Thinking Bubble - show for RUN/LOOP modes during execution */}
+            {(mode !== AppMode.CHAT) && thinking && (
+                <ThinkingBubble message={thinking} />
+            )}
+
+            {/* Tool Cards - show for RUN/LOOP modes */}
+            {(mode !== AppMode.CHAT) && toolEvents.map((tool) => (
+                <ToolCard key={tool.id} tool={tool} />
+            ))}
+            
+            {/* Loading Indicator - fallback for CHAT mode or when no thinking */}
             {(status.toLowerCase() !== 'completed' && status.toLowerCase() !== 'failed' && status.toLowerCase() !== 'idle' && status.toLowerCase() !== 'cancelled') && (
                 <div className="flex gap-4 max-w-[90%]">
                     <div className="w-10 h-10 flex-shrink-0" />
@@ -427,6 +491,17 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
         )}
 
         <div ref={chatBottomRef} />
+        
+        {/* Jump to bottom button - shows when user scrolls up */}
+        {showJumpToBottom && (
+          <button
+            onClick={() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
+            className="fixed bottom-24 right-8 bg-purple-600 hover:bg-purple-500 text-white p-3 rounded-full shadow-lg transition-all transform hover:scale-110 z-50"
+            title="Jump to bottom"
+          >
+            <ArrowDown size={20} />
+          </button>
+        )}
       </div>
 
       {/* 3. Input Area */}
