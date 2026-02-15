@@ -338,11 +338,11 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
         <div className="flex items-center gap-4">
            {!isSidebarOpen && (
                <button 
-                onClick={onToggleSidebar} 
-                className="text-slate-400 hover:text-white transition-colors p-1 rounded hover:bg-white/5"
-                title="Open Sidebar"
-                aria-label="Open sidebar"
-               >
+                 onClick={onToggleSidebar} 
+                 className="text-slate-400 hover:text-white transition-colors p-1 rounded hover:bg-white/5"
+                 title="Open Sidebar"
+                 aria-label="Open Sidebar"
+                >
                    <PanelLeft size={20} />
                </button>
            )}

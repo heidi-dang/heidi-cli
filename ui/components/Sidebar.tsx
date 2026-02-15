@@ -61,7 +61,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
             onClick={onToggle}
             className="text-slate-400 hover:text-white transition-colors p-1 rounded-md hover:bg-white/5"
             title="Close Sidebar"
-            aria-label="Close sidebar"
+            aria-label="Close Sidebar"
         >
             <PanelLeft size={20} />
         </button>
@@ -77,6 +77,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
             ? 'bg-gradient-to-r from-purple-900/50 to-pink-900/20 text-pink-200 border border-purple-500/30' 
             : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
           }`}
+          aria-current={currentView === 'chat' && !selectedRunId ? 'page' : undefined}
         >
           <MessageSquare size={18} />
           <span className="text-sm font-medium">Heidi Chat</span>
@@ -90,6 +91,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
             ? 'bg-gradient-to-r from-purple-900/50 to-pink-900/20 text-pink-200 border border-purple-500/30' 
             : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
           }`}
+          aria-current={currentView === 'settings' ? 'page' : undefined}
         >
           <Settings size={18} />
           <span className="text-sm font-medium">Settings</span>
@@ -136,6 +138,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
                     ? 'bg-white/10 border-purple-500/30 text-white'
                     : 'border-transparent text-slate-400 hover:bg-white/5 hover:text-slate-200'
                 }`}
+                aria-current={selectedRunId === run.run_id ? 'true' : undefined}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-mono opacity-60 truncate max-w-[80px]">
