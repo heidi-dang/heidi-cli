@@ -542,8 +542,9 @@ class ChatCompletionRequest(BaseModel):
 
 
 @app.get("/v1/models")
-async def list_models_v1():
+async def list_models_v1(request: Request):
     """OpenAI-compatible /v1/models endpoint."""
+    _require_api_key(request)
     from .copilot_runtime import list_copilot_models
 
     models = []
@@ -600,6 +601,7 @@ async def list_models_v1():
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest, http_request: Request):
     """OpenAI-compatible /v1/chat/completions endpoint."""
+    _require_api_key(http_request)
     from .logging import HeidiLogger
     from .copilot_runtime import CopilotRuntime
 
@@ -898,20 +900,21 @@ async def _run_subprocess_async(cmd: List[str], timeout: float = 30) -> subproce
 
 # UI calls /api/* only - add aliases for OpenCode endpoints
 @app.get("/api/connect/opencode/openai/status")
-async def api_opencode_openai_status():
+async def api_opencode_openai_status(request: Request):
     """Alias for /connect/opencode/openai/status (UI compatibility)."""
-    return await opencode_openai_status()
+    return await opencode_openai_status(request)
 
 
 @app.post("/api/connect/opencode/openai/test")
-async def api_opencode_openai_test():
+async def api_opencode_openai_test(request: Request):
     """Alias for /connect/opencode/openai/test (UI compatibility)."""
-    return await opencode_openai_test()
+    return await opencode_openai_test(request)
 
 
 @app.get("/connect/opencode/openai/status")
-async def opencode_openai_status():
+async def opencode_openai_status(request: Request):
     """Check OpenCode OpenAI connection status for UI."""
+    _require_api_key(request)
     import os
     import shutil
     from pathlib import Path
@@ -969,8 +972,9 @@ async def opencode_openai_status():
 
 
 @app.post("/connect/opencode/openai/test")
-async def opencode_openai_test():
+async def opencode_openai_test(request: Request):
     """Test OpenCode OpenAI connection."""
+    _require_api_key(request)
 
     try:
         result = await _run_subprocess_async(
