@@ -180,9 +180,50 @@ main
 Heidi CLI includes a built-in HTTP server for OpenWebUI integration:
 
 ```bash
-# Start the server
+# Start the server (foreground)
 heidi serve
 
+# Start with UI
+heidi serve --ui
+
+# Run in background and return immediately (writes PID to state dir)
+heidi serve --detach
+
+# Disable Rich rendering (useful for CI/non-TTY environments)
+heidi serve --plain
+
+# Or use environment variable
+HEIDI_PLAIN=1 heidi serve
+```
+
+### Serve Options
+
+| Option | Description |
+|--------|-------------|
+| `--host` | Host to bind to (default: 127.0.0.1) |
+| `--port` | Port to bind to (default: 7777) |
+| `--ui` | Also start UI dev server |
+| `--detach`, `-d` | Run in background, return immediately (PID file in state dir) |
+| `--plain` | Disable Rich rendering |
+| `--force`, `-f` | Kill existing server before starting |
+
+### Stopping Detached Server
+
+```bash
+# Find and kill by PID file
+PID=$(cat ~/.local/state/heidi/server.pid)
+kill $PID
+
+# Or kill all heidi servers
+pkill -f "heidi serve"
+```
+
+The server writes its PID to:
+- Linux: `~/.local/state/heidi/server.pid`
+- macOS: `~/Library/Application Support/Heidi/server.pid`
+- Windows: `%LOCALAPPDATA%\Heidi\server.pid`
+
+```bash
 # Check OpenWebUI status
 heidi openwebui status
 
