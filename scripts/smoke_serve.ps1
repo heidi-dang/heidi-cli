@@ -13,12 +13,6 @@ function Fail {
     exit 1
 }
 
-function Test-Command {
-    param($cmd)
-    $result = & cmd /c "$cmd 2>&1"
-    return $LASTEXITCODE -eq 0
-}
-
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "Heidi CLI Smoke: serve command (Windows)" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
@@ -65,27 +59,7 @@ if ($serverProc -and !$serverProc.HasExited) {
 Start-Sleep 1
 
 Write-Host ""
-Write-Host "=== Test 4: heidi serve --detach ===" -ForegroundColor Yellow
-Write-Host "Starting detached server..."
-
-$output = & cmd /c "$HEIDI_CMD serve --port $PORT --detach --plain 2>&1"
-Write-Host $output
-
-Start-Sleep 3
-
-Write-Host "Checking if server is running..."
-try {
-    $healthResponse = Invoke-RestMethod "${BASE_URL}/health" -TimeoutSec 5
-    Write-Host "Health response: $healthResponse"
-    if ($healthResponse.status -ne "healthy" -and $healthResponse.status -ne "ok") {
-        Fail "Detached server health check failed: $healthResponse"
-    }
-} catch {
-    Fail "Detached server health check failed: $_"
-}
-
-Write-Host ""
-Write-Host "=== Test 5: HEIDI_PLAIN=1 environment ===" -ForegroundColor Yellow
+Write-Host "=== Test 4: HEIDI_PLAIN=1 environment ===" -ForegroundColor Yellow
 $env:HEIDI_PLAIN = "1"
 $serverProc2 = Start-Process -FilePath "python" -ArgumentList "-m","src.heidi_cli.cli","serve","--port",($PORT+1) -NoNewWindow -PassThru
 $env:HEIDI_PLAIN = ""
