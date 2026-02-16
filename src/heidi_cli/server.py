@@ -307,16 +307,14 @@ async def stream_run(run_id: str, request: Request, key: Optional[str] = None):
         if not transcript.exists():
             return
 
-        last_pos = 0
-        while True:
-            await asyncio.sleep(1)
-            content = transcript.read_text()
-            if len(content) > last_pos:
-                new_content = content[last_pos:]
-                last_pos = len(content)
-                for line in new_content.strip().split("\n"):
-                    if line:
-                        yield f"data: {line}\n\n"
+        # Optimize: Read file incrementally instead of full read every second (O(1) vs O(N))
+        with open(transcript, "r", encoding="utf-8") as f:
+            while True:
+                line = f.readline()
+                if line:
+                    yield f"data: {line.rstrip()}\n\n"
+                else:
+                    await asyncio.sleep(1)
 
     return StreamingResponse(
         event_generator(),
