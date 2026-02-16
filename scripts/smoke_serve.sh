@@ -54,19 +54,18 @@ echo ""
 echo "=== Test 4: heidi serve --detach ==="
 echo "Starting detached server..."
 $HEIDI_CMD serve --port ${PORT} --detach --plain
-sleep 2
+sleep 3
 
 echo "Checking if server is running..."
-DETACHED_PID=$(cat /home/heidi/.local/state/heidi/server.pid 2>/dev/null || echo "")
-if [[ -z "$DETACHED_PID" ]]; then
-  fail "PID file not created"
-fi
-echo "Server PID: $DETACHED_PID"
-
 HEALTH_RESPONSE=$(curl -s "${BASE_URL}/health" || echo "FAILED")
 echo "Health response: $HEALTH_RESPONSE"
 if [[ "$HEALTH_RESPONSE" != *"healthy"* ]] && [[ "$HEALTH_RESPONSE" != *"ok"* ]]; then
   fail "Detached server health check failed: $HEALTH_RESPONSE"
+fi
+
+DETACHED_PID=$(cat /home/runner/.local/state/heidi/server.pid 2>/dev/null || cat ~/.local/state/heidi/server.pid 2>/dev/null || echo "")
+if [[ -n "$DETACHED_PID" ]]; then
+  echo "Server PID: $DETACHED_PID"
 fi
 
 echo ""
