@@ -194,6 +194,42 @@ When deploying with a reverse proxy (e.g., Cloudflare Tunnel, Nginx), the Vite d
 | `heidi connect opencode` | Connect to OpenCode CLI or server |
 | `heidi connect disconnect` | Disconnect from a service |
 
+## Local ML Helpers
+
+Heidi CLI includes built-in helpers for local ML fine-tuning, automatically detecting your hardware and recommending optimal setups.
+
+### Quick Start
+
+```bash
+# Install ML dependencies
+pip install heidi-cli[ml]
+
+# Probe your system and get recommendations
+heidi ml recommend
+
+# Get tailored setup guide
+heidi ml guide
+
+# Include ML info in health check
+heidi doctor --ml
+```
+
+### ML Commands
+
+| Command | Description |
+|---------|-------------|
+| `heidi ml recommend` | Probe system and recommend ML fine-tuning profile |
+| `heidi ml guide` | Show tailored setup guide based on hardware |
+| `heidi doctor --ml` | Include ML capabilities in health check |
+
+The ML helpers automatically detect:
+- **GPU**: NVIDIA (CUDA), AMD (ROCm), Apple Silicon (MLX)
+- **System**: OS, CPU, RAM, disk space, WSL detection
+- **Capabilities**: PyTorch, CUDA/ROCm/MLX availability
+- **Profiles**: From CPU-only to high-end GPU fine-tuning
+
+For detailed documentation, see [docs/local-ml.md](docs/local-ml.md).
+
 ## Setup Wizard
 
 The interactive setup wizard (`heidi setup`) guides you through:

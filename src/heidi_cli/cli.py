@@ -25,6 +25,12 @@ except ImportError as e:
     openwebui_app = typer.Typer(help="OpenWebUI integration commands (install httpx to enable)")
     _openwebui_import_error = e
 
+try:
+    from .ml_commands import ml_app
+except ImportError as e:
+    ml_app = typer.Typer(help="ML fine-tuning helpers (install psutil to enable)")
+    _ml_import_error = e
+
 
 def _get_openwebui_app():
     if "_openwebui_import_error" in globals():
@@ -71,6 +77,7 @@ app.add_typer(start_app, name="start")
 app.add_typer(connect_app, name="connect")
 app.add_typer(opencode_connect_app, name="opencode_connect", hidden=True)
 app.add_typer(ui_mgmt_app, name="ui")
+app.add_typer(ml_app, name="ml")
 
 console = Console()
 
@@ -860,7 +867,10 @@ def connect_disconnect(
 
 
 @app.command()
-def doctor(ctx: typer.Context) -> None:
+def doctor(
+    ctx: typer.Context,
+    ml: bool = typer.Option(False, "--ml", help="Include ML system probing and recommendations"),
+) -> None:
     """Check health of all executors and dependencies."""
     flags: GlobalFlags = ctx.obj or GlobalFlags()
     use_json = flags.json_output
@@ -960,6 +970,85 @@ def doctor(ctx: typer.Context) -> None:
 
         console.print(table)
 
+        # Add ML section if requested
+        if ml:
+            console.print()
+            console.print("[cyan]ML System Probe[/cyan]")
+            console.print()
+
+            try:
+                from .system_probe import probe_and_recommend
+
+                data = probe_and_recommend()
+                gpus = data["gpus"]
+                caps = data["capabilities"]
+                rec = data["recommendation"]
+
+                # ML capabilities table
+                ml_table = Table(title="ML Capabilities")
+                ml_table.add_column("Capability", style="cyan")
+                ml_table.add_column("Status", style="white")
+
+                ml_table.add_row(
+                    "CUDA",
+                    "[green]Available[/green]"
+                    if caps["cuda_available"]
+                    else "[red]Not Available[/red]",
+                )
+                ml_table.add_row(
+                    "ROCm",
+                    "[green]Available[/green]"
+                    if caps["rocm_available"]
+                    else "[red]Not Available[/red]",
+                )
+                ml_table.add_row(
+                    "MLX",
+                    "[green]Available[/green]"
+                    if caps["mlx_available"]
+                    else "[red]Not Available[/red]",
+                )
+                ml_table.add_row(
+                    "PyTorch",
+                    "[green]Installed[/green]"
+                    if caps["torch_installed"]
+                    else "[red]Not Installed[/red]",
+                )
+
+                console.print(ml_table)
+                console.print()
+
+                # GPU info
+                if gpus:
+                    gpu_table = Table(title="Detected GPUs")
+                    gpu_table.add_column("GPU", style="cyan")
+                    gpu_table.add_column("Memory", style="white")
+
+                    for gpu in gpus:
+                        memory_str = f"{gpu['memory_mb']} MB" if gpu["memory_mb"] > 0 else "Unknown"
+                        gpu_table.add_row(f"{gpu['vendor'].title()} {gpu['name']}", memory_str)
+
+                    console.print(gpu_table)
+                else:
+                    console.print("[yellow]No GPUs detected - CPU only[/yellow]")
+
+                console.print()
+
+                # Recommendation
+                rec_panel = Panel(
+                    f"[bold green]{rec['name'].replace('_', ' ').title()}[/bold green]\n"
+                    f"{rec['description']}\n\n"
+                    f"[dim]Next steps:[/dim]\n"
+                    + "\n".join(f"• {step}" for step in rec["next_steps"][:3]),
+                    title="ML Recommendation",
+                    border_style="green",
+                )
+                console.print(rec_panel)
+
+            except ImportError:
+                console.print("[yellow]ML probing requires psutil: pip install psutil[/yellow]")
+            except Exception as e:
+                console.print(f"[red]Error during ML probe: {e}[/red]")
+
         if has_failures:
             console.print("[red]Fatal issues found. Run 'heidi init' first.[/red]")
             raise typer.Exit(1)
@@ -967,7 +1056,6 @@ def doctor(ctx: typer.Context) -> None:
         missing = [n for n, s, _ in checks if s in ("missing", "not configured")]
         if missing:
             console.print(f"[yellow]Warning: Missing components: {', '.join(missing)}[/yellow]")
-        console.print(f"[yellow]Warning: Missing components: {', '.join(missing)}[/yellow]")
 
 
 @auth_app.command("gh")
