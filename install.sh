@@ -4,8 +4,40 @@ set -e
 # Heidi CLI One-Click Installer for Linux/macOS
 # Uses pipx for global installation so heidi is available from any directory
 
+VERSION=""
+REF="main"
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --version|-v)
+            VERSION="$2"
+            shift 2
+            ;;
+        --help|-h)
+            echo "Usage: $0 [--version <tag>]"
+            echo ""
+            echo "Options:"
+            echo "  --version, -v <tag>   Install specific version (e.g., v0.1.1). If not provided, installs latest from main."
+            echo "  --help, -h           Show this help message"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
 echo "Heidi CLI Installer (pipx mode)"
 echo "================================"
+
+if [ -n "$VERSION" ]; then
+    REF="$VERSION"
+    echo "Installing heidi-cli@$REF"
+else
+    echo "Installing heidi-cli from main (latest)"
+fi
 
 # Check if Python is available
 if ! command -v python3 &> /dev/null && ! command -v python &> /dev/null; then
@@ -45,7 +77,8 @@ fi
 
 echo ""
 echo "Installing Heidi CLI globally via pipx..."
-pipx install git+https://github.com/heidi-dang/heidi-cli.git
+echo "Resolved ref: $REF"
+pipx install git+https://github.com/heidi-dang/heidi-cli.git@${REF}
 
 echo ""
 echo "Building UI into cache..."
