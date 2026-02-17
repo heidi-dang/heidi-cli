@@ -1,3 +1,13 @@
+FROM node:22-alpine AS ui-builder
+
+WORKDIR /app/ui
+
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci
+
+COPY ui/ ./
+RUN npm run build -- --base=/ui/
+
 FROM python:3.11-slim-bookworm
 
 WORKDIR /app
@@ -5,6 +15,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ui-builder /app/ui/dist /app/heidi_cli/ui_dist
 
 COPY . .
 
