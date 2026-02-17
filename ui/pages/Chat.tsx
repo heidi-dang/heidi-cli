@@ -498,6 +498,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
             onClick={() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
             className="fixed bottom-24 right-8 bg-purple-600 hover:bg-purple-500 text-white p-3 rounded-full shadow-lg transition-all transform hover:scale-110 z-50"
             title="Jump to bottom"
+            aria-label="Jump to bottom"
           >
             <ArrowDown size={20} />
           </button>
@@ -556,7 +557,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                     </div>
 
                     {mode === AppMode.LOOP && (
-                         <div className="flex items-center gap-2 animate-in fade-in zoom-in-95">
+                         <label className="flex items-center gap-2 animate-in fade-in zoom-in-95 cursor-pointer">
                             <span className="text-xs uppercase font-bold tracking-wider text-slate-500">Retries</span>
                             <input 
                                 type="number" 
@@ -566,7 +567,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                                 onChange={(e) => setMaxRetries(parseInt(e.target.value))}
                                 className="w-14 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-slate-200 text-xs focus:ring-1 focus:ring-purple-500 outline-none hover:bg-white/10 transition-colors"
                             />
-                        </div>
+                        </label>
                     )}
 
                     <div className="flex-1"></div>
