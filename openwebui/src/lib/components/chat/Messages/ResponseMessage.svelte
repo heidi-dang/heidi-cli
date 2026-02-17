@@ -41,8 +41,6 @@
 	import Name from './Name.svelte';
 	import ProfileImage from './ProfileImage.svelte';
 	import Skeleton from './Skeleton.svelte';
-	import ThinkingBubble from './ThinkingBubble.svelte';
-	import ToolCard from './ToolCard.svelte';
 	import Image from '$lib/components/common/Image.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import RateComment from './RateComment.svelte';
@@ -760,10 +758,7 @@
 							id="response-content-container"
 						>
 							{#if message.content === '' && !message.error && ((model?.info?.meta?.capabilities?.status_updates ?? true) ? (message?.statusHistory ?? [...(message?.status ? [message?.status] : [])]).length === 0 || (message?.statusHistory?.at(-1)?.hidden ?? false) : true)}
-								<ThinkingBubble 
-									status={message?.statusHistory?.at(-1) ?? message?.status} 
-									message={message?.statusHistory?.at(-1)?.description ?? message?.status?.description ?? 'Thinking...'}
-								/>
+								<Skeleton />
 							{:else if message.content && message.error !== true}
 								<!-- always show message contents even if there's an error -->
 								<!-- unless message.error === true which is legacy error handling, where the error message is stored in message.content -->

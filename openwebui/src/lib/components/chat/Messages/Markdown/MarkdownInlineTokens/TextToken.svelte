@@ -9,13 +9,10 @@
 </script>
 
 {#if done}
-	<span class="transition-opacity duration-200">{token?.raw}</span>
+	{token?.raw}
 {:else}
-	{#each texts as text, i}
-		<span 
-			class="inline" 
-			in:fade={{ duration: 80, delay: i * 10 }}
-		>
+	{#each texts as text}
+		<span class="" transition:fade={{ duration: 100 }}>
 			{text}{' '}
 		</span>
 	{/each}
