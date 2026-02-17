@@ -1,0 +1,6 @@
+[lint]
+exclude = ["backend/"]
+
+[lint.per-file-ignores]
+"backend/*" = ["E722", "F401", "F403", "F405", "F811", "F821", "E721", "E402"]
+"test/*" = ["E722", "F401", "F403", "F405", "F811", "F821", "E721", "E402"]
