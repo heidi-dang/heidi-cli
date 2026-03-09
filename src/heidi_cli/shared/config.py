@@ -119,13 +119,13 @@ class ConfigLoader:
                         continue
                     
                     target_type = SuiteConfig.model_fields[field].annotation
-                    if target_type == bool:
+                    if target_type is bool:
                         setattr(config, field, env_val.lower() in ("true", "1", "yes"))
-                    elif target_type == int:
+                    elif target_type is int:
                         setattr(config, field, int(env_val))
-                    elif target_type == float:
+                    elif target_type is float:
                         setattr(config, field, float(env_val))
-                    elif target_type == Path:
+                    elif target_type is Path:
                         setattr(config, field, Path(env_val))
                     else:
                         setattr(config, field, env_val)
