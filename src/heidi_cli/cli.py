@@ -137,5 +137,59 @@ def learning_curate(date: Optional[str] = None):
     count = asyncio.run(curation_engine.curate_dataset(date))
     console.print(f"[green]✓ Curated {count} runs into a new dataset.[/green]")
 
+@learning_app.command("train-full")
+def learning_train_full():
+    """Start a background full-model retraining job."""
+    import asyncio
+    from .registry.retrain import retraining_engine
+    console.print("Initiating background retraining...")
+    try:
+        job_id = asyncio.run(retraining_engine.start_retraining())
+        console.print(f"[green]✓ Retraining job started: {job_id}[/green]")
+    except Exception as e:
+        console.print(f"[red]Error starting retraining: {e}[/red]")
+
+@learning_app.command("eval")
+def learning_eval(candidate_id: str):
+    """Evaluate a candidate model against the active stable model."""
+    import asyncio
+    from .registry.eval import eval_harness
+    console.print(f"Evaluating candidate {candidate_id}...")
+    try:
+        passed, results = asyncio.run(eval_harness.evaluate_candidate(candidate_id))
+        status = "[green]PASSED[/green]" if passed else "[red]FAILED[/red]"
+        console.print(f"Evaluation {status}. Metrics: {results['metrics']}")
+    except Exception as e:
+        console.print(f"[red]Error evaluating candidate: {e}[/red]")
+
+@learning_app.command("promote")
+def learning_promote(version_id: str, channel: str = "stable"):
+    """Promote a model version to a specific channel (e.g. candidate or stable)."""
+    import asyncio
+    from .registry.manager import model_registry
+    console.print(f"Promoting {version_id} to {channel}...")
+    try:
+        asyncio.run(model_registry.promote(version_id, channel))
+        console.print(f"[green]✓ {version_id} promoted to {channel}.[/green]")
+    except Exception as e:
+        console.print(f"[red]Error promoting model: {e}[/red]")
+
+@learning_app.command("rollback")
+def learning_rollback():
+    """Rollback to the previous stable model."""
+    console.print("[yellow]Rollback mechanism not fully implemented in skeleton.[/yellow]")
+
+@model_app.command("reload")
+def model_reload():
+    """Atomically hot-swap the model routing to the active stable model."""
+    import asyncio
+    from .registry.hotswap import hotswap_manager
+    console.print("Initiating atomic hot-swap...")
+    success = asyncio.run(hotswap_manager.reload_stable_model())
+    if success:
+        console.print("[green]✓ Hot-swap complete. Serving new state.[/green]")
+    else:
+        console.print("[red]Hot-swap failed. See logs.[/red]")
+
 if __name__ == "__main__":
     app()

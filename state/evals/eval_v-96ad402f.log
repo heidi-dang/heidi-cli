@@ -1,0 +1,4 @@
+candidate_id: v-96ad402f
+baseline_id: None
+metrics: {'accuracy': 0.85, 'latency_ms': 120, 'regression_detected': False}
+passed: True
