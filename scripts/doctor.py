@@ -29,7 +29,9 @@ def check_docs():
     base = Path(__file__).parent.parent / "docs"
     docs = [
         "architecture.md", "model-host.md", "auto-registration.md",
-        "runtime.md", "memory-schema.md"
+        "runtime.md", "memory-schema.md",
+        "pipeline.md", "curation-redaction.md",
+        "retraining-hotswap.md", "registry-promotion.md"
     ]
     results = []
     for d in docs:
