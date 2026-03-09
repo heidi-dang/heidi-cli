@@ -1,5 +1,4 @@
 import pytest
-import socket
 import struct
 import json
 import time

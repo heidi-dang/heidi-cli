@@ -2,7 +2,6 @@ import pytest
 import os
 import subprocess
 import time
-import socket
 from pathlib import Path
 from heidi_cli.rpc_client import RPCClient, RPCError
 
