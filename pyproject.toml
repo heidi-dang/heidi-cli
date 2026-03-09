@@ -17,6 +17,7 @@ dependencies = [
   "transformers",
   "torch",
   "psutil",
+]
 
 [project.optional-dependencies]
 dev = [
