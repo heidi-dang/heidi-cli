@@ -57,13 +57,17 @@ class CurationEngine:
         
         # Iterate through dated folders
         for date_dir in raw_root.iterdir():
-            if not date_dir.is_dir(): continue
-            if date_filter and date_dir.name != date_filter: continue
+            if not date_dir.is_dir():
+                continue
+            if date_filter and date_dir.name != date_filter:
+                continue
             
             for run_dir in date_dir.iterdir():
-                if not run_dir.is_dir(): continue
+                if not run_dir.is_dir():
+                    continue
                 run_file = run_dir / "run.json"
-                if not run_file.exists(): continue
+                if not run_file.exists():
+                    continue
                 
                 with open(run_file, "r") as f:
                     raw_run = json.load(f)
