@@ -1,0 +1,15 @@
+{
+  "run_id": "b57ae2fc-6be6-4994-b735-ab1dfabccdb8",
+  "timestamp": "2026-03-09T19:08:06.323994",
+  "task": "Test task",
+  "messages": [
+    {
+      "role": "user",
+      "content": "my key is sk-12345678901234567890123456789012"
+    }
+  ],
+  "response": {
+    "answer": "ok"
+  },
+  "metadata": {}
+}

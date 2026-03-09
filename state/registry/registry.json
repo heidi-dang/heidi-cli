@@ -1,0 +1,11 @@
+{
+  "active_stable": "v-96ad402f",
+  "active_candidate": null,
+  "versions": {
+    "v-96ad402f": {
+      "path": "/media/heidi/New Volume/hf-hub/heidi-cli/state/models/stable/versions/v-96ad402f",
+      "channel": "stable",
+      "registered_at": "2026-03-09T19:12:45.164284"
+    }
+  }
+}

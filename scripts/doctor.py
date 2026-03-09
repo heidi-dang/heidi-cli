@@ -29,7 +29,9 @@ def check_docs():
     base = Path(__file__).parent.parent / "docs"
     docs = [
         "architecture.md", "model-host.md", "auto-registration.md",
-        "runtime.md", "memory-schema.md"
+        "runtime.md",         "memory-schema.md",
+        "pipeline.md", "curation-redaction.md",
+        "retraining-hotswap.md", "registry-promotion.md"
     ]
     results = []
     for d in docs:
@@ -88,9 +90,40 @@ def run_doctor():
     table = Table(title="Configuration")
     table.add_column("Key")
     table.add_column("Status")
+    config = ConfigLoader.load() # Load config once for both config checks
     for key, ok in check_config():
         status = "[green]OK[/green]" if ok else "[red]MISSING[/red]"
         table.add_row(key, status)
+    pipeline_dirs = ["raw", "curated"]
+    for d in pipeline_dirs:
+        p = config.data_root / "datasets" / d
+        table.add_row(f"Dataset Dir ({d})", "[green]OK[/green]" if p.exists() else "[yellow]NOT CREATED YET[/yellow]")
+    console.print(table)
+    
+    # Phase 4: Registry Config Verification
+    table = Table(title="Registry & Hot-Swap Verification")
+    table.add_column("Check")
+    table.add_column("Status")
+    
+    try:
+        registry_dirs = [
+            config.state_dirs.get("registry"),
+            config.state_dirs.get("models_stable"),
+            config.state_dirs.get("models_candidate"),
+            config.state_dirs.get("evals")
+        ]
+        all_exist = all(d and d.exists() for d in registry_dirs)
+        table.add_row("Registry Dirs Exist", "[green]OK[/green]" if all_exist else "[yellow]NOT CREATED YET[/yellow]")
+        
+        from heidi_cli.registry.manager import model_registry
+        reg = model_registry.load_registry()
+        if "active_stable" in reg and "versions" in reg:
+            table.add_row("Registry Schema Valid", "[green]OK[/green]")
+        else:
+            table.add_row("Registry Schema Valid", "[red]INVALID[/red]")
+    except Exception as e:
+        table.add_row("Registry Component", f"[red]Error: {e}[/red]")
+    
     console.print(table)
 
     # DB
@@ -100,6 +133,22 @@ def run_doctor():
     for t, ok in check_db():
         status = "[green]OK[/green]" if ok else "[red]MISSING[/red]"
         table.add_row(t, status)
+    console.print(table)
+    
+    # Phase 3: Pipeline Integration verification
+    table = Table(title="Pipeline Config Verification")
+    table.add_column("Check")
+    table.add_column("Status")
+    config = ConfigLoader.load()
+    if config.data_root.exists():
+        table.add_row("Data Root Mounted", "[green]OK[/green]")
+    else:
+        table.add_row("Data Root Mounted", "[red]MISSING[/red]")
+        
+    pipeline_dirs = ["raw", "curated"]
+    for d in pipeline_dirs:
+        p = config.data_root / "datasets" / d
+        table.add_row(f"Dataset Dir ({d})", "[green]OK[/green]" if p.exists() else "[yellow]NOT CREATED YET[/yellow]")
     console.print(table)
 
 if __name__ == "__main__":
