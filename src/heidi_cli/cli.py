@@ -34,6 +34,7 @@ def status():
     pids = load_pids()
     if "model_host" in pids:
         console.print(f"Model Host PID: [green]{pids['model_host']}[/green]")
+    else:
         console.print("Model Host PID: [red]Not running[/red]")
 
 @app.command()
@@ -52,11 +53,6 @@ def doctor():
             namespace["run_doctor"]()
         elif "check_all" in namespace:
             namespace["check_all"]()
-        else:
-            # Fallback to just executing it and letting its __main__ run if checking is automatic
-            pass
-        
-        # In case the doctor script just prints things upon execution, exec covers it
     else:
         console.print(f"[red]Doctor script not found at {doctor_script}[/red]")
 

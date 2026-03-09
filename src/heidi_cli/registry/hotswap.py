@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
-from ..model_host.manager import manager as model_manager
 from .manager import model_registry
 
 logger = logging.getLogger("heidi.hotswap")
