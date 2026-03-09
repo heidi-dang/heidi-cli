@@ -127,5 +127,19 @@ def learning_reflect(run_id: str, task: str, outcome: str):
     ref_id = asyncio.run(reflection_engine.reflect_on_run(run_id, task, outcome))
     console.print(f"[green]✓ Reflection created: {ref_id}[/green]")
 
+@learning_app.command("export")
+def learning_export(run_id: str):
+    """(Phase 3 WIP) Export a run for manual review."""
+    console.print(f"Exporting run {run_id} (Not implemented in Phase 3 skeleton)")
+
+@learning_app.command("curate")
+def learning_curate(date: Optional[str] = None):
+    """Curate raw runs into redacted training datasets."""
+    import asyncio
+    from .pipeline.curation import curation_engine
+    console.print(f"Curating dataset (Filter: {date or 'All'})...")
+    count = asyncio.run(curation_engine.curate_dataset(date))
+    console.print(f"[green]✓ Curated {count} runs into a new dataset.[/green]")
+
 if __name__ == "__main__":
     app()
