@@ -17,11 +17,7 @@ dependencies = [
   "transformers",
   "torch",
   "psutil",
-]
-
-]
-
-[project.optional-dependencies]
+]\n\n[project.optional-dependencies]
 dev = [
   "pytest>=8.0.0",
   "ruff>=0.3.0",
