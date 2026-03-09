@@ -89,3 +89,4 @@ openwebui/backend/data/
 
 # Packaged UI dist (built from ui/, included in package but not git)
 src/heidi_cli/ui_dist/
+*.db
