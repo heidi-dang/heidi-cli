@@ -1,5 +1,7 @@
 # Heidi CLI: The "Brain" for Your Local AI
 
+[![One-Click Install](https://img.shields.io/badge/Install-One%20Click-blue?style=for-the-badge&logo=linux)](https://github.com/heidi-dang/heidi-cli#-one-click-installation) [![API Keys](https://img.shields.io/badge/API%20Keys-Unified%20Access-green?style=for-the-badge&logo=api)](https://github.com/heidi-dang/heidi-cli/blob/main/docs/api-keys.md) [![Documentation](https://img.shields.io/badge/Docs-Complete%20Guide-purple?style=for-the-badge&logo=readthedocs)](https://github.com/heidi-dang/heidi-cli/blob/main/docs/how-to-use.md)
+
 Listen, we've all been there. You've got a shiny new LLM running on your laptop, but it's basically a goldfish. It forgets what it did five minutes ago, and it keeps making the same dumb mistakes. 
 
 Enter **Heidi CLI**. 
@@ -8,7 +10,66 @@ Heidi is a command-center for a **Unified Learning Suite**. It's not just some f
 
 ---
 
-### How the Magic Actually Happens (The 5-Phase Loop)
+## 🚀 **One-Click Installation**
+
+Install Heidi CLI with a single command! The installer will automatically:
+- Clone the latest version from GitHub
+- Install all dependencies
+- Build and install Heidi CLI
+- Verify the installation
+
+### **Linux/macOS**
+```bash
+# Quick install (one command)
+curl -fsSL https://raw.githubusercontent.com/heidi-dang/heidi-cli/main/install | bash
+
+# Or download first
+wget https://raw.githubusercontent.com/heidi-dang/heidi-cli/main/install
+chmod +x install
+./install
+```
+
+### **Windows (PowerShell)**
+```powershell
+# Download and run
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/heidi-dang/heidi-cli/main/install.ps1" -OutFile "install.ps1"
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+.\install.ps1
+```
+
+### **After Installation**
+```bash
+# Verify installation
+heidi --version
+
+# Quick start
+heidi setup
+heidi api generate --name "My First Key"
+heidi model serve
+```
+
+🎉 **That's it! Heidi CLI is now installed and ready to use!**
+
+---
+
+## 📚 **Complete Documentation**
+
+**📖 Step-by-Step Guide**: [**docs/how-to-use.md**](docs/how-to-use.md)
+
+From your first model download to enterprise deployment, our comprehensive guide covers:
+- ✅ **Quick Start** - Get running in 5 minutes
+- ✅ **Setup & Configuration** - Configure your environment  
+- ✅ **Model Management** - Download and manage models
+- ✅ **HuggingFace Integration** - Access 100,000+ models
+- ✅ **Token & Cost Tracking** - Monitor usage and costs
+- ✅ **Analytics & Monitoring** - Performance insights
+- ✅ **Advanced Features** - Power user capabilities
+- ✅ **Enterprise Deployment** - Production setup
+- ✅ **Troubleshooting** - Common issues and solutions
+
+---
+
+## 🚀 **How the Magic Actually Happens (The 5-Phase Loop)**
 
 Think of Heidi like a "Perception-Action-Learning" loop. She's got five internal modules that play together like a well-oiled (and slightly sarcastic) machine:
 
