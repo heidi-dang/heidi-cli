@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from datetime import datetime
 from typing import List, Optional, AsyncGenerator, Dict, Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from .manager import manager
 from ..shared.config import ConfigLoader
+from ..token_tracking.models import get_token_database
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -26,10 +28,27 @@ class ChatCompletionRequest(BaseModel):
     stream: bool = False
     temperature: Optional[float] = 1.0
     max_tokens: Optional[int] = None
+<<<<<<< HEAD
     stop: Optional[List[str]] = None
     top_p: Optional[float] = 1.0
     frequency_penalty: Optional[float] = 0.0
     presence_penalty: Optional[float] = 0.0
+=======
+    top_p: Optional[float] = None
+    top_k: Optional[int] = None
+    session_id: Optional[str] = None
+    user_id: Optional[str] = "default"
+
+class ModelUnloadRequest(BaseModel):
+    force: bool = False
+
+class TokenUsageRequest(BaseModel):
+    session_id: Optional[str] = None
+    user_id: Optional[str] = None
+    model_id: Optional[str] = None
+    days: Optional[int] = None
+    limit: Optional[int] = 100
+>>>>>>> origin/main
 
 @app.get("/health")
 async def health():
@@ -70,6 +89,17 @@ async def health():
             "timestamp": datetime.now().isoformat()
         }
 
+@app.get("/v1/status")
+async def get_status():
+    """Get detailed system status and resource usage."""
+    try:
+        status = manager.get_resource_status()
+        status["server_status"] = "healthy"
+        return status
+    except Exception as e:
+        logging.error(f"Error getting status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/v1/models")
 async def list_models():
     """OpenAI-compatible models endpoint with enhanced metadata."""
@@ -80,6 +110,7 @@ async def list_models():
         logger.error(f"Error listing models: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+<<<<<<< HEAD
 @app.get("/v1/models/{model_id}")
 async def get_model(model_id: str):
     """Get detailed information about a specific model."""
@@ -95,12 +126,138 @@ async def get_model(model_id: str):
         raise
     except Exception as e:
         logger.error(f"Error getting model {model_id}: {e}")
+=======
+@app.post("/v1/model/unload")
+async def unload_model(request: ModelUnloadRequest):
+    """Unload the currently loaded model."""
+    try:
+        manager.unload_model()
+        return {"message": "Model unloaded successfully"}
+    except Exception as e:
+        logging.error(f"Error unloading model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/v1/model/reload")
+async def reload_model():
+    """Reload model from registry."""
+    try:
+        manager.reload_model()
+        return {"message": "Model reload initiated"}
+    except Exception as e:
+        logging.error(f"Error reloading model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/v1/tokens/usage")
+async def get_token_usage(request: TokenUsageRequest):
+    """Get token usage history."""
+    try:
+        db = get_token_database()
+        
+        # Build filters
+        start_date = None
+        if request.days:
+            from datetime import timedelta
+            start_date = datetime.utcnow() - timedelta(days=request.days)
+        
+        history = db.get_usage_history(
+            limit=request.limit or 100,
+            model_id=request.model_id,
+            session_id=request.session_id,
+            user_id=request.user_id,
+            start_date=start_date
+        )
+        
+        return {
+            "usage": [usage.__dict__ for usage in history],
+            "count": len(history)
+        }
+    except Exception as e:
+        logging.error(f"Error getting token usage: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/v1/tokens/summary")
+async def get_token_summary(
+    period: str = "day",
+    model: Optional[str] = None,
+    user: Optional[str] = None
+):
+    """Get token usage summary."""
+    try:
+        db = get_token_database()
+        summary = db.get_usage_summary(period=period, model_id=model, user_id=user)
+        return summary
+    except Exception as e:
+        logging.error(f"Error getting token summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/v1/tokens/stats")
+async def get_token_stats(
+    days: int = 30,
+    model: Optional[str] = None,
+    user: Optional[str] = None
+):
+    """Get detailed token statistics."""
+    try:
+        db = get_token_database()
+        
+        # Get data for the period
+        from datetime import timedelta
+        start_date = datetime.utcnow() - timedelta(days=days)
+        history = db.get_usage_history(
+            limit=10000,  # Large limit for analytics
+            start_date=start_date,
+            model_id=model,
+            user_id=user
+        )
+        
+        if not history:
+            return {"message": "No usage data found"}
+        
+        # Calculate statistics
+        total_requests = len(history)
+        total_tokens = sum(h.total_tokens for h in history)
+        total_cost = sum(h.cost_usd for h in history)
+        
+        # Daily averages
+        avg_daily_requests = total_requests / days
+        avg_daily_tokens = total_tokens / days
+        avg_daily_cost = total_cost / days
+        
+        # Model breakdown
+        model_stats = {}
+        for usage in history:
+            if usage.model_id not in model_stats:
+                model_stats[usage.model_id] = {
+                    "requests": 0,
+                    "tokens": 0,
+                    "cost": 0.0
+                }
+            model_stats[usage.model_id]["requests"] += 1
+            model_stats[usage.model_id]["tokens"] += usage.total_tokens
+            model_stats[usage.model_id]["cost"] += usage.cost_usd
+        
+        return {
+            "period_days": days,
+            "total": {
+                "requests": total_requests,
+                "tokens": total_tokens,
+                "cost_usd": total_cost,
+                "avg_daily_requests": avg_daily_requests,
+                "avg_daily_tokens": avg_daily_tokens,
+                "avg_daily_cost": avg_daily_cost
+            },
+            "by_model": model_stats
+        }
+    except Exception as e:
+        logging.error(f"Error getting token stats: {e}")
+>>>>>>> origin/main
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/v1/chat/completions")
-async def chat_completions(request: ChatCompletionRequest):
+async def chat_completions(request: ChatCompletionRequest, http_request: Request):
     """OpenAI-compatible completions endpoint."""
     try:
+<<<<<<< HEAD
         if request.stream:
             return StreamingResponse(
                 stream_chat_completion(request),
@@ -119,6 +276,30 @@ async def chat_completions(request: ChatCompletionRequest):
                 presence_penalty=request.presence_penalty
             )
             return response
+=======
+        # Extract generation parameters
+        kwargs = {}
+        if request.temperature is not None:
+            kwargs["temperature"] = request.temperature
+        if request.max_tokens is not None:
+            kwargs["max_new_tokens"] = request.max_tokens
+        if request.top_p is not None:
+            kwargs["top_p"] = request.top_p
+        if request.top_k is not None:
+            kwargs["top_k"] = request.top_k
+        
+        # Add tracking parameters
+        kwargs["session_id"] = request.session_id or str(uuid.uuid4())
+        kwargs["user_id"] = request.user_id or "default"
+        kwargs["request_start_time"] = datetime.utcnow()
+        
+        response = await manager.get_response(
+            model_id=request.model,
+            messages=[m.model_dump() for m in request.messages],
+            **kwargs
+        )
+        return response
+>>>>>>> origin/main
     except ValueError as e:
         logger.warning(f"Invalid model requested: {e}")
         raise HTTPException(status_code=400, detail=str(e))

@@ -3,10 +3,13 @@ from __future__ import annotations
 import typer
 import sys
 from typing import List, Optional
+import os
+from pathlib import Path
 from rich.console import Console
 
 from .shared.config import ConfigLoader
 from .launcher import start_daemon, stop_process, load_pids
+from .token_tracking.cli import register_tokens_app
 
 console = Console()
 app = typer.Typer(
@@ -24,6 +27,23 @@ app.add_typer(model_app, name="model")
 app.add_typer(memory_app, name="memory")
 app.add_typer(learning_app, name="learning")
 app.add_typer(hf_app, name="hf")
+register_tokens_app(app)
+
+@app.command()
+def status():
+    """Show suite status."""
+    config = ConfigLoader.load()
+    console.print("[bold]Learning Suite Status[/bold]")
+    console.print(f"Suite Enabled: {config.suite_enabled}")
+    console.print(f"Data Root: {config.data_root}")
+    console.print(f"Model Host: {config.host}:{config.port} (Enabled: {config.model_host_enabled})")
+    
+    pids = load_pids()
+    if "model_host" in pids:
+        console.print(f"Model Host PID: [green]{pids['model_host']}[/green]")
+    else:
+        console.print("Model Host PID: [red]Not running[/red]")
+>>>>>>> origin/main
 
 @app.command()
 def doctor():
@@ -489,6 +509,7 @@ def model_reload():
     else:
         console.print("[red]Hot-swap failed. See logs.[/red]")
 
+<<<<<<< HEAD
 # HuggingFace Commands
 @hf_app.command("search")
 def hf_search(query: str, task: str = "text-generation", limit: int = 20):
@@ -1043,6 +1064,140 @@ def hf_remove(model_id: str):
     except Exception as e:
         console.print(f"[red]❌ Error removing model: {e}[/red]")
         raise typer.Exit(1)
+=======
+# Truth Path App - Dashboard integration commands
+# These commands provide the single truth path for heidi-engine dashboard
+truth_app = typer.Typer(help="Truth path commands for dashboard integration (get_status_field, stream_events)")
+app.add_typer(truth_app, name="truth")
+
+
+@truth_app.command("get_status_field")
+def get_status_field_cmd(
+    run_id: str = typer.Argument(..., help="Run ID to get status for"),
+    timeout: int = typer.Option(5, "--timeout", "-t", help="Timeout in seconds"),
+) -> None:
+    """
+    Get current status fields for a run.
+
+    This command is the single truth path for heidi-engine dashboard.
+    Returns JSON state for the specified run.
+
+    Output format: JSON
+    Timeout: 5 seconds default
+    """
+    import json
+    import sys
+
+    # Default status if backend not available
+    default_status = {
+        "run_id": run_id,
+        "status": "unknown",
+        "current_round": 0,
+        "current_stage": "initializing",
+        "stop_requested": False,
+        "pause_requested": False,
+        "counters": {
+            "teacher_generated": 0,
+            "teacher_failed": 0,
+            "raw_written": 0,
+            "validated_ok": 0,
+            "rejected_schema": 0,
+            "rejected_secret": 0,
+            "rejected_dedupe": 0,
+            "test_pass": 0,
+            "test_fail": 0,
+            "train_step": 0,
+            "train_loss": 0.0,
+            "eval_json_parse_rate": 0.0,
+            "eval_format_rate": 0.0,
+        },
+        "usage": {
+            "requests_sent": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "rate_limits_hit": 0,
+            "retries": 0,
+            "estimated_cost_usd": 0.0,
+        },
+    }
+
+    # Try to get status from heidi-engine backend
+    try:
+        # Check if there's a heidi-engine state file we can read
+        autotrain_dir = os.environ.get(
+            "AUTOTRAIN_DIR",
+            str(Path.home() / ".local" / "heidi-engine")
+        )
+        state_file = Path(autotrain_dir) / "runs" / run_id / "state.json"
+
+        if state_file.exists():
+            with open(state_file) as f:
+                status_data = json.load(f)
+                console.print(json.dumps(status_data))
+                return
+    except Exception:
+        pass
+
+    # Fallback to default status
+    console.print(json.dumps(default_status))
+
+
+@truth_app.command("stream_events")
+def stream_events_cmd(
+    run_id: str = typer.Argument(..., help="Run ID to stream events for"),
+    timeout: int = typer.Option(5, "--timeout", "-t", help="Timeout in seconds"),
+    limit: int = typer.Option(20, "--limit", "-l", help="Maximum events to return"),
+) -> None:
+    """
+    Stream events for a run.
+
+    This command provides live event streaming for heidi-engine dashboard.
+    Returns newline-separated JSON events.
+
+    Output format: JSON lines (one JSON object per line)
+    Timeout: 5 seconds default
+    Disconnect: Returns immediately on timeout
+    """
+    import json
+    import sys
+
+    # Default empty events
+    default_events = []
+
+    # Try to get events from heidi-engine backend
+    try:
+        autotrain_dir = os.environ.get(
+            "AUTOTRAIN_DIR",
+            str(Path.home() / ".local" / "heidi-engine")
+        )
+        events_file = Path(autotrain_dir) / "runs" / run_id / "events.jsonl"
+
+        if events_file.exists():
+            events = []
+            with open(events_file) as f:
+                for line in f:
+                    if line.strip():
+                        try:
+                            event = json.loads(line)
+                            events.append(event)
+                            if len(events) >= limit:
+                                break
+                        except json.JSONDecodeError:
+                            pass
+
+            # Output as JSON lines
+            for event in events:
+                console.print(json.dumps(event))
+            return
+    except Exception:
+        pass
+
+    # Return empty if no events found
+    # Note: We don't print anything for empty, caller handles no-output
+    sys.exit(0)
+
+>>>>>>> origin/main
 
 if __name__ == "__main__":
+    app()
     app()
