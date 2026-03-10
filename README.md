@@ -50,6 +50,8 @@ heidi model serve
 
 🎉 **That's it! Heidi CLI is now installed and ready to use!**
 
+> **💡 Tip**: If you get "command not found" after installation, see [**QUICK_INSTALL.md**](QUICK_INSTALL.md) for troubleshooting steps.
+
 ---
 
 ## 📚 **Complete Documentation**

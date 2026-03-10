@@ -7,13 +7,18 @@ import httpx
 import time
 import threading
 import uuid
+import threading
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional, AsyncGenerator
 import psutil
+import psutil
 from ..shared.config import ConfigLoader, ModelConfig
 from .metadata import metadata_manager, ModelStatus, ModelMetrics, ModelProvider
 from ..integrations.analytics import get_analytics
+from ..integrations.analytics import get_analytics
+from ..token_tracking.models import get_token_database, TokenUsage
 from ..token_tracking.models import get_token_database, TokenUsage
 
 logger = logging.getLogger("heidi.model_host")
@@ -45,10 +50,39 @@ class ModelManager:
         # Thread safety
         self._lock = threading.RLock()
         
+        # Thread safety
+        self._lock = threading.RLock()
+        
         # Load model from registry
         self.tokenizer: Optional[Any] = None
         self.model: Optional[Any] = None
         self.model_path: Optional[Path] = None
+        
+        # Token tracking
+        self.token_db = get_token_database()
+        self.default_session_id = str(uuid.uuid4())
+        
+        # Generation configuration
+        self.generation_config = {
+            "max_new_tokens": getattr(self.config, 'max_new_tokens', 128),
+            "temperature": getattr(self.config, 'temperature', 0.7),
+            "do_sample": getattr(self.config, 'do_sample', True),
+            "top_p": getattr(self.config, 'top_p', 0.9),
+            "top_k": getattr(self.config, 'top_k', 50),
+        }
+        
+        # Resource limits
+        self.max_memory_gb = getattr(self.config, 'max_memory_gb', 8)
+        self.max_concurrent_requests = getattr(self.config, 'max_concurrent_requests', 10)
+        self._active_requests = 0
+        
+        # Security settings
+        self.allowed_model_paths = getattr(self.config, 'allowed_model_paths', [
+            Path.home() / ".local" / "heidi-engine",
+            Path("models"),
+            Path("state/registry")
+        ])
+        
         
         # Token tracking
         self.token_db = get_token_database()
@@ -137,32 +171,80 @@ class ModelManager:
             logger.error(f"Error checking memory usage: {e}")
             return True  # Allow on error
     
+    def _validate_model_path(self, model_path: Path) -> bool:
+        """Validate model path for security."""
+        try:
+            # Resolve absolute path
+            abs_path = model_path.resolve()
+            
+            # Check if path is within allowed directories
+            for allowed_path in self.allowed_model_paths:
+                if allowed_path.exists():
+                    try:
+                        if abs_path.is_relative_to(allowed_path.resolve()):
+                            return True
+                    except AttributeError:
+                        # Fallback for older Python versions
+                        if str(abs_path).startswith(str(allowed_path.resolve())):
+                            return True
+            
+            logger.warning(f"Model path not in allowed directories: {abs_path}")
+            return False
+        except Exception as e:
+            logger.error(f"Error validating model path: {e}")
+            return False
+    
+    def _check_memory_usage(self) -> bool:
+        """Check if memory usage is within limits."""
+        try:
+            memory_info = psutil.virtual_memory()
+            used_gb = memory_info.used / (1024**3)
+            
+            if used_gb > self.max_memory_gb:
+                logger.warning(f"Memory usage {used_gb:.2f}GB exceeds limit {self.max_memory_gb}GB")
+                return False
+            return True
+        except Exception as e:
+            logger.error(f"Error checking memory usage: {e}")
+            return True  # Allow on error
+    
     def _load_model_from_registry(self):
         """Load model from active_stable in registry.json."""
         with self._lock:
-            try:
-                registry_path = Path("state/registry/registry.json")
-                if not registry_path.exists():
-                    logger.warning("Registry not found, model not loaded")
+        with self._lock:
+        try:
+            registry_path = Path("state/registry/registry.json")
+            if not registry_path.exists():
+                logger.warning("Registry not found, model not loaded")
+                return
+            
+            with open(registry_path) as f:
+                registry = json.load(f)
+            
+            active_version = registry.get("active_stable")
+            if not active_version:
+                logger.warning("No active_stable version in registry")
+                return
+            
+            versions = registry.get("versions", {})
+            version_info = versions.get(active_version)
+            if not version_info:
+                logger.warning(f"Version {active_version} not found in registry versions")
+                return
+            
+            model_path = Path(version_info.get("path", ""))
+            if not model_path.exists():
+                logger.warning(f"Model path does not exist: {model_path}")
+                return
+            
+                # Security validation
+                if not self._validate_model_path(model_path):
+                    logger.error(f"Security validation failed for model path: {model_path}")
                     return
                 
-                with open(registry_path) as f:
-                    registry = json.load(f)
-                
-                active_version = registry.get("active_stable")
-                if not active_version:
-                    logger.warning("No active_stable version in registry")
-                    return
-                
-                versions = registry.get("versions", {})
-                version_info = versions.get(active_version)
-                if not version_info:
-                    logger.warning(f"Version {active_version} not found in registry versions")
-                    return
-                
-                model_path = Path(version_info.get("path", ""))
-                if not model_path.exists():
-                    logger.warning(f"Model path does not exist: {model_path}")
+                # Check memory before loading
+                if not self._check_memory_usage():
+                    logger.error("Insufficient memory to load model")
                     return
                 
                 # Security validation
@@ -175,38 +257,38 @@ class ModelManager:
                     logger.error("Insufficient memory to load model")
                     return
                 
-                self.model_path = model_path
-                logger.info(f"Loading model from: {model_path}")
-                
-                # Lazy import transformers
+            self.model_path = model_path
+            logger.info(f"Loading model from: {model_path}")
+            
+            # Lazy import transformers
                 torch, transformers = _lazy_imports()
-                
-                # Load tokenizer and model
-                self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-                    str(model_path),
+            
+            # Load tokenizer and model
+            self.tokenizer = transformers.AutoTokenizer.from_pretrained(
+                str(model_path),
                     trust_remote_code=True,
                     local_files_only=True  # Security: only load local files
-                )
-                self.model = transformers.AutoModelForCausalLM.from_pretrained(
-                    str(model_path),
-                    device_map="auto",
-                    torch_dtype=torch.float16,
-                    low_cpu_memory_usage=True,
+            )
+            self.model = transformers.AutoModelForCausalLM.from_pretrained(
+                str(model_path),
+                device_map="auto",
+                torch_dtype=torch.float16,
+                low_cpu_memory_usage=True,
                     trust_remote_code=True,
                     local_files_only=True  # Security: only load local files
-                )
-                
-                # Set pad token
-                if self.tokenizer.pad_token is None:
-                    self.tokenizer.pad_token = self.tokenizer.eos_token_id
-                
-                logger.info(f"Model loaded successfully: {active_version}")
-                
-            except Exception as e:
-                logger.error(f"Failed to load model: {e}")
-                self.tokenizer = None
-                self.model = None
-                self.model_path = None
+            )
+            
+            # Set pad token
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token_id
+            
+            logger.info(f"Model loaded successfully: {active_version}")
+            
+        except Exception as e:
+            logger.error(f"Failed to load model: {e}")
+            self.tokenizer = None
+            self.model = None
+            self.model_path = None
 
     def list_models(self) -> List[Dict[str, Any]]:
         """List routable models for /v1/models with enhanced metadata."""
@@ -271,14 +353,75 @@ class ModelManager:
                     "file_count": hf_data.get("file_count")
                 }
             
+            # Add enhanced metadata for HuggingFace models
+            if metadata.provider == ModelProvider.LOCAL and metadata.extra_data:
+                hf_data = metadata.extra_data
+                model_dict["huggingface"] = {
+                    "original_id": hf_data.get("original_id"),
+                    "author": hf_data.get("author"),
+                    "downloads": hf_data.get("downloads"),
+                    "likes": hf_data.get("likes"),
+                    "pipeline_tag": hf_data.get("pipeline_tag"),
+                    "model_type": hf_data.get("model_type"),
+                    "languages": hf_data.get("languages"),
+                    "license": hf_data.get("license"),
+                    "model_family": hf_data.get("model_family"),
+                    "architecture": hf_data.get("architecture"),
+                    "size_gb": hf_data.get("size_gb"),
+                    "file_count": hf_data.get("file_count")
+                }
+            
+            # Add enhanced metadata for HuggingFace models
+            if metadata.provider == ModelProvider.LOCAL and metadata.extra_data:
+                hf_data = metadata.extra_data
+                model_dict["huggingface"] = {
+                    "original_id": hf_data.get("original_id"),
+                    "author": hf_data.get("author"),
+                    "downloads": hf_data.get("downloads"),
+                    "likes": hf_data.get("likes"),
+                    "pipeline_tag": hf_data.get("pipeline_tag"),
+                    "model_type": hf_data.get("model_type"),
+                    "languages": hf_data.get("languages"),
+                    "license": hf_data.get("license"),
+                    "model_family": hf_data.get("model_family"),
+                    "architecture": hf_data.get("architecture"),
+                    "size_gb": hf_data.get("size_gb"),
+                    "file_count": hf_data.get("file_count")
+                }
+            
             models.append(model_dict)
         
         return models
 
     async def get_response(self, model_id: str, messages: List[Dict[str, str]], **kwargs) -> Dict[str, Any]:
+<<<<<<< HEAD
         """Route request to the correct model and get response with metrics."""
         start_time = time.time()
-        session_id = kwargs.pop('session_id', str(uuid.uuid4()))
+        self.request_count += 1
+        
+        # Get analytics instance
+        analytics = get_analytics()
+        
+        # Calculate input tokens (rough estimate)
+        input_text = " ".join([msg.get("content", "") for msg in messages])
+        input_tokens = len(input_text.split()) * 1.3  # Rough token estimation
+=======
+        """Route request to the correct model and get response."""
+        session_id = kwargs.pop('session_id', self.default_session_id)
+        user_id = kwargs.pop('user_id', 'default')
+        request_start_time = kwargs.pop('request_start_time', None)
+        
+        with self._lock:
+            # Check concurrent request limit
+            if self._active_requests >= self.max_concurrent_requests:
+                logger.warning(f"Too many concurrent requests: {self._active_requests}")
+                return self._fallback_response(model_id, messages, "Server overloaded")
+            
+            self._active_requests += 1
+>>>>>>> origin/main
+=======
+        """Route request to the correct model and get response."""
+        session_id = kwargs.pop('session_id', self.default_session_id)
         user_id = kwargs.pop('user_id', 'default')
         request_start_time = kwargs.pop('request_start_time', None)
         
@@ -331,6 +474,18 @@ class ModelManager:
                 success=True
             )
             
+            # Record analytics
+            response_time_ms = response_time * 1000
+            output_tokens = len(response["choices"][0]["message"]["content"].split()) * 1.3
+            
+            analytics.record_request(
+                model_id=model_id,
+                request_tokens=int(input_tokens),
+                response_tokens=int(output_tokens),
+                response_time_ms=response_time_ms,
+                success=True
+            )
+            
             return response
             
         except Exception as e:
@@ -338,6 +493,17 @@ class ModelManager:
             self.error_count += 1
             response_time = time.time() - start_time
             self._update_model_metrics(model_id, response_time, success=False)
+            
+            # Record error analytics
+            response_time_ms = response_time * 1000
+            analytics.record_request(
+                model_id=model_id,
+                request_tokens=int(input_tokens),
+                response_tokens=0,
+                response_time_ms=response_time_ms,
+                success=False,
+                error_message=str(e)
+            )
             
             # Record error analytics
             response_time_ms = response_time * 1000
@@ -524,6 +690,20 @@ class ModelManager:
             gen_config = self.generation_config.copy()
             gen_config.update({k: v for k, v in kwargs.items() if k in gen_config})
             
+            # Check if model is loaded
+            if self.model is None or self.tokenizer is None:
+                logger.warning("Model not loaded, using fallback response")
+                return self._fallback_response(model_id, messages, "Model not loaded")
+            
+            # Check memory usage
+            if not self._check_memory_usage():
+                logger.warning("High memory usage, using fallback response")
+                return self._fallback_response(model_id, messages, "High memory usage")
+            
+            # Merge generation config with request parameters
+            gen_config = self.generation_config.copy()
+            gen_config.update({k: v for k, v in kwargs.items() if k in gen_config})
+            
             # Use chat template
             inputs = self.tokenizer.apply_chat_template(
                 messages,
@@ -573,6 +753,24 @@ class ModelManager:
                     "total_tokens": input_length + len(response_tokens)
                 }
             }
+            
+            # Record token usage
+            self._record_token_usage(
+                model_id=model_id,
+                session_id=session_id,
+                user_id=user_id,
+                prompt_tokens=input_length,
+                completion_tokens=len(response_tokens),
+                total_tokens=input_length + len(response_tokens),
+                request_type="chat_completion",
+                metadata={
+                    "request_start_time": request_start_time.isoformat() if request_start_time else None,
+                    "generation_config": gen_config,
+                    "model_path": str(self.model_path) if self.model_path else None
+                }
+            )
+            
+            return response
             
             # Record token usage
             self._record_token_usage(
