@@ -8,6 +8,7 @@ from rich.console import Console
 from .shared.config import ConfigLoader
 from .launcher import start_daemon, stop_process, load_pids
 from .token_tracking.cli import register_tokens_app
+from .api.cli import register_api_app
 
 console = Console()
 app = typer.Typer(
@@ -26,6 +27,7 @@ app.add_typer(memory_app, name="memory")
 app.add_typer(learning_app, name="learning")
 app.add_typer(hf_app, name="hf")
 register_tokens_app(app)
+register_api_app(app)
 
 @app.command()
 def doctor():
