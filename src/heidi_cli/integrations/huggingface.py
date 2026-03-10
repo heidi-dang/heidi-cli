@@ -173,8 +173,8 @@ class HuggingFaceIntegration:
                     repo_id=model_id,
                     cache_dir=model_dir,
                     force_download=force_download,
-                    allow_patterns=["*.json", "*.bin", "*.safetensors", "*.txt", "*.model"],
-                    ignore_patterns=["*.git*", "*.md", "*.txt"]
+                    allow_patterns=["*.json", "*.bin", "*.safetensors", "*.model"],
+                    ignore_patterns=["*.git*", "*.md"]
                 )
                 downloaded_files = list(Path(downloaded_path).rglob("*"))
                 downloaded_files = [f for f in downloaded_files if f.is_file()]

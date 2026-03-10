@@ -276,24 +276,21 @@ class ModelManager:
         return models
 
     async def get_response(self, model_id: str, messages: List[Dict[str, str]], **kwargs) -> Dict[str, Any]:
-<<<<<<< HEAD
         """Route request to the correct model and get response with metrics."""
         start_time = time.time()
-        self.request_count += 1
-=======
-        """Route request to the correct model and get response."""
-        session_id = kwargs.pop('session_id', self.default_session_id)
+        session_id = kwargs.pop('session_id', str(uuid.uuid4()))
         user_id = kwargs.pop('user_id', 'default')
         request_start_time = kwargs.pop('request_start_time', None)
         
         with self._lock:
             # Check concurrent request limit
-            if self._active_requests >= self.max_concurrent_requests:
+            if hasattr(self, '_active_requests') and self._active_requests >= getattr(self, 'max_concurrent_requests', 10):
                 logger.warning(f"Too many concurrent requests: {self._active_requests}")
                 return self._fallback_response(model_id, messages, "Server overloaded")
             
+            if not hasattr(self, '_active_requests'):
+                self._active_requests = 0
             self._active_requests += 1
->>>>>>> origin/main
         
         # Get analytics instance
         analytics = get_analytics()
@@ -355,6 +352,11 @@ class ModelManager:
             
             logger.error(f"Error in get_response for {model_id}: {e}")
             raise
+        finally:
+            # CRITICAL: Always decrement the active requests counter
+            with self._lock:
+                if hasattr(self, '_active_requests'):
+                    self._active_requests = max(0, self._active_requests - 1)
     
     def _fallback_response(self, model_id: str, messages: List[Dict[str, str]]) -> Dict[str, Any]:
         """Fallback response when model is not available."""

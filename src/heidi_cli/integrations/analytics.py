@@ -175,10 +175,10 @@ class UsageAnalytics:
                     last_used,
                     created_at
                 FROM model_performance 
-                WHERE last_used >= datetime('now', '-{} days')
+                WHERE last_used >= datetime('now', '-' || ? || ' days')
                 ORDER BY request_count DESC
                 LIMIT ?
-            """.format(days), (limit,))
+            """, (days, limit))
             
             models = []
             for row in cursor.fetchall():
