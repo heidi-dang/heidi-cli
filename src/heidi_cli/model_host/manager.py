@@ -538,17 +538,9 @@ class ModelManager:
             # Generate response with enhanced parameters
             outputs = self.model.generate(
                 inputs,
-<<<<<<< HEAD
                 max_new_tokens=kwargs.get('max_tokens', 128),
                 do_sample=True,
                 temperature=kwargs.get('temperature', 0.7),
-=======
-                max_new_tokens=gen_config["max_new_tokens"],
-                do_sample=gen_config["do_sample"],
-                temperature=gen_config["temperature"],
-                top_p=gen_config.get("top_p", 0.9),
-                top_k=gen_config.get("top_k", 50),
->>>>>>> origin/main
                 pad_token_id=self.tokenizer.eos_token_id,
                 stop_strings=kwargs.get('stop', []),
                 top_p=kwargs.get('top_p', 1.0),
@@ -601,7 +593,6 @@ class ModelManager:
             return response
             
         except Exception as e:
-<<<<<<< HEAD
             logger.error(f"Error during local model inference: {e}")
             return self._fallback_response(model_id, messages)
     
@@ -639,13 +630,16 @@ class ModelManager:
             "total_requests": self.request_count,
             "avg_latency_ms": (self.total_response_time / self.request_count * 1000) if self.request_count > 0 else 0,
             "error_rate": self.error_count / self.request_count if self.request_count > 0 else 0,
-            "uptime_seconds": self.uptime
-=======
-            logger.error(f"Error during model inference: {e}")
-            return self._fallback_response(model_id, messages, f"Inference error: {str(e)}")
-        finally:
-            with self._lock:
-                self._active_requests -= 1
+            "uptime_seconds": self.uptime,
+            "memory_used_gb": psutil.virtual_memory().used / (1024**3),
+            "memory_available_gb": psutil.virtual_memory().available / (1024**3),
+            "memory_percent": psutil.virtual_memory().percent,
+            "active_requests": self._active_requests,
+            "max_concurrent_requests": self.max_concurrent_requests,
+            "model_loaded": self.model is not None,
+            "model_path": str(self.model_path) if self.model_path else None,
+            "session_id": self.default_session_id,
+        }
     
     def _estimate_token_count(self, text: str) -> int:
         """Estimate token count using simple heuristics when tokenizer unavailable."""
@@ -686,7 +680,6 @@ class ModelManager:
                 "completion_tokens": completion_tokens,
                 "total_tokens": prompt_tokens + completion_tokens
             }
->>>>>>> origin/main
         }
     
     def unload_model(self):

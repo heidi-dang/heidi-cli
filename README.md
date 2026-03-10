@@ -300,10 +300,28 @@ heidi-cli/
 4. **Cost Effective:** No cloud fees, no subscription traps.
 5. **Open Source:** Full transparency and extensibility.
 6. **HuggingFace Powered:** Access to thousands of models with one command.
+7. **Complete Documentation:** Step-by-step guide for all users.
 
 ---
 
 *Heidi is written by humans (mostly) to help machines act more like humans (the smart ones).*
+
+---
+
+## 📚 Complete Documentation
+
+**📖 Step-by-Step Guide**: [**docs/how-to-use.md**](docs/how-to-use.md)
+
+From your first model download to enterprise deployment, our comprehensive guide covers:
+- ✅ **Quick Start** - Get running in 5 minutes
+- ✅ **Setup & Configuration** - Configure your environment  
+- ✅ **Model Management** - Download and manage models
+- ✅ **HuggingFace Integration** - Access 100,000+ models
+- ✅ **Token & Cost Tracking** - Monitor usage and costs
+- ✅ **Analytics & Monitoring** - Performance insights
+- ✅ **Advanced Features** - Power user capabilities
+- ✅ **Enterprise Deployment** - Production setup
+- ✅ **Troubleshooting** - Common issues and solutions
 
 ---
 
