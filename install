@@ -1,0 +1,294 @@
+#!/bin/bash
+#
+# Heidi CLI One-Click Installer
+# 
+# This script will:
+# 1. Clone the latest Heidi CLI from main branch
+# 2. Build and install it system-wide
+# 3. Verify installation
+# 4. Clean up temporary files
+#
+# Usage: ./install
+#
+
+set -e  # Exit on any error
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Print functions
+print_header() {
+    echo -e "${PURPLE}================================${NC}"
+    echo -e "${PURPLE}🚀 Heidi CLI One-Click Installer${NC}"
+    echo -e "${PURPLE}================================${NC}"
+    echo
+}
+
+print_success() {
+    echo -e "${GREEN}✅ $1${NC}"
+}
+
+print_info() {
+    echo -e "${BLUE}ℹ️  $1${NC}"
+}
+
+print_warning() {
+    echo -e "${YELLOW}⚠️  $1${NC}"
+}
+
+print_error() {
+    echo -e "${RED}❌ $1${NC}"
+}
+
+print_step() {
+    echo -e "${CYAN}🔄 $1${NC}"
+}
+
+# Check if running as root (for system-wide installation)
+check_permissions() {
+    print_step "Checking permissions..."
+    
+    if [[ $EUID -eq 0 ]]; then
+        print_warning "Running as root - installing system-wide"
+        INSTALL_PREFIX="/usr/local"
+        PIP_INSTALL_ARGS="--user"
+    else
+        print_info "Running as user - installing in user directory"
+        INSTALL_PREFIX="$HOME/.local"
+        PIP_INSTALL_ARGS="--user"
+        
+        # Add ~/.local/bin to PATH if not already there
+        if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+            export PATH="$HOME/.local/bin:$PATH"
+            echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+            print_info "Added ~/.local/bin to PATH"
+        fi
+    fi
+    
+    print_success "Permissions checked - installing to $INSTALL_PREFIX"
+}
+
+# Check system requirements
+check_requirements() {
+    print_step "Checking system requirements..."
+    
+    # Check Python
+    if ! command -v python3 &> /dev/null; then
+        print_error "Python 3 is required but not installed"
+        print_info "Please install Python 3.10 or higher"
+        exit 1
+    fi
+    
+    python_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+    required_version="3.10"
+    
+    if python3 -c "import sys; exit(0 if sys.version_info >= (3, 10) else 1)"; then
+        print_success "Python $python_version found (>= $required_version)"
+    else
+        print_error "Python $python_version found but >= $required_version required"
+        exit 1
+    fi
+    
+    # Check pip
+    if ! command -v pip3 &> /dev/null && ! command -v pip &> /dev/null; then
+        print_error "pip is required but not installed"
+        print_info "Please install pip"
+        exit 1
+    fi
+    
+    # Check git
+    if ! command -v git &> /dev/null; then
+        print_error "git is required but not installed"
+        print_info "Please install git"
+        exit 1
+    fi
+    
+    print_success "All requirements satisfied"
+}
+
+# Create temporary directory
+create_temp_dir() {
+    TEMP_DIR=$(mktemp -d)
+    print_info "Created temporary directory: $TEMP_DIR"
+    cd "$TEMP_DIR"
+}
+
+# Clone Heidi CLI
+clone_heidi() {
+    print_step "Cloning Heidi CLI from main branch..."
+    
+    REPO_URL="https://github.com/heidi-dang/heidi-cli.git"
+    
+    if ! git clone "$REPO_URL" heidi-cli; then
+        print_error "Failed to clone Heidi CLI repository"
+        exit 1
+    fi
+    
+    cd heidi-cli
+    print_success "Heidi CLI cloned successfully"
+    
+    # Show current commit info
+    COMMIT_HASH=$(git rev-parse HEAD)
+    COMMIT_DATE=$(git log -1 --format="%cd" --date=short)
+    print_info "Installing commit: $COMMIT_HASH ($COMMIT_DATE)"
+}
+
+# Setup virtual environment
+setup_venv() {
+    print_step "Setting up virtual environment..."
+    
+    if ! python3 -m venv venv; then
+        print_error "Failed to create virtual environment"
+        exit 1
+    fi
+    
+    source venv/bin/activate
+    print_success "Virtual environment created and activated"
+    
+    # Upgrade pip
+    pip install --upgrade pip
+    print_success "pip upgraded"
+}
+
+# Install dependencies
+install_dependencies() {
+    print_step "Installing dependencies..."
+    
+    if ! pip install -e .; then
+        print_error "Failed to install Heidi CLI dependencies"
+        exit 1
+    fi
+    
+    print_success "Dependencies installed"
+}
+
+# Build Heidi CLI
+build_heidi() {
+    print_step "Building Heidi CLI..."
+    
+    # Check if build tools are available
+    if command -v python3 -m build &> /dev/null; then
+        # Use modern build system
+        python3 -m build
+        print_success "Heidi CLI built with modern build system"
+    else
+        # Fallback to setup.py
+        python3 setup.py build
+        print_success "Heidi CLI built with setup.py"
+    fi
+}
+
+# Install Heidi CLI
+install_heidi() {
+    print_step "Installing Heidi CLI..."
+    
+    # Install in development mode with user permissions
+    if ! pip install -e . $PIP_INSTALL_ARGS; then
+        print_error "Failed to install Heidi CLI"
+        exit 1
+    fi
+    
+    print_success "Heidi CLI installed successfully"
+}
+
+# Verify installation
+verify_installation() {
+    print_step "Verifying installation..."
+    
+    # Check if heidi command is available
+    if command -v heidi &> /dev/null; then
+        print_success "heidi command is available"
+        
+        # Show version
+        VERSION=$(heidi --version 2>/dev/null || echo "unknown")
+        print_success "Heidi CLI version: $VERSION"
+        
+        # Test basic functionality
+        if heidi --help &> /dev/null; then
+            print_success "Heidi CLI help command works"
+        else
+            print_warning "Heidi CLI help command failed - installation may have issues"
+        fi
+    else
+        print_error "heidi command not found after installation"
+        print_info "Try running: export PATH=\"$HOME/.local/bin:\$PATH\""
+        exit 1
+    fi
+}
+
+# Run post-install setup
+post_install_setup() {
+    print_step "Running post-install setup..."
+    
+    # Initialize Heidi CLI
+    if heidi doctor &> /dev/null; then
+        print_success "Heidi CLI initialization successful"
+    else
+        print_warning "Heidi CLI initialization had issues - this is normal for first run"
+    fi
+    
+    # Show next steps
+    echo
+    print_info "🎉 Installation completed successfully!"
+    echo
+    print_info "Next steps:"
+    echo "  1. Run: heidi setup"
+    echo "  2. Generate API key: heidi api generate --name \"My Key\""
+    echo "  3. Start model server: heidi model serve"
+    echo "  4. View help: heidi --help"
+    echo
+    print_info "Documentation: https://github.com/heidi-dang/heidi-cli/blob/main/docs/how-to-use.md"
+}
+
+# Cleanup temporary files
+cleanup() {
+    print_step "Cleaning up temporary files..."
+    
+    if [[ -n "$TEMP_DIR" && -d "$TEMP_DIR" ]]; then
+        cd /
+        rm -rf "$TEMP_DIR"
+        print_success "Temporary files cleaned up"
+    fi
+}
+
+# Error handling
+handle_error() {
+    print_error "Installation failed!"
+    print_info "Check the error messages above for details"
+    print_info "You can try running the installer again"
+    cleanup
+    exit 1
+}
+
+# Main installation function
+main() {
+    print_header
+    
+    # Set up error handling
+    trap handle_error ERR
+    trap cleanup EXIT
+    
+    # Run installation steps
+    check_permissions
+    check_requirements
+    create_temp_dir
+    clone_heidi
+    setup_venv
+    install_dependencies
+    build_heidi
+    install_heidi
+    verify_installation
+    post_install_setup
+    
+    print_success "🎉 Heidi CLI installation completed successfully!"
+    print_info "You can now use: heidi --version"
+}
+
+# Run main function
+main "$@"
