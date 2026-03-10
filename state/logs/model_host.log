@@ -1,0 +1,19 @@
+Model path does not exist: /media/heidi/New Volume/hf-hub/heidi-cli/state/models/stable/versions/v-96ad402f
+INFO:     Started server process [10876]
+INFO:     Waiting for application startup.
+INFO:heidi.model_host:Heidi Model Host booting...
+INFO:heidi.model_host:Configuration loaded. Serving 0 models.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:60302 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60310 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59518 - "GET /v1/models/opencode-gpt-4 HTTP/1.1" 200 OK
+ERROR:heidi.model_host:Error in get_response for opencode-gpt-4: OpenCode API client not initialized
+WARNING:heidi.model_host:Invalid model requested: OpenCode API client not initialized
+INFO:     127.0.0.1:59530 - "POST /v1/chat/completions HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:59534 - "GET /health HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:heidi.model_host:Heidi Model Host shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [10876]
