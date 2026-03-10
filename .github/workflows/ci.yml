@@ -56,6 +56,7 @@ jobs:
         run: |
           export HEIDI_HOME=/tmp/heidi_test_home
           PYTHONPATH=src pytest -q
+
   lint:
     runs-on: ubuntu-latest
     steps:
