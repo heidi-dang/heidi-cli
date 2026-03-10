@@ -28,16 +28,10 @@ class ChatCompletionRequest(BaseModel):
     stream: bool = False
     temperature: Optional[float] = 1.0
     max_tokens: Optional[int] = None
-<<<<<<< HEAD
     stop: Optional[List[str]] = None
     top_p: Optional[float] = 1.0
     frequency_penalty: Optional[float] = 0.0
     presence_penalty: Optional[float] = 0.0
-=======
-    top_p: Optional[float] = None
-    top_k: Optional[int] = None
-    session_id: Optional[str] = None
-    user_id: Optional[str] = "default"
 
 class ModelUnloadRequest(BaseModel):
     force: bool = False
