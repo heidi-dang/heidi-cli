@@ -556,7 +556,7 @@ def hf_info(model_id: str):
             console.print(description[:500] + "..." if len(description) > 500 else description)
         
     except Exception as e:
-        console.print(f"[red]❌ Failed to get model info: {e}[/red]")
+        console.print(f"[red]❌ {e}[/red]")
         raise typer.Exit(1)
 
 @hf_app.command("download")

@@ -50,23 +50,19 @@ class HuggingFaceIntegration:
         try:
             models = []
             
-            # Search models without ModelFilter (older API compatibility)
+            # Search models without ModelFilter (newer API compatibility)
             for model_info in self.api.list_models(
                 search=query, 
                 limit=limit,
-                sort="downloads",
-                direction=-1
+                sort="downloads"
             ):
                 # Filter for relevant models manually
                 if model_info.pipeline_tag and model_info.pipeline_tag != task_filter:
                     continue
                 
-                # Filter for transformers models
-                if not any(tag in model_info.tags for tag in ["transformers", "pytorch", "tensorflow"]):
-                    continue
-                
-                # Filter for relevant tags
-                if not any(tag in model_info.tags for tag in ["chat", "coding", "instruct", "chatglm", "qwen", "mistral", "llama"]):
+                # Filter for relevant tags (more permissive)
+                relevant_tags = ["chat", "coding", "instruct", "chatglm", "qwen", "mistral", "llama", "text-generation", "conversational"]
+                if not any(tag in model_info.tags for tag in relevant_tags):
                     continue
                 
                 models.append({
@@ -148,8 +144,20 @@ class HuggingFaceIntegration:
             return info
             
         except Exception as e:
-            logger.error(f"Error getting model info for {model_id}: {e}")
-            raise
+            # Provide user-friendly error messages
+            error_msg = str(e).lower()
+            if "404" in error_msg or "not found" in error_msg or "repository not found" in error_msg:
+                logger.error(f"Model not found: {model_id}")
+                raise ValueError(f"❌ Model '{model_id}' not found on HuggingFace Hub. Please check the model name and try again.")
+            elif "401" in error_msg or "unauthorized" in error_msg or "invalid username or password" in error_msg:
+                logger.error(f"Authentication failed for model: {model_id}")
+                raise ValueError(f"❌ Model '{model_id}' requires authentication or is private. Please check if you have access to this model.")
+            elif "403" in error_msg or "forbidden" in error_msg:
+                logger.error(f"Access forbidden for model: {model_id}")
+                raise ValueError(f"❌ Access to model '{model_id}' is forbidden. This may be a gated model requiring approval.")
+            else:
+                logger.error(f"Error getting model info for {model_id}: {e}")
+                raise ValueError(f"❌ Failed to get model info for '{model_id}'. Please check your internet connection and try again.")
     
     async def download_model(self, model_id: str, force_download: bool = False) -> Dict[str, Any]:
         """Download a model from HuggingFace Hub."""
