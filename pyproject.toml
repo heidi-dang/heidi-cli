@@ -17,6 +17,7 @@ dependencies = [
   "transformers",
   "torch",
   "huggingface_hub>=0.20.0",
+  "psutil>=5.9.0",
 ]
 
 [project.optional-dependencies]
