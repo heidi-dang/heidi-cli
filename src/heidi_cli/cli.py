@@ -58,12 +58,9 @@ def doctor():
     """Run suite verification checks."""
     from pathlib import Path
 
-    # Locate the doctor script and run its main logic
     doctor_script = Path(__file__).parent.parent.parent / "scripts" / "doctor.py"
     if doctor_script.exists():
-        # Read and execute the script in the current environment
         namespace = {"__file__": str(doctor_script)}
-        # Ensure we don't accidentally recursively import cli
         exec(doctor_script.read_text(), namespace)
         if "run_doctor" in namespace:
             namespace["run_doctor"]()
@@ -71,6 +68,201 @@ def doctor():
             namespace["check_all"]()
     else:
         console.print(f"[red]Doctor script not found at {doctor_script}[/red]")
+
+
+@app.command()
+def setup_opencode(
+    port: int = typer.Option(8000, "--port", "-p", help="Port for Heidi model host"),
+    model_path: Optional[str] = typer.Option(None, "--model", "-m", help="Path to local model"),
+    model_id: Optional[str] = typer.Option(None, "--model-id", help="Model ID for the model"),
+    auto_start: bool = typer.Option(
+        True, "--auto-start/--no-auto-start", help="Auto-start model host"
+    ),
+    generate_key: bool = typer.Option(
+        True, "--generate-key/--no-key", help="Generate API key for OpenCode"
+    ),
+):
+    """
+    Setup Heidi CLI to work with OpenCode.
+
+    This command:
+    1. Configures your local model
+    2. Generates an API key
+    3. Creates OpenCode provider configuration
+    4. Starts the model host (optional)
+    """
+    import os
+    import subprocess
+    import json
+    from pathlib import Path
+
+    console.print("[bold blue]🔧 Heidi CLI + OpenCode Setup[/bold blue]")
+    console.print("Configuring Heidi to work with OpenCode...\n")
+
+    project_root = Path(__file__).parent.parent.parent
+    config_dir = project_root / "state" / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    config = ConfigLoader.load()
+    config.ensure_dirs()
+
+    console.print("[bold]1. Model Configuration[/bold]")
+
+    if model_path is None:
+        console.print("No model path provided. Checking existing configuration...")
+        if config.models:
+            console.print(f"✓ Found {len(config.models)} model(s) configured")
+            for m in config.models:
+                console.print(f"  - {m.id}: {m.path}")
+        else:
+            console.print("[yellow]⚠ No models configured. Please provide --model path[/yellow]")
+    else:
+        console.print(f"Configuring model at: {model_path}")
+
+        if model_id is None:
+            model_id = Path(model_path).name
+
+        model_config = {
+            "id": model_id,
+            "path": model_path,
+            "backend": "transformers",
+            "device": "auto",
+        }
+
+        existing_ids = [m.id for m in config.models]
+        if model_id not in existing_ids:
+            config.models.append(model_config)
+
+        config_data = config.model_dump()
+
+        def convert_paths(obj):
+            if isinstance(obj, dict):
+                return {k: convert_paths(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_paths(item) for item in obj]
+            elif hasattr(obj, "__fspath__"):
+                return str(obj)
+            else:
+                return obj
+
+        config_data = convert_paths(config_data)
+
+        config_path = config.data_root / "config" / "suite.json"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(config_path, "w") as f:
+            json.dump(config_data, f, indent=2)
+
+        console.print(f"✓ Model {model_id} configured")
+
+    console.print("\n[bold]2. API Key Generation[/bold]")
+
+    heidi_api_key = None
+
+    if generate_key:
+        from .api.key_manager import get_api_key_manager
+
+        key_manager = get_api_key_manager()
+
+        try:
+            api_key = key_manager.generate_api_key(
+                name="OpenCode Integration",
+                user_id="opencode",
+                rate_limit=200,
+                permissions=["read", "write"],
+            )
+            heidi_api_key = api_key.api_key
+            console.print(f"✓ API Key generated: [code]{heidi_api_key}[/code]")
+        except Exception as e:
+            console.print(f"[yellow]⚠ Could not generate key: {e}[/yellow]")
+            console.print(
+                "You can generate later with: heidi api generate --name 'OpenCode' --user 'opencode'"
+            )
+    else:
+        console.print("Skipping API key generation")
+
+    console.print("\n[bold]3. OpenCode Provider Configuration[/bold]")
+
+    model_list = []
+    for m in config.models:
+        if hasattr(m, "id"):
+            model_list.append({"id": m.id, "name": m.id, "enabled": True})
+        elif isinstance(m, dict):
+            model_list.append(
+                {"id": m.get("id", "unknown"), "name": m.get("id", "unknown"), "enabled": True}
+            )
+
+    opencode_config = {
+        "provider": "heidi",
+        "name": "Heidi Local Models",
+        "base_url": f"http://localhost:{port}",
+        "api_key": heidi_api_key,
+        "models": model_list,
+        "default_model": model_list[0]["id"] if model_list else "mistral-7b-instruct",
+    }
+
+    config_file = config_dir / "opencode_provider.json"
+    with open(config_file, "w") as f:
+        json.dump(opencode_config, f, indent=2)
+
+    console.print(f"✓ OpenCode config saved to: {config_file}")
+
+    console.print("\n[bold]4. Environment Configuration[/bold]")
+
+    env_lines = []
+    env_lines.append(f"HEIDI_API_URL=http://localhost:{port}")
+    if heidi_api_key:
+        env_lines.append(f"HEIDI_API_KEY={heidi_api_key}")
+
+    env_file = config_dir / "opencode.env"
+    with open(env_file, "w") as f:
+        f.write("\n".join(env_lines))
+
+    console.print(f"✓ Environment config saved to: {env_file}")
+    console.print("\nTo use with OpenCode, add to your OpenCode config:")
+    console.print(f"  HEIDI_PROVIDER_URL=http://localhost:{port}")
+    if heidi_api_key:
+        console.print(f"  HEIDI_API_KEY={heidi_api_key}")
+
+    console.print("\n[bold]5. Model Host[/bold]")
+
+    if auto_start:
+        console.print("Starting model host...")
+
+        try:
+            subprocess.Popen(
+                ["heidi", "model", "serve"],
+                cwd=str(project_root),
+                env={
+                    **os.environ,
+                    "HEIDI_HOME": str(project_root / "state"),
+                    "HEIDI_ANALYTICS_PATH": str(project_root / "state"),
+                },
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            console.print(f"✓ Model host starting on port {port}")
+        except Exception as e:
+            console.print(f"[yellow]⚠ Could not auto-start: {e}[/yellow]")
+            console.print("Start manually with: heidi model serve")
+    else:
+        console.print("Auto-start disabled. Start manually with: heidi model serve")
+
+    console.print("\n[bold green]🎉 OpenCode Setup Complete![/bold green]")
+    console.print("\n[bold]Next Steps:[/bold]")
+    console.print(f"1. Your Heidi server is running at: [cyan]http://localhost:{port}[/cyan]")
+    console.print(
+        f"2. API Key: [code]{heidi_api_key or 'Generate with: heidi api generate'}[/code]"
+    )
+    console.print("3. In OpenCode, configure the provider:")
+    console.print(f"   - Provider URL: http://localhost:{port}")
+    console.print(f"   - API Key: {heidi_api_key or 'your-api-key'}")
+    console.print("\n[bold]Quick Test:[/bold]")
+    console.print(f"  curl -X POST http://localhost:{port}/v1/chat/completions \\")
+    console.print(f'    -H "Authorization: Bearer {heidi_api_key or "YOUR_KEY"}" \\')
+    console.print(
+        '    -d \'{"model": "mistral-7b-instruct", "messages": [{"role": "user", "content": "Hello"}]}\''
+    )
 
 
 @app.command()
