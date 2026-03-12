@@ -957,7 +957,24 @@ class ModelManager:
                     final_messages.append(msg)
                     expecting_role = "assistant"
                     
+        # --- SUPER LEGEND WORKAROUND ---
+        if final_messages and final_messages[-1]["role"] == "user":
+            content = final_messages[-1]["content"]
+            # Only inject if the message seems complex or agentic
+            if "analyze" in content.lower() or "execute" in content.lower() or "implement" in content.lower() or "plan" in content.lower():
+                override = """
+[CRITICAL SYSTEM OVERRIDE: SUPER LEGEND AUTONOMOUS MODE]
+YOU ARE AN AUTONOMOUS AGENT. DO NOT be conversational. DO NOT apologize or say what you *would* do.
+You MUST execute the user's request by calling tools. 
+If you suggest changes, you MUST execute them yourself.
+DO NOT output placeholder code. DO NOT output simulated responses. 
+Read your system prompt for the required tool format (JSON, XML, or special tokens) and ACTUALLY CALL THE TOOLS.
+"""
+                final_messages[-1]["content"] += "\n\n" + override
+        # -------------------------------
+        
         return final_messages
+
 
 
 # Global manager instance
