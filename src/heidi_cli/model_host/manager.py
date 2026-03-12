@@ -581,20 +581,38 @@ class ModelManager:
             gen_config = self.generation_config.copy()
             gen_config.update({k: v for k, v in kwargs.items() if k in gen_config})
 
+            # Extract session and user context
+            session_id = kwargs.get("session_id", self.default_session_id)
+            user_id = kwargs.get("user_id", "default")
+            request_start_time = datetime.now()
+
+            # Validate and fix message history (e.g. alternating roles for Mistral)
+            messages = self._validate_and_fix_messages(messages)
+
             # Use chat template
             logger.info("Applying chat template...")
             inputs = self.tokenizer.apply_chat_template(
                 messages, tokenize=True, return_tensors="pt"
             )
             
-            # Fix: handle both tensor and dict-like inputs
-            input_ids = inputs["input_ids"] if isinstance(inputs, dict) else inputs
-            logger.info(f"Input size: {input_ids.size()}")
+            # Fix: handle both tensor and dict-like inputs (BatchEncoding)
+            from collections.abc import Mapping
             
-            # Move inputs to same device as model
-            device = next(self.model.parameters()).device
-            logger.info(f"Model device: {device}")
-            inputs = inputs.to(device)
+            if isinstance(inputs, Mapping):
+                input_ids = inputs.get("input_ids")
+                if input_ids is not None:
+                    logger.info(f"Input size: {input_ids.size()}")
+                
+                # Move all tensors in the mapping to the device
+                device = next(self.model.parameters()).device
+                logger.info(f"Model device: {device}")
+                inputs = {k: v.to(device) if hasattr(v, "to") else v for k, v in inputs.items()}
+            else:
+                # Direct tensor input
+                logger.info(f"Input size: {inputs.size() if hasattr(inputs, 'size') else 'unknown'}")
+                device = next(self.model.parameters()).device
+                inputs = inputs.to(device)
+            
             logger.info("Moved inputs to device")
 
             # Generate response with supported parameters only
@@ -616,11 +634,19 @@ class ModelManager:
                 gen_kwargs["top_k"] = top_k
 
             logger.info(f"Generating with config: {gen_kwargs}")
-            outputs = self.model.generate(inputs, **gen_kwargs)
+            if isinstance(inputs, Mapping):
+                outputs = self.model.generate(**inputs, **gen_kwargs)
+            else:
+                outputs = self.model.generate(inputs, **gen_kwargs)
             logger.info(f"Generated output shape: {outputs.shape}")
 
             # Decode only the new tokens (skip input)
-            input_length = inputs.shape[1]
+            from collections.abc import Mapping
+            if isinstance(inputs, Mapping):
+                input_length = inputs["input_ids"].shape[1]
+            else:
+                input_length = inputs.shape[1]
+                
             response_tokens = outputs[0][input_length:]
             response_text = self.tokenizer.decode(response_tokens, skip_special_tokens=True)
 
@@ -870,6 +896,68 @@ class ModelManager:
         except Exception as e:
             logger.error(f"Error getting resource status: {e}")
             return {"error": str(e)}
+
+    def _validate_and_fix_messages(self, messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """
+        Validate and fix message history to ensure alternating roles (user/assistant).
+        Mistral and many other models require alternating roles.
+        """
+        if not messages:
+            return messages
+
+        fixed_messages = []
+        last_role = None
+
+        # System message is optional and must be first
+        start_idx = 0
+        if messages[0]["role"] == "system":
+            fixed_messages.append(messages[0].copy())
+            start_idx = 1
+
+        for i in range(start_idx, len(messages)):
+            msg = messages[i].copy()
+            role = msg["role"]
+            content = msg["content"]
+
+            if role == last_role:
+                # Merge consecutive messages with the same role
+                if fixed_messages:
+                    fixed_messages[-1]["content"] += "\n\n" + content
+                else:
+                    fixed_messages.append(msg)
+            else:
+                # Basic alternating logic
+                if last_role is None and role != "user":
+                    # First message after system must be user
+                    msg["role"] = "user"
+                    fixed_messages.append(msg)
+                else:
+                    fixed_messages.append(msg)
+            
+            last_role = fixed_messages[-1]["role"]
+
+        # Ensure alternating user/assistant for Mistral
+        final_messages = []
+        if fixed_messages and fixed_messages[0]["role"] == "system":
+            final_messages.append(fixed_messages[0])
+            fixed_messages = fixed_messages[1:]
+        
+        expecting_role = "user"
+        for msg in fixed_messages:
+            if msg["role"] == expecting_role:
+                final_messages.append(msg)
+                expecting_role = "assistant" if expecting_role == "user" else "user"
+            else:
+                # Merge if roles don't alternate as expected
+                if final_messages and final_messages[-1]["role"] != "system":
+                    final_messages[-1]["content"] += "\n\n" + msg["content"]
+                else:
+                    # Force user role if we were expecting user but got assistant first
+                    msg["role"] = "user"
+                    final_messages.append(msg)
+                    expecting_role = "assistant"
+                    
+        return final_messages
 
 
 # Global manager instance
