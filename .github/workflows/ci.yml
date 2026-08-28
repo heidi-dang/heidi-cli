@@ -13,6 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install installer-test dependencies
+        run: python -m pip install --disable-pip-version-check pytest==8.4.2
       - name: Shell syntax
         run: bash -n install.sh scripts/install-core.sh scripts/install-lib.sh scripts/install-split-backend.sh scripts/install-split-mcp.sh scripts/verify-stack.sh bin/heidi
       - name: Python syntax
