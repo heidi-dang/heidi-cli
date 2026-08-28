@@ -32,9 +32,11 @@ export function currentPluginUpdateManifest(env: NodeJS.ProcessEnv = process.env
     contract_version: MCP_CONTRACT_VERSION,
     tool_count: MCP_CONTRACT_TOOL_COUNT,
     release_sha: env.GIT_COMMIT_SHA ?? env.RAILWAY_GIT_COMMIT_SHA ?? env.CPTR_WORKBENCH_BUILD_ID ?? null,
-    released_at: "2026-08-28",
-    summary: "CPTR Computer v2.0.0 ships the compact Heidi CLI MCP contract: 20 safety-class gateways by default, with the former 69-action surface available only through explicit compatibility mode.",
+    released_at: "2026-08-29",
+    summary: "CPTR Computer v2.0.1 hotfixes clean-host verification and direct-search fallback consistency while preserving the compact 20-tool Heidi CLI MCP contract.",
     changes: [
+      "Makes CPTR tests hermetic by migrating an ephemeral test database instead of borrowing a developer machine's existing CPTR state.",
+      "Makes the Python search fallback emit the same path:line:text format as ripgrep, removing a clean-host-only leading-space discrepancy.",
       `Releases CPTR Computer ${CPTR_APP_VERSION} with exactly 20 ChatGPT-facing MCP tools by default; the former 69-action contract is opt-in compatibility mode only.`,
       "Adds six model-free Direct Coding Worker lifecycle actions and optional worker targeting across direct file, workspace-intelligence, Git, test, and command tools.",
       "Adds one structured cptr_fdx_intelligence action as the preferred first repository-intelligence entry point, with native FDX protocol negotiation, persistent daemon reuse, worker-aware worktree binding, bounded/redacted output, and normal CPTR fallback semantics.",

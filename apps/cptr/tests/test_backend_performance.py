@@ -18,7 +18,12 @@ from cptr.routers.coding import (
 from cptr.services.execution_manager import CommandSessionRegistry
 from cptr.services.live_events import LiveEventHub, LiveEventStore, command_target_key
 from cptr.utils.runtime import _list_tree_entries, _read_text_file, _read_text_files
-from cptr.utils.tools import _STOP_SESSION_WRITER, _command_event_writer, command_sessions
+from cptr.utils.tools import (
+    _STOP_SESSION_WRITER,
+    _command_event_writer,
+    command_sessions,
+    search_files,
+)
 
 
 class FilesystemPerformanceContractTests(unittest.TestCase):
@@ -145,6 +150,34 @@ class DirectCodingIoPerformanceTests(unittest.IsolatedAsyncioTestCase):
             [item["path"] for item in result["files"]],
             [f"file-{index}.txt" for index in range(4)],
         )
+
+    async def test_search_fallback_matches_ripgrep_output_format(self):
+        request = SimpleNamespace()
+        context = {"workspace": "/tmp/cptr-perf", "request": request, "user_id": "user-1"}
+        with (
+            patch("cptr.utils.tools.Runtime.stat", new=AsyncMock(return_value={"type": "directory"})),
+            patch("cptr.utils.tools._search_rg", new=AsyncMock(side_effect=FileNotFoundError())),
+            patch("cptr.utils.tools.identity_for_context", new=AsyncMock(return_value=object())),
+            patch(
+                "cptr.utils.tools.Runtime.file_matches",
+                new=AsyncMock(
+                    return_value={
+                        "results": [
+                            {
+                                "relative_path": "example.py",
+                                "name_match": False,
+                                "content_matches": [
+                                    {"line": 1, "text": "value = 1", "column": 1}
+                                ],
+                            }
+                        ]
+                    }
+                ),
+            ),
+        ):
+            result = await search_files("value", ".", __context__=context)
+
+        self.assertEqual(result, "example.py:1:value = 1")
 
     async def test_search_context_reads_each_source_only_once(self):
         request = SimpleNamespace()
