@@ -1,0 +1,94 @@
+name: Heidi CLI CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax
+        run: bash -n install.sh scripts/install-core.sh scripts/install-lib.sh scripts/install-split-backend.sh scripts/install-split-mcp.sh scripts/verify-stack.sh bin/heidi
+      - name: Python syntax
+        run: python3 -m py_compile scripts/bootstrap-control-token.py scripts/cloudflare-provision.py scripts/lifecycle.py scripts/release-manifest.py scripts/remediation.py scripts/split-handoff.py
+      - name: Installer, lifecycle, release, and Cloudflare contracts
+        run: python3 -m pytest -q tests/test_installer_contract.py tests/test_lifecycle.py tests/test_release_manifest.py tests/test_cloudflare_provision.py
+      - name: Cross-component compatibility contract
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, re
+          root=json.load(open('package.json', encoding='utf-8'))['version']
+          compat=json.load(open('release/compatibility.json', encoding='utf-8'))
+          mcp=json.load(open('apps/mcp/package.json', encoding='utf-8'))['version']
+          cptr=re.search(r'(?m)^version\s*=\s*"([^"]+)"', pathlib.Path('apps/cptr/pyproject.toml').read_text()).group(1)
+          fdx=re.search(r'(?m)^version\s*=\s*"([^"]+)"', pathlib.Path('crates/fdx/Cargo.toml').read_text()).group(1)
+          assert root == compat['heidi_version'] == compat['mcp']['contract_version'] == mcp
+          assert compat['mcp']['registered_action_count'] == 20
+          assert compat['cptr']['package_version'] == cptr
+          assert compat['fdx']['package_version'] == fdx
+          assert pathlib.Path('release/signing-public.pem').read_text().strip() in pathlib.Path('install.sh').read_text()
+          print('compatibility-contract=PASS')
+          PY
+      - name: Executable contracts
+        run: |
+          for file in install.sh bin/heidi scripts/install-core.sh scripts/install-lib.sh scripts/install-split-backend.sh scripts/install-split-mcp.sh scripts/verify-stack.sh scripts/bootstrap-control-token.py scripts/cloudflare-provision.py scripts/lifecycle.py scripts/release-manifest.py scripts/remediation.py scripts/split-handoff.py; do
+            test -x "$file"
+          done
+      - name: Repository hygiene
+        run: |
+          test -z "$(git ls-files | grep -E '(^|/)\.env$|(^|/)node_modules/|(^|/)target/|(^|/)\.cptr/|(^|/)\.fdx/|release-signing-private|\.gcp-iap-plugin-proxy' || true)"
+
+  mcp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mcp/package-lock.json
+      - run: npm --prefix apps/mcp ci
+      - run: npm --prefix apps/mcp run build
+      - run: npm --prefix apps/mcp test
+      - run: npm --prefix apps/mcp run typecheck
+
+  cptr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/cptr/cptr/frontend/package-lock.json
+      - name: Build CPTR frontend
+        run: |
+          npm --prefix apps/cptr/cptr/frontend ci
+          npm --prefix apps/cptr/cptr/frontend run build
+      - name: Install CPTR
+        run: python -m pip install -e './apps/cptr[all]'
+      - name: Test CPTR
+        run: python -m pytest apps/cptr/tests
+      - name: Ruff
+        run: ruff check apps/cptr/cptr apps/cptr/tests
+
+  fdx:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo test -p fdx

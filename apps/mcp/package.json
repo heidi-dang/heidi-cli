@@ -1,0 +1,31 @@
+{
+  "name": "chatgpt-computer-plugin",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "start": "npm run build:web && tsx server/index.ts",
+    "build:web": "node scripts/build-web.mjs && node scripts/check-workbench-bundle.mjs",
+    "copy:web": "node scripts/copy-workbench-assets.mjs",
+    "check:deployed-contract": "node scripts/check-deployed-contract.mjs",
+    "build": "npm run build:web && tsc -p tsconfig.json && npm run copy:web",
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p web/tsconfig.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.2",
+    "jose": "^6.2.10",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "esbuild": "^0.25.12",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.2"
+  }
+}

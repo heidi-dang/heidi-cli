@@ -1,0 +1,704 @@
+"""Shared control-plane boundary over CPTR's existing agent lifecycle."""
+
+from __future__ import annotations
+
+import time
+import uuid
+import hashlib
+from typing import Any
+
+from sqlalchemy import select
+
+from cptr.env import TASK_CANCELLATION_TIMEOUT_SECONDS
+from cptr.models import Chat, ChatMessage, ControlMessage, ControlTask, Workspace
+from cptr.services.control_store import ControlTaskStore
+from cptr.services.task_integrity import (
+    COMPLETE_WITH_TOOL_ERRORS,
+    completion_integrity,
+    successful_terminal_status,
+)
+from cptr.utils.db import get_db
+from cptr.utils.redaction import (
+    redact_external,
+    redact_external_text,
+    redact_sensitive,
+    redact_text,
+)
+
+CONTROL_MESSAGE_OUTPUT_LIMIT = 20
+
+
+class AgentService:
+    """Start and inspect worker tasks without creating a second execution engine."""
+
+    def __init__(self, *, store: ControlTaskStore | None = None) -> None:
+        self.store = store or ControlTaskStore()
+
+    async def start_task(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str,
+        prompt: str,
+        model_id: str,
+        idempotency_key: str | None = None,
+        execution_policy: dict[str, bool] | None = None,
+        request: Any | None = None,
+        review_required: bool = True,
+    ) -> dict[str, Any]:
+        prompt = prompt.strip()
+        if not prompt:
+            raise ValueError("prompt must not be blank")
+        if not model_id.strip():
+            raise ValueError("model_id must not be blank")
+
+        if idempotency_key:
+            existing = await self.store.by_idempotency(user_id, idempotency_key)
+            if existing:
+                return await self.get_task(existing.id, user_id=user_id)
+
+        async with await get_db() as db:
+            workspace = await db.get(Workspace, workspace_id)
+            if workspace is None or workspace.user_id != user_id:
+                raise KeyError("workspace not found")
+
+        task_id = f"task_{uuid.uuid4().hex[:20]}"
+        now = int(time.time() * 1000)
+        assignment_meta: dict[str, Any] = {}
+        if "inspection_scope=assignment" in prompt:
+            from cptr.utils.chat_task import _assignment_paths_from_prompt
+
+            assignment_meta = {
+                "inspection_scope": "assignment",
+                "assignment_paths": _assignment_paths_from_prompt(prompt),
+            }
+        chat = await Chat.create(
+            user_id=user_id,
+            title=prompt[:80] or "Control task",
+            meta={
+                "workspace": workspace.path,
+                "control_task_id": task_id,
+                "internal": True,
+                "control_plane": True,
+                "review_required": review_required,
+                **({"execution_policy": dict(execution_policy)} if execution_policy else {}),
+                **assignment_meta,
+            },
+            created_at=now,
+        )
+        user_message = await ChatMessage.create(
+            chat_id=chat.id,
+            role="user",
+            content=prompt,
+            created_at=now,
+        )
+        assistant_message = await ChatMessage.create(
+            chat_id=chat.id,
+            role="assistant",
+            content="",
+            parent_id=user_message.id,
+            model=model_id,
+            done=False,
+            created_at=now,
+        )
+        await Chat.update_current_message(chat.id, assistant_message.id, now)
+
+        control_task = ControlTask(
+            id=task_id,
+            user_id=user_id,
+            workspace_id=workspace_id,
+            chat_id=chat.id,
+            message_id=assistant_message.id,
+            status="RUNNING",
+            prompt=prompt,
+            model_id=model_id,
+            idempotency_key=idempotency_key,
+            created_at=now,
+            updated_at=now,
+        )
+        await self.store.create(control_task)
+
+        task_request = request
+        if task_request is None:
+            from cptr.utils.identity import internal_request_for_user
+
+            task_request = await internal_request_for_user(None, user_id)
+        from cptr.utils.chat_task import start_task
+        from cptr.utils.model_targets import resolve_model_target
+
+        try:
+            app_state = getattr(getattr(task_request, "app", None), "state", None)
+            target = await resolve_model_target(model_id, app_state)
+            start_task(
+                task_request,
+                message_id=assistant_message.id,
+                chat_id=chat.id,
+                user_id=user_id,
+                workspace=workspace.path,
+                target=target,
+            )
+        except Exception:
+            await ChatMessage.update(
+                assistant_message.id,
+                done=True,
+                meta={"error": "worker failed to start"},
+            )
+            await self.store.update(
+                task_id,
+                status="FAILED",
+                error="worker failed to start",
+                updated_at=int(time.time() * 1000),
+            )
+            from cptr.services.live_events import safe_publish_task_event
+
+            await safe_publish_task_event(
+                user_id=user_id,
+                task_id=task_id,
+                event_type="task.failed",
+                payload={"status": "FAILED", "message": "worker failed to start"},
+            )
+            raise
+        from cptr.services.live_events import safe_publish_task_event
+
+        await safe_publish_task_event(
+            user_id=user_id,
+            task_id=task_id,
+            event_type="task.started",
+            payload={"status": "RUNNING", "workspace_id": workspace_id},
+        )
+        return await self.get_task(task_id, user_id=user_id)
+
+    async def start_existing_task(
+        self,
+        *,
+        request: Any,
+        message_id: str,
+        chat_id: str,
+        user_id: str,
+        workspace: str,
+        target: Any,
+        output_queue: Any | None = None,
+    ) -> dict[str, str]:
+        """Start an already-materialized CPTR chat through the shared boundary."""
+        from cptr.utils.chat_task import start_task
+
+        start_task(
+            request,
+            message_id=message_id,
+            chat_id=chat_id,
+            user_id=user_id,
+            workspace=workspace,
+            output_queue=output_queue,
+            target=target,
+        )
+        return {"chat_id": chat_id, "message_id": message_id, "status": "RUNNING"}
+
+    async def get_task(self, task_id: str, *, user_id: str) -> dict[str, Any]:
+        task = await self.store.get(task_id)
+        if task is None or task.user_id != user_id:
+            raise KeyError("task not found")
+        message = await ChatMessage.get_by_id(task.message_id)
+        if message is None:
+            raise KeyError("task output not found")
+        status = task.status
+        error = (message.meta or {}).get("error") if isinstance(message.meta, dict) else None
+        error = redact_text(error) if error else None
+        integrity = completion_integrity(message.output or [])
+        if message.done:
+            if status in {
+                "CANCEL_REQUESTED",
+                "CANCELLED",
+                "FAILED",
+                "REVIEW_REQUIRED",
+                "REJECTED",
+            }:
+                desired_status = status
+            elif error:
+                desired_status = "FAILED"
+            else:
+                desired_status = successful_terminal_status(message.output or [])
+
+            if desired_status != status:
+                transition = getattr(self.store, "transition_terminal", None)
+                if callable(transition) and task.__class__ is ControlTask:
+                    if status == "COMPLETE" and desired_status == COMPLETE_WITH_TOOL_ERRORS:
+                        refine = getattr(self.store, "refine_complete_with_tool_errors", None)
+                        won = (
+                            await refine(task.id, updated_at=int(time.time() * 1000))
+                            if callable(refine)
+                            else False
+                        )
+                    else:
+                        won = await transition(
+                            task.id,
+                            status=desired_status,
+                            error=error,
+                            updated_at=int(time.time() * 1000),
+                        )
+                    if won:
+                        status = desired_status
+                    else:
+                        current = await self.store.get(task.id)
+                        status = current.status if current else status
+                else:
+                    status = desired_status
+        else:
+            from cptr.utils.chat_task import is_running
+
+            if status in {
+                "CANCELLED",
+                "COMPLETE",
+                COMPLETE_WITH_TOOL_ERRORS,
+                "FAILED",
+                "REVIEW_REQUIRED",
+                "REJECTED",
+            }:
+                # A durable terminal transition wins over a late worker
+                # heartbeat or a message row that has not flushed yet.
+                pass
+            elif is_running(message.id):
+                status = "RUNNING"
+            elif status in {"RUNNING", "PENDING"}:
+                has_pending_control = getattr(self.store, "has_pending_control", None)
+                pending_control = (
+                    await has_pending_control(task.id) if callable(has_pending_control) else False
+                )
+                if pending_control:
+                    # CONTROL_INTERRUPT intentionally leaves a short durable
+                    # gap between the old generation stopping and the
+                    # continuation being installed.  It is not a restart
+                    # failure and must remain eligible for delivery.
+                    status = "RUNNING"
+                    if isinstance(message.meta, dict) and message.meta.get(
+                        "interrupted_for_control"
+                    ):
+                        error = None
+                else:
+                    status = "FAILED"
+                    restart_error = error or "interrupted by CPTR restart"
+                    await ChatMessage.update(
+                        message.id,
+                        done=True,
+                        meta={"error": restart_error},
+                    )
+                    error = restart_error
+                    transition = getattr(self.store, "transition_terminal", None)
+                    if callable(transition) and task.__class__ is ControlTask:
+                        await transition(
+                            task.id,
+                            status=status,
+                            error="interrupted by CPTR restart",
+                            updated_at=int(time.time() * 1000),
+                        )
+                    else:
+                        await self.store.update(
+                            task.id,
+                            status=status,
+                            error="interrupted by CPTR restart",
+                            updated_at=int(time.time() * 1000),
+                        )
+        output = message.content or ""
+        safe_output = redact_external_text(output)
+        if status != task.status or task.output != output:
+            await self.store.update(
+                task.id,
+                status=status,
+                output={"content": safe_output},
+                updated_at=int(time.time() * 1000),
+            )
+        control_messages, control_messages_truncated = await self._control_delivery_records(task.id)
+        review = {
+            "status": getattr(task, "review_status", "NOT_REQUIRED"),
+            "summary": redact_sensitive(getattr(task, "review_summary", None)),
+            "decision": redact_sensitive(getattr(task, "review_decision", None)),
+            "ready_at": getattr(task, "review_ready_at", None),
+            "reviewed_at": getattr(task, "reviewed_at", None),
+        }
+        return {
+            "id": task.id,
+            "workspace_id": task.workspace_id,
+            "chat_id": task.chat_id,
+            "message_id": task.message_id,
+            "status": status,
+            "prompt": redact_external(task.prompt),
+            "model_id": task.model_id,
+            "output": safe_output,
+            "raw_output": redact_external(message.output or []),
+            "error": redact_text(error) if error else None,
+            "completion_integrity": integrity,
+            "review": review,
+            "control_messages": control_messages,
+            "control_messages_truncated": control_messages_truncated,
+            "created_at": task.created_at,
+            "updated_at": task.updated_at,
+        }
+
+    async def get_output(self, task_id: str, *, user_id: str) -> dict[str, Any]:
+        task = await self.get_task(task_id, user_id=user_id)
+        return {
+            "task_id": task["id"],
+            "status": task["status"],
+            "content": redact_text(task["output"]),
+            "raw_output": redact_sensitive(task["raw_output"]),
+            "completion_integrity": task.get("completion_integrity"),
+            "review": task.get("review"),
+            "control_messages": task.get("control_messages", []),
+            "control_messages_truncated": bool(task.get("control_messages_truncated", False)),
+        }
+
+    async def get_task_review(self, task_id: str, *, user_id: str) -> dict[str, Any]:
+        """Return a task's review state and its user-authorized workspace diff."""
+        task = await self.get_task(task_id, user_id=user_id)
+        review = task.get("review") or {"status": "NOT_REQUIRED"}
+        review_status = str(review.get("status") or "NOT_REQUIRED")
+        diff = await self.get_diff(task["workspace_id"], user_id=user_id)
+        return {
+            "task_id": task["id"],
+            "workspace_id": task["workspace_id"],
+            "status": task["status"],
+            "review": review,
+            "diff": redact_sensitive(diff),
+            "review_available": review_status != "NOT_REQUIRED",
+        }
+
+    async def decide_review(
+        self,
+        task_id: str,
+        *,
+        user_id: str,
+        decision: str,
+        note: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Apply one explicit user decision to a task awaiting diff review."""
+        task = await self.store.get(task_id)
+        if task is None or task.user_id != user_id:
+            raise KeyError("task not found")
+        decision_value = decision.strip().upper()
+        if decision_value not in {"ACCEPT", "REJECT", "REQUEST_CHANGES"}:
+            raise ValueError("unsupported review decision")
+        if task.status != "REVIEW_REQUIRED" or getattr(task, "review_status", None) != "REQUIRED":
+            raise ValueError("task is not awaiting review")
+        safe_note = redact_external_text((note or "").strip())
+        now = int(time.time() * 1000)
+        from cptr.services.live_events import safe_publish_task_event
+
+        if decision_value == "REQUEST_CHANGES":
+            if not safe_note:
+                raise ValueError("request-changes decision requires a note")
+            message = await self.send_message(
+                task_id,
+                user_id=user_id,
+                content=f"Review requested changes:\n{safe_note}",
+                idempotency_key=idempotency_key,
+                provenance={"review_task_id": task_id},
+            )
+            record = getattr(self.store, "record_changes_requested", None)
+            recorded = await record(task_id, note=safe_note, decided_at=now) if callable(record) else False
+            if not recorded:
+                raise ValueError("review decision could not be recorded")
+            result = await self.get_task(task_id, user_id=user_id)
+            await safe_publish_task_event(
+                user_id=user_id,
+                task_id=task_id,
+                event_type="task.review_changes_requested",
+                payload={"status": result["status"], "review_status": "CHANGES_REQUESTED"},
+            )
+            return {**result, "review_message": message}
+
+        decide = getattr(self.store, "decide_review", None)
+        accepted = await decide(
+            task_id,
+            decision=decision_value,
+            note=safe_note or None,
+            decided_at=now,
+        ) if callable(decide) else False
+        if not accepted:
+            raise ValueError("review decision could not be applied")
+        result = await self.get_task(task_id, user_id=user_id)
+        await safe_publish_task_event(
+            user_id=user_id,
+            task_id=task_id,
+            event_type="task.review_accepted" if decision_value == "ACCEPT" else "task.review_rejected",
+            payload={"status": result["status"], "review_status": result.get("review", {}).get("status")},
+        )
+        return result
+
+    async def _control_delivery_records(self, task_id: str) -> tuple[list[dict[str, Any]], bool]:
+        async with await get_db() as db:
+            result = await db.execute(
+                select(ControlMessage)
+                .where(ControlMessage.task_id == task_id)
+                .order_by(ControlMessage.created_at, ControlMessage.id)
+                .limit(CONTROL_MESSAGE_OUTPUT_LIMIT + 1)
+            )
+            rows = list(result.scalars().all())
+        truncated = len(rows) > CONTROL_MESSAGE_OUTPUT_LIMIT
+        return [
+            self._control_delivery_record(row) for row in rows[:CONTROL_MESSAGE_OUTPUT_LIMIT]
+        ], truncated
+
+    @staticmethod
+    def _control_delivery_record(row: ControlMessage) -> dict[str, Any]:
+        return {
+            "id": row.id,
+            "status": row.status,
+            "setup_readiness_status": getattr(row, "setup_readiness_status", None),
+            "chat_message_id": row.chat_message_id,
+            "target_message_id": row.target_message_id,
+            "monitor_id": row.monitor_id,
+            "scope_id": row.scope_id,
+            "intended_message_id": row.intended_message_id,
+            "consumed_task_id": row.consumed_task_id,
+            "consumed_message_id": row.consumed_message_id,
+            "effect_status": getattr(row, "effect_status", None),
+            "effect_evidence": getattr(row, "effect_evidence", None),
+            "effect_observed_at": getattr(row, "effect_observed_at", None),
+            "created_at": row.created_at,
+            "updated_at": row.updated_at,
+            "delivered_at": row.delivered_at,
+            "consumed_at": row.consumed_at,
+        }
+
+    async def send_message(
+        self,
+        task_id: str,
+        *,
+        user_id: str,
+        content: str,
+        idempotency_key: str | None = None,
+        provenance: dict[str, str | None] | None = None,
+    ) -> dict[str, Any]:
+        task = await self.store.get(task_id)
+        if task is None or task.user_id != user_id:
+            raise KeyError("task not found")
+        content = content.strip()
+        if not content:
+            raise ValueError("message must not be blank")
+        now = int(time.time() * 1000)
+        dedupe_key = (
+            idempotency_key or hashlib.sha256(f"{task.id}\0{content}".encode("utf-8")).hexdigest()
+        )
+        control_message = await self.store.enqueue_message(
+            task_id=task.id,
+            user_id=user_id,
+            chat_id=task.chat_id,
+            content=content,
+            dedupe_key=dedupe_key,
+            chat_message_id=None,
+            now=now,
+            monitor_id=(provenance or {}).get("monitor_id"),
+            scope_id=(provenance or {}).get("scope_id"),
+            intended_message_id=(provenance or {}).get("intended_message_id"),
+        )
+        message_id = control_message.chat_message_id
+        if not message_id:
+            # Recover the bind if the process stopped after committing the
+            # control row or chat row but before the second update.
+            existing_messages = await ChatMessage.get_all_by_chat(task.chat_id)
+            existing = next(
+                (
+                    item
+                    for item in existing_messages
+                    if (item.meta or {}).get("control_message_id") == control_message.id
+                ),
+                None,
+            )
+            if existing is not None:
+                message_id = existing.id
+                await self.store.update_message(control_message.id, chat_message_id=message_id)
+        if not message_id:
+            message = await ChatMessage.create(
+                chat_id=task.chat_id,
+                role="user",
+                content=content,
+                model=task.model_id,
+                meta={
+                    "queued": True,
+                    "delivery_status": "QUEUED",
+                    "control_task_id": task.id,
+                    "control_message_id": control_message.id,
+                },
+                created_at=now,
+            )
+            message_id = message.id
+            await self.store.update_message(control_message.id, chat_message_id=message_id)
+        from cptr.utils.chat_task import (
+            control_setup_ready,
+            get_active_chat_ids,
+            interrupt_for_control,
+            is_running,
+            process_pending_chat_inputs,
+            schedule_control_interrupt_after_setup,
+        )
+
+        setup_ready = control_setup_ready(task.message_id)
+        if is_running(task.message_id) and setup_ready:
+            # A control message must not remain QUEUED behind an unbounded
+            # native/tool call. Interrupt only the owned turn; the durable
+            # pending-input path then starts a continuation and preserves the
+            # same ControlTask identity for provenance and exactly-once checks.
+            # During initial setup, the outer condition is false, leaving the
+            # control durably queued until the first completed tool boundary.
+            await interrupt_for_control(
+                task.message_id,
+                timeout=TASK_CANCELLATION_TIMEOUT_SECONDS,
+            )
+        elif is_running(task.message_id):
+            # The initial worker setup is not interruptible yet. Keep the
+            # durable control queued, then interrupt this same active worker
+            # as soon as it crosses its first completed tool boundary.
+            schedule_control_interrupt_after_setup(
+                task.message_id,
+                control_message_id=control_message.id,
+                timeout=TASK_CANCELLATION_TIMEOUT_SECONDS,
+            )
+
+        if not is_running(task.message_id) and task.chat_id not in get_active_chat_ids():
+            from cptr.utils.identity import internal_request_for_user
+
+            request = await internal_request_for_user(None, user_id)
+            chat = await Chat.get_by_id(task.chat_id)
+            workspace = (chat.meta or {}).get("workspace", "") if chat else ""
+            await process_pending_chat_inputs(request, task.chat_id, user_id, workspace)
+            refreshed = await self.store.get_message(control_message.id)
+            if refreshed is not None:
+                control_message = refreshed
+        from cptr.services.live_events import safe_publish_task_event
+
+        await safe_publish_task_event(
+            user_id=user_id,
+            task_id=task.id,
+            event_type="control.queued",
+            payload={
+                "status": control_message.status,
+                "control_message_id": control_message.id,
+                "message_id": message_id,
+                "delivery_status": control_message.status,
+            },
+        )
+        return {
+            "task_id": task.id,
+            "message_id": message_id,
+            "control_message_id": control_message.id,
+            "status": "QUEUED",
+            "delivery_status": control_message.status,
+            "setup_readiness_status": "READY" if setup_ready else "NOT_READY",
+            "target_message_id": getattr(control_message, "target_message_id", None),
+            "intended_message_id": getattr(control_message, "intended_message_id", None),
+        }
+
+    async def cancel_task(self, task_id: str, *, user_id: str) -> dict[str, Any]:
+        task = await self.store.get(task_id)
+        if task is None or task.user_id != user_id:
+            raise KeyError("task not found")
+        now = int(time.time() * 1000)
+        request_cancel = getattr(self.store, "request_cancel", None)
+        transition = getattr(self.store, "transition_terminal", None)
+        if callable(request_cancel):
+            won = await request_cancel(task.id, requested_at=now)
+            current = await self.store.get(task.id)
+            if not won and current and current.status not in {"CANCEL_REQUESTED"}:
+                result = await self.get_task(task.id, user_id=user_id)
+                result["cancelled"] = False
+                result["cancel_race"] = (
+                    "completion_won"
+                    if current.status in {"COMPLETE", COMPLETE_WITH_TOOL_ERRORS}
+                    else "terminal_state_won"
+                )
+                return result
+        elif callable(transition):
+            won = await transition(
+                task.id,
+                status="CANCELLED",
+                cancelled_at=now,
+                updated_at=now,
+                error="cancelled",
+            )
+            if not won:
+                current = await self.store.get(task.id)
+                result = await self.get_task(task.id, user_id=user_id)
+                result["cancelled"] = False
+                result["cancel_race"] = (
+                    "completion_won"
+                    if current and current.status in {"COMPLETE", COMPLETE_WITH_TOOL_ERRORS}
+                    else "terminal_state_won"
+                )
+                return result
+        invalidate = getattr(self.store, "invalidate_messages_for_task", None)
+        if callable(invalidate):
+            await invalidate(task.id, now=now)
+        from cptr.utils.chat_task import cancel_task
+
+        quiescent = await cancel_task(
+            task.message_id,
+            timeout=TASK_CANCELLATION_TIMEOUT_SECONDS,
+        )
+        if not quiescent:
+            result = await self.get_task(task.id, user_id=user_id)
+            result["cancelled"] = False
+            result["cancellation_status"] = "BLOCKED"
+            result["error"] = "owned execution did not quiesce within the cancellation bound"
+            return result
+        finalize = getattr(self.store, "finalize_cancel", None)
+        if callable(finalize):
+            await finalize(task.id, cancelled_at=now, updated_at=int(time.time() * 1000))
+        elif not callable(transition):
+            await ChatMessage.update(
+                task.message_id,
+                done=True,
+                meta={"error": "cancelled"},
+            )
+        result = await self.get_task(task.id, user_id=user_id)
+        result["cancelled"] = True
+        from cptr.services.live_events import safe_publish_task_event
+
+        await safe_publish_task_event(
+            user_id=user_id,
+            task_id=task.id,
+            event_type="task.cancelled",
+            payload={"status": result.get("status", "CANCELLED"), "cancelled": True},
+        )
+        return result
+
+    async def get_diff(self, workspace_id: str, *, user_id: str) -> dict[str, Any]:
+        async with await get_db() as db:
+            workspace = await db.get(Workspace, workspace_id)
+            if workspace is None or workspace.user_id != user_id:
+                raise KeyError("workspace not found")
+        from cptr.utils.git import diff, is_repo
+        from cptr.utils.identity import identity_for_user_id
+
+        identity = await identity_for_user_id(user_id)
+        if not await is_repo(workspace.path, identity):
+            return {"is_repo": False, "files": [], "diagnostic": "not a git repository"}
+        result = await diff(workspace.path, None, False, True, False, identity)
+        result["is_repo"] = True
+        return result
+
+    async def get_workspace_fingerprint(self, workspace_id: str, *, user_id: str) -> dict[str, Any]:
+        """Return bounded content evidence for steering-effect attribution."""
+        async with await get_db() as db:
+            workspace = await db.get(Workspace, workspace_id)
+            if workspace is None or workspace.user_id != user_id:
+                raise KeyError("workspace not found")
+        from cptr.utils.identity import identity_for_user_id
+        from cptr.utils.workspace_fingerprint import snapshot_workspace
+
+        identity = await identity_for_user_id(user_id)
+        return await snapshot_workspace(workspace.path, identity)
+
+    async def get_verification_evidence(self, workspace_id: str, *, user_id: str) -> dict[str, Any]:
+        async with await get_db() as db:
+            workspace = await db.get(Workspace, workspace_id)
+            if workspace is None or workspace.user_id != user_id:
+                raise KeyError("workspace not found")
+        from cptr.utils.git import diff_check, status
+        from cptr.utils.identity import identity_for_user_id
+
+        identity = await identity_for_user_id(user_id)
+        return {
+            "workspace_path": workspace.path,
+            "git_status": await status(workspace.path, identity),
+            "git_diff_check": await diff_check(workspace.path, identity),
+        }

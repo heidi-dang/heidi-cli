@@ -1,0 +1,166 @@
+name: Heidi Signed Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: SemVer without the leading v
+        required: true
+      channel:
+        description: Deployment channel
+        required: true
+        type: choice
+        options: [stable, beta, edge]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: heidi-release-${{ github.ref }}-${{ inputs.channel || 'tag' }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEIDI_RELEASE_SIGNING_KEY_B64: ${{ secrets.HEIDI_RELEASE_SIGNING_KEY_B64 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release identity
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+            CHANNEL="${{ inputs.channel }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+            case "$VERSION" in
+              *-beta*|*-rc*) CHANNEL=beta ;;
+              *-edge*|*-dev*) CHANNEL=edge ;;
+              *) CHANNEL=stable ;;
+            esac
+          fi
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]
+          printf 'version=%s\nchannel=%s\n' "$VERSION" "$CHANNEL" >> "$GITHUB_OUTPUT"
+
+      - name: Verify compatibility/version contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION='${{ steps.release.outputs.version }}'
+          python3 - "$VERSION" <<'PY'
+          import json, pathlib, re, sys
+          version=sys.argv[1]
+          root=json.load(open('package.json', encoding='utf-8'))['version']
+          compat=json.load(open('release/compatibility.json', encoding='utf-8'))
+          mcp=json.load(open('apps/mcp/package.json', encoding='utf-8'))['version']
+          cargo=pathlib.Path('crates/fdx/Cargo.toml').read_text(encoding='utf-8')
+          fdx=re.search(r'(?m)^version\s*=\s*"([^"]+)"', cargo).group(1)
+          expected={
+              'root Heidi version': root,
+              'compatibility Heidi version': compat['heidi_version'],
+              'MCP contract version': compat['mcp']['contract_version'],
+              'MCP package version': mcp,
+          }
+          for label, actual in expected.items():
+              if actual != version:
+                  raise SystemExit(f'{label} {actual} != release {version}')
+          if compat['fdx']['package_version'] != fdx:
+              raise SystemExit(f"FDX compatibility {compat['fdx']['package_version']} != Cargo {fdx}")
+          if compat['mcp']['registered_action_count'] != 20:
+              raise SystemExit('signed v2 release must advertise exactly 20 MCP tools')
+          PY
+
+      - name: Run release-contract tests
+        run: |
+          python3 -m pytest -q tests/test_release_manifest.py tests/test_installer_contract.py tests/test_lifecycle.py tests/test_cloudflare_provision.py
+          bash -n install.sh scripts/install-core.sh scripts/install-lib.sh scripts/verify-stack.sh bin/heidi
+          python3 -m py_compile scripts/release-manifest.py scripts/lifecycle.py scripts/remediation.py scripts/split-handoff.py scripts/cloudflare-provision.py
+
+      - name: Build deterministic source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION='${{ steps.release.outputs.version }}'
+          mkdir -p dist
+          git archive --format=tar.gz --prefix="heidi-cli-${VERSION}/" --output="dist/heidi-cli-${VERSION}.tar.gz" "$GITHUB_SHA"
+
+      - name: Decode signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$HEIDI_RELEASE_SIGNING_KEY_B64" ]] || { echo 'HEIDI_RELEASE_SIGNING_KEY_B64 secret is missing' >&2; exit 1; }
+          printf '%s' "$HEIDI_RELEASE_SIGNING_KEY_B64" | base64 --decode > "$RUNNER_TEMP/heidi-release-signing-private.pem"
+          chmod 600 "$RUNNER_TEMP/heidi-release-signing-private.pem"
+          openssl pkey -in "$RUNNER_TEMP/heidi-release-signing-private.pem" -pubout -out "$RUNNER_TEMP/derived-public.pem"
+          cmp -s "$RUNNER_TEMP/derived-public.pem" release/signing-public.pem || { echo 'release signing secret does not match committed trust root' >&2; exit 1; }
+
+      - name: Build and sign release manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION='${{ steps.release.outputs.version }}'
+          CHANNEL='${{ steps.release.outputs.channel }}'
+          SOURCE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/heidi-cli-${VERSION}.tar.gz"
+          python3 scripts/release-manifest.py \
+            --version "$VERSION" \
+            --channel "$CHANNEL" \
+            --source-archive "dist/heidi-cli-${VERSION}.tar.gz" \
+            --source-url "$SOURCE_URL" \
+            --compatibility release/compatibility.json \
+            --runtime-lock release/runtime-lock.json \
+            --output dist/heidi-release.json \
+            --signing-key "$RUNNER_TEMP/heidi-release-signing-private.pem" \
+            --signature-output dist/heidi-release.json.sig
+          openssl pkeyutl -verify -pubin -inkey release/signing-public.pem -rawin \
+            -in dist/heidi-release.json -sigfile dist/heidi-release.json.sig
+
+      - name: Publish immutable version release
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION='${{ steps.release.outputs.version }}'
+          CHANNEL='${{ steps.release.outputs.channel }}'
+          ASSETS=("dist/heidi-cli-${VERSION}.tar.gz" dist/heidi-release.json dist/heidi-release.json.sig)
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            gh release upload "v${VERSION}" "${ASSETS[@]}" --clobber
+          else
+            ARGS=(release create "v${VERSION}" "${ASSETS[@]}" --title "Heidi CLI v${VERSION}" --generate-notes)
+            if [[ "$CHANNEL" == stable ]]; then ARGS+=(--latest); else ARGS+=(--prerelease --latest=false); fi
+            gh "${ARGS[@]}"
+          fi
+
+      - name: Publish signed channel pointer assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION='${{ steps.release.outputs.version }}'
+          CHANNEL='${{ steps.release.outputs.channel }}'
+          CHANNEL_TAG="channel-${CHANNEL}"
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          gh release delete "$CHANNEL_TAG" --yes --cleanup-tag >/dev/null 2>&1 || true
+          git tag -f "$CHANNEL_TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/${CHANNEL_TAG}" --force
+          ARGS=(release create "$CHANNEL_TAG" dist/heidi-release.json dist/heidi-release.json.sig --title "Heidi ${CHANNEL} channel → v${VERSION}" --notes "Signed channel pointer for Heidi CLI v${VERSION}." --latest=false)
+          [[ "$CHANNEL" == stable ]] || ARGS+=(--prerelease)
+          gh "${ARGS[@]}"
+
+      - name: Verify published signed channel manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHANNEL='${{ steps.release.outputs.channel }}'
+          curl -fL --retry 5 "https://github.com/${GITHUB_REPOSITORY}/releases/download/channel-${CHANNEL}/heidi-release.json" -o "$RUNNER_TEMP/published.json"
+          curl -fL --retry 5 "https://github.com/${GITHUB_REPOSITORY}/releases/download/channel-${CHANNEL}/heidi-release.json.sig" -o "$RUNNER_TEMP/published.sig"
+          openssl pkeyutl -verify -pubin -inkey release/signing-public.pem -rawin \
+            -in "$RUNNER_TEMP/published.json" -sigfile "$RUNNER_TEMP/published.sig"

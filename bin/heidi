@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_DIR="${HEIDI_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/heidi-cli}"
+STATE_FILE="$CONFIG_DIR/state.env"
+
+load_state() {
+  [[ -f "$STATE_FILE" ]] || { printf 'Heidi CLI is not configured. Run the installer first.\n' >&2; exit 1; }
+  # shellcheck disable=SC1090
+  source "$STATE_FILE"
+}
+
+systemctl_cmd() {
+  if [[ "${HEIDI_SERVICE_SCOPE:-user}" == system ]]; then printf 'systemctl\n'; else printf 'systemctl\n--user\n'; fi
+}
+
+service_call() {
+  local action="$1" unit="$2"; shift 2
+  if [[ "${HEIDI_SERVICE_SCOPE:-user}" == system ]]; then
+    systemctl "$action" "$unit" "$@"
+  else
+    systemctl --user "$action" "$unit" "$@"
+  fi
+}
+
+service_exists() { service_call cat "$1" >/dev/null 2>&1; }
+service_state() { service_exists "$1" && service_call is-active "$1" 2>/dev/null || printf 'not-installed\n'; }
+
+for_unit() {
+  local action="$1" unit
+  for unit in ${HEIDI_SERVICE_UNITS:-heidi-cptr.service heidi-mcp.service}; do
+    service_call "$action" "$unit" || return $?
+  done
+}
+
+status_cmd() {
+  load_state
+  printf 'Heidi CLI %s\n' "${HEIDI_VERSION:-unknown}"
+  printf '  channel:     %s\n' "${HEIDI_CHANNEL:-stable}"
+  printf '  mode:        %s\n' "${HEIDI_MODE:-unknown}"
+  printf '  topology:    %s\n' "${HEIDI_TOPOLOGY:-all-in-one}"
+  printf '  role:        %s\n' "${HEIDI_SPLIT_ROLE:-all}"
+  printf '  supervisor:  %s\n' "${HEIDI_SUPERVISOR:-systemd}"
+  printf '  release:     %s\n' "${HEIDI_RELEASE_DIR:-unknown}"
+  if [[ -n "${HEIDI_CPTR_URL:-}" ]]; then printf '  CPTR:        %s\n' "$HEIDI_CPTR_URL"; fi
+  if [[ -n "${HEIDI_MCP_URL:-}" ]]; then printf '  MCP:         %s\n' "$HEIDI_MCP_URL"; fi
+  if [[ -x "${HEIDI_FDX_BINARY:-}" ]]; then printf '  FDX:         %s\n' "$($HEIDI_FDX_BINARY --version 2>/dev/null || echo unavailable)"; fi
+  local unit
+  for unit in ${HEIDI_SERVICE_UNITS:-}; do printf '  %-12s %s\n' "$unit" "$(service_state "$unit")"; done
+}
+
+doctor_cmd() {
+  load_state
+  local failed=0
+  check() { local label="$1"; shift; if "$@" >/dev/null 2>&1; then printf 'PASS: %s\n' "$label"; else printf 'FAIL: %s\n' "$label"; failed=1; fi; }
+  check "release source" test -f "$HEIDI_REPO_DIR/release/compatibility.json"
+  check "release manifest" test -f "$HEIDI_RELEASE_DIR/heidi-release.json"
+  check "release signature" test -f "$HEIDI_RELEASE_DIR/heidi-release.json.sig"
+  if [[ "${HEIDI_TOPOLOGY:-all-in-one}" != split-tailscale || "${HEIDI_SPLIT_ROLE:-}" == backend ]]; then
+    check "FDX binary" test -x "$HEIDI_FDX_BINARY"
+    check "CPTR environment" test -r "$CONFIG_DIR/cptr.env"
+    check "CPTR liveness" curl -fsS --max-time 5 "$HEIDI_CPTR_URL/api/health/live"
+    check "CPTR readiness" curl -fsS --max-time 5 "$HEIDI_CPTR_URL/api/health/ready"
+  fi
+  if [[ "${HEIDI_TOPOLOGY:-all-in-one}" != split-tailscale || "${HEIDI_SPLIT_ROLE:-}" == mcp ]]; then
+    check "MCP environment" test -r "$CONFIG_DIR/mcp.env"
+    check "MCP health" curl -fsS --max-time 5 "$HEIDI_MCP_LOCAL_URL/health"
+  fi
+  if [[ "${HEIDI_TOPOLOGY:-}" == split-tailscale ]]; then check "Tailscale" tailscale status; fi
+  if [[ "${HEIDI_SUPERVISOR:-systemd}" == systemd ]]; then
+    local unit
+    for unit in ${HEIDI_SERVICE_UNITS:-}; do check "service $unit" service_call is-active "$unit"; done
+  fi
+  local file mode
+  for file in "$STATE_FILE" "$CONFIG_DIR/cptr.env" "$CONFIG_DIR/mcp.env" "$CONFIG_DIR/cloudflare.env"; do
+    [[ -e "$file" ]] || continue
+    mode="$(stat -c '%a' "$file" 2>/dev/null || echo unknown)"
+    if [[ "$mode" == 600 ]]; then printf 'PASS: permissions %s\n' "$file"; else printf 'FAIL: permissions %s are %s, expected 600\n' "$file" "$mode"; failed=1; fi
+  done
+  return "$failed"
+}
+
+verify_cmd() { load_state; HEIDI_CONFIG_DIR="$CONFIG_DIR" "$HEIDI_REPO_DIR/scripts/verify-stack.sh"; }
+
+restart_cmd() { load_state; for_unit restart; verify_cmd; }
+start_cmd() { load_state; for_unit start; }
+stop_cmd() { load_state; local units=(${HEIDI_SERVICE_UNITS:-heidi-cptr.service heidi-mcp.service}); local i; for ((i=${#units[@]}-1; i>=0; i--)); do service_call stop "${units[i]}" || true; done; }
+
+logs_cmd() {
+  load_state
+  local target="${1:-all}" args=() unit
+  case "$target" in
+    cptr) unit=heidi-cptr.service ;;
+    mcp) unit=heidi-mcp.service ;;
+    tunnel|cloudflare) unit=heidi-cloudflared.service ;;
+    caddy) unit=caddy.service ;;
+    all) unit="" ;;
+    *) printf 'usage: heidi logs [cptr|mcp|tunnel|caddy|all]\n' >&2; exit 2 ;;
+  esac
+  [[ "${HEIDI_SERVICE_SCOPE:-user}" == user ]] && args+=(--user)
+  if [[ -n "$unit" ]]; then exec journalctl "${args[@]}" -u "$unit" -f; fi
+  local u; for u in ${HEIDI_SERVICE_UNITS:-heidi-cptr.service heidi-mcp.service}; do args+=(-u "$u"); done
+  exec journalctl "${args[@]}" -f
+}
+
+update_cmd() {
+  load_state
+  local channel="${HEIDI_CHANNEL:-stable}"
+  if [[ "${1:-}" == --channel ]]; then channel="${2:-}"; shift 2 || true; fi
+  case "$channel" in stable|beta|edge) ;; *) printf 'channel must be stable, beta, or edge\n' >&2; exit 2 ;; esac
+  printf 'Updating Heidi through signed %s release metadata...\n' "$channel"
+  HEIDI_CHANNEL="$channel" HEIDI_HOME="$HEIDI_HOME" HEIDI_TTY="${HEIDI_TTY:-/dev/tty}" sh "$HEIDI_REPO_DIR/install.sh" "$@"
+}
+
+deploy_cmd() { load_state; exec bash "$HEIDI_REPO_DIR/scripts/install-core.sh" "$@"; }
+lifecycle_cmd() { load_state; exec python3 "$HEIDI_REPO_DIR/scripts/lifecycle.py" "$@"; }
+
+usage() {
+  cat <<'EOF'
+Usage: heidi <command>
+
+Commands:
+  status                         Show release, topology, URLs, and service state
+  doctor                         Non-mutating deployment diagnostics
+  verify                         Strict role-aware end-to-end verification
+  url                            Print the verified ChatGPT MCP URL
+  config                         Print non-secret deployment configuration
+  logs [component]               Follow cptr, mcp, tunnel, caddy, or all logs
+  restart | start | stop         Control installed services
+  deploy                         Re-run deployment for the current signed release
+  update [--channel stable|beta|edge]
+                                 Install a newer signed release atomically
+  rollback <version>             Backup, switch to an installed release, verify
+  backup                         Create encrypted CPTR state backup using age
+  restore <archive.tar.age>      Validate/decrypt/restore CPTR state safely
+  diagnostics [--output path]    Create a redacted support bundle
+  version                        Print Heidi, MCP, CPTR, and FDX versions
+EOF
+}
+
+command="${1:-help}"; shift || true
+case "$command" in
+  status) status_cmd ;;
+  doctor) doctor_cmd ;;
+  verify) verify_cmd ;;
+  url) load_state; printf '%s\n' "${HEIDI_MCP_URL:-MCP is not installed on this role}" ;;
+  config)
+    load_state
+    printf 'version=%s\nchannel=%s\nmode=%s\ntopology=%s\nrole=%s\nsupervisor=%s\ncptr_url=%s\nmcp_url=%s\nrelease=%s\n' \
+      "${HEIDI_VERSION:-}" "${HEIDI_CHANNEL:-}" "${HEIDI_MODE:-}" "${HEIDI_TOPOLOGY:-}" "${HEIDI_SPLIT_ROLE:-}" \
+      "${HEIDI_SUPERVISOR:-}" "${HEIDI_CPTR_URL:-}" "${HEIDI_MCP_URL:-}" "${HEIDI_RELEASE_DIR:-}"
+    ;;
+  logs) logs_cmd "${1:-all}" ;;
+  restart) restart_cmd ;;
+  start) start_cmd ;;
+  stop) stop_cmd ;;
+  deploy) deploy_cmd "$@" ;;
+  update) update_cmd "$@" ;;
+  rollback) [[ $# -ge 1 ]] || { usage >&2; exit 2; }; lifecycle_cmd rollback "$@" ;;
+  backup) lifecycle_cmd backup "$@" ;;
+  restore) [[ $# -ge 1 ]] || { usage >&2; exit 2; }; lifecycle_cmd restore "$@" ;;
+  diagnostics) lifecycle_cmd diagnostics "$@" ;;
+  version)
+    load_state
+    printf 'heidi-cli %s (%s)\n' "${HEIDI_VERSION:-unknown}" "${HEIDI_CHANNEL:-unknown}"
+    [[ -x "${HEIDI_FDX_BINARY:-}" ]] && "$HEIDI_FDX_BINARY" --version || true
+    [[ -x "${HEIDI_VENV_DIR:-}/bin/python" ]] && "$HEIDI_VENV_DIR/bin/python" -c 'import importlib.metadata as m; print("cptr " + m.version("cptr"))' 2>/dev/null || true
+    [[ -f "$HEIDI_REPO_DIR/apps/mcp/package.json" ]] && python3 -c 'import json,sys; print("mcp " + json.load(open(sys.argv[1], encoding="utf-8"))["version"])' "$HEIDI_REPO_DIR/apps/mcp/package.json" || true
+    ;;
+  help|-h|--help) usage ;;
+  *) usage >&2; exit 2 ;;
+esac

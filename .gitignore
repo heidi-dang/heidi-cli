@@ -1,0 +1,44 @@
+# Secrets and local deployment state
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+.state/
+
+# JavaScript
+node_modules/
+dist/
+apps/mcp/web/dist/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Rust
+target/
+
+# CPTR / FDX local state
+.cptr/
+.fdx/
+.flowdeck/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.db-shm
+*.db-wal
+
+# Runtime logs / artifacts
+logs/
+*.log
+coverage/
+.DS_Store

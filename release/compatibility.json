@@ -1,0 +1,36 @@
+{
+  "schema": "heidi.compatibility.v1",
+  "heidi_version": "2.0.0",
+  "mcp": {
+    "contract_version": "2.0.0",
+    "registered_action_count": 20,
+    "minimum_node_major": 22
+  },
+  "cptr": {
+    "package_version": "0.9.21",
+    "control_api_revision": "v1",
+    "minimum_python": "3.10",
+    "state_migration": "automatic-forward-compatible"
+  },
+  "fdx": {
+    "package_version": "0.1.0",
+    "protocol_version": 2,
+    "state_migration": "automatic-forward-compatible"
+  },
+  "deployment": {
+    "topologies": ["all-in-one", "split-tailscale"],
+    "split_roles": ["backend", "mcp"],
+    "linux_systemd": true,
+    "supervisors": ["systemd", "foreground", "podman-quadlet"]
+  },
+  "sandbox": {
+    "default_managed_profile": "bubblewrap",
+    "supported_profiles": ["host", "auto", "bubblewrap", "systemd", "container", "vm"],
+    "network_default": "deny"
+  },
+  "migrations": [
+    "MCP v2 consolidates the public ChatGPT action contract while retaining backend capabilities.",
+    "Existing CPTR data under ~/.cptr is preserved; Heidi takes a pre-upgrade backup before activation.",
+    "FDX protocol 2 is required for persistent structured resident reads."
+  ]
+}
