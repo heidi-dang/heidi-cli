@@ -268,17 +268,50 @@ enable_user_linger() {
   fi
 }
 
-write_user_unit() {
-  local unit="$1" content="$2"
-  mkdir -p "$SYSTEMD_DIR"
-  printf '%s\n' "$content" >"$SYSTEMD_DIR/$unit"
+select_service_scope() {
+  local requested="${HEIDI_SERVICE_SCOPE:-auto}"
+  case "$requested" in
+    user|system) SERVICE_SCOPE="$requested" ;;
+    auto)
+      if systemctl --user show-environment >/dev/null 2>&1; then
+        SERVICE_SCOPE="user"
+      else
+        SERVICE_SCOPE="system"
+        say "Heidi: systemd user bus is unavailable; using system-scope units with the current user identity."
+      fi
+      ;;
+    *) fail "HEIDI_SERVICE_SCOPE must be auto, user, or system" ;;
+  esac
 }
 
-activate_user_services() {
-  systemctl --user daemon-reload
+systemctl_scope() {
+  if [[ "${SERVICE_SCOPE:-user}" == system ]]; then
+    sudo_cmd systemctl "$@"
+  else
+    systemctl --user "$@"
+  fi
+}
+
+write_service_unit() {
+  local unit="$1" content="$2"
+  if [[ "${SERVICE_SCOPE:-user}" == system ]]; then
+    local staged="$RUNTIME_DIR/$unit"
+    printf '%s\n' "$content" >"$staged"
+    sudo_cmd install -m 0644 "$staged" "/etc/systemd/system/$unit"
+  else
+    mkdir -p "$SYSTEMD_DIR"
+    printf '%s\n' "$content" >"$SYSTEMD_DIR/$unit"
+  fi
+}
+
+activate_services() {
+  if [[ "${SERVICE_SCOPE:-user}" == user ]]; then enable_user_linger; fi
+  systemctl_scope daemon-reload
   local unit
-  for unit in $HEIDI_SERVICE_UNITS; do systemctl --user enable --now "$unit"; systemctl --user restart "$unit"; done
-  enable_user_linger
+  for unit in $HEIDI_SERVICE_UNITS; do
+    systemctl_scope enable --now "$unit"
+    systemctl_scope restart "$unit"
+  done
 }
 
 public_ipv4() {

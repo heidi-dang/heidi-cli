@@ -33,9 +33,11 @@ export function currentPluginUpdateManifest(env: NodeJS.ProcessEnv = process.env
     tool_count: MCP_CONTRACT_TOOL_COUNT,
     release_sha: env.GIT_COMMIT_SHA ?? env.RAILWAY_GIT_COMMIT_SHA ?? env.CPTR_WORKBENCH_BUILD_ID ?? null,
     released_at: "2026-08-29",
-    summary: "CPTR Computer v2.0.1 hotfixes clean-host verification and direct-search fallback consistency while preserving the compact 20-tool Heidi CLI MCP contract.",
+    summary: "CPTR Computer v2.0.2 adds headless systemd deployment fallback for GCP OS Login and similar servers while preserving the compact 20-tool Heidi CLI MCP contract.",
     changes: [
-      "Makes CPTR tests hermetic by migrating an ephemeral test database instead of borrowing a developer machine's existing CPTR state.",
+      "Automatically falls back to system-scope systemd units when a headless SSH or GCP OS Login identity has no usable user bus, while keeping CPTR/MCP/FDX processes under the installing user identity.",
+      "Keeps system-scope service lifecycle commands manageable through the Heidi CLI with sudo and uses multi-user.target for boot persistence.",
+      "Retains the v2.0.1 hermetic CPTR test database and consistent direct-search fallback fixes.",
       "Makes the Python search fallback emit the same path:line:text format as ripgrep, removing a clean-host-only leading-space discrepancy.",
       `Releases CPTR Computer ${CPTR_APP_VERSION} with exactly 20 ChatGPT-facing MCP tools by default; the former 69-action contract is opt-in compatibility mode only.`,
       "Adds six model-free Direct Coding Worker lifecycle actions and optional worker targeting across direct file, workspace-intelligence, Git, test, and command tools.",

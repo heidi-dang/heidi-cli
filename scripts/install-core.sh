@@ -218,11 +218,22 @@ SUPERVISOR="${HEIDI_SUPERVISOR:-$(state_default HEIDI_SUPERVISOR systemd)}"
 SUPERVISOR="$(choose 'Runtime supervisor: systemd (recommended) or foreground' "$SUPERVISOR" 'systemd foreground')"
 [[ "$MODE" != production || "$SUPERVISOR" == systemd ]] || fail "production requires systemd so Heidi can guarantee restart/boot persistence and strict verification"
 SERVICE_SCOPE=user
+SERVICE_USER="$(id -un)"
+SERVICE_GROUP="$(id -gn)"
+SERVICE_IDENTITY_DIRECTIVES=""
+SERVICE_WANTED_BY=default.target
 HEIDI_SERVICE_UNITS=""
 
 if [[ "$SUPERVISOR" == systemd ]]; then
+  select_service_scope
+  if [[ "$SERVICE_SCOPE" == system ]]; then
+    SERVICE_WANTED_BY=multi-user.target
+    SERVICE_IDENTITY_DIRECTIVES="User=$SERVICE_USER
+Group=$SERVICE_GROUP
+Environment=HOME=$HOME"
+  fi
   if [[ "$INCLUDES_BACKEND" == 1 ]]; then
-    write_user_unit heidi-cptr.service "[Unit]
+    write_service_unit heidi-cptr.service "[Unit]
 Description=Heidi CPTR backend
 After=network-online.target
 Wants=network-online.target
@@ -231,6 +242,7 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
+$SERVICE_IDENTITY_DIRECTIVES
 EnvironmentFile=$CPTR_ENV_FILE
 WorkingDirectory=$HEIDI_HOME/current/source/apps/cptr
 ExecStart=$HEIDI_HOME/current/venv/bin/cptr run --host $CPTR_HOST --port $CPTR_PORT --headless
@@ -240,13 +252,13 @@ KillMode=mixed
 TimeoutStopSec=20
 
 [Install]
-WantedBy=default.target"
+WantedBy=$SERVICE_WANTED_BY"
     HEIDI_SERVICE_UNITS+="heidi-cptr.service "
   fi
   if [[ "$INCLUDES_MCP" == 1 ]]; then
     MCP_EXEC="$NODE_BIN $HEIDI_HOME/current/source/apps/mcp/dist/server/index.js"
     [[ "$MODE" == production ]] || MCP_EXEC="$NPM_BIN --prefix $HEIDI_HOME/current/source/apps/mcp run dev"
-    write_user_unit heidi-mcp.service "[Unit]
+    write_service_unit heidi-mcp.service "[Unit]
 Description=Heidi ChatGPT MCP adapter
 After=network-online.target
 Wants=network-online.target
@@ -255,6 +267,7 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
+$SERVICE_IDENTITY_DIRECTIVES
 EnvironmentFile=$MCP_ENV_FILE
 WorkingDirectory=$HEIDI_HOME/current/source/apps/mcp
 ExecStart=$MCP_EXEC
@@ -264,11 +277,11 @@ KillMode=mixed
 TimeoutStopSec=20
 
 [Install]
-WantedBy=default.target"
+WantedBy=$SERVICE_WANTED_BY"
     HEIDI_SERVICE_UNITS+="heidi-mcp.service "
   fi
   if [[ "$PUBLIC_TRANSPORT" == cloudflare-tunnel ]]; then
-    write_user_unit heidi-cloudflared.service "[Unit]
+    write_service_unit heidi-cloudflared.service "[Unit]
 Description=Heidi Cloudflare Tunnel
 After=network-online.target heidi-mcp.service
 Wants=network-online.target
@@ -276,6 +289,7 @@ Requires=heidi-mcp.service
 
 [Service]
 Type=simple
+$SERVICE_IDENTITY_DIRECTIVES
 EnvironmentFile=$CF_ENV_FILE
 ExecStart=$HEIDI_HOME/current/bin/cloudflared tunnel --no-autoupdate --loglevel info run
 Restart=on-failure
@@ -283,10 +297,10 @@ RestartSec=5
 TimeoutStopSec=20
 
 [Install]
-WantedBy=default.target"
+WantedBy=$SERVICE_WANTED_BY"
     HEIDI_SERVICE_UNITS+="heidi-cloudflared.service "
   elif [[ "$PUBLIC_TRANSPORT" == caddy ]]; then
-    write_user_unit heidi-caddy.service "[Unit]
+    write_service_unit heidi-caddy.service "[Unit]
 Description=Heidi Caddy HTTPS origin
 After=network-online.target heidi-mcp.service
 Wants=network-online.target
@@ -294,6 +308,7 @@ Requires=heidi-mcp.service
 
 [Service]
 Type=simple
+$SERVICE_IDENTITY_DIRECTIVES
 ExecStart=$HEIDI_HOME/current/bin/caddy run --config $CADDY_FILE --adapter caddyfile
 ExecReload=$HEIDI_HOME/current/bin/caddy reload --config $CADDY_FILE --adapter caddyfile
 Restart=on-failure
@@ -301,7 +316,7 @@ RestartSec=5
 TimeoutStopSec=20
 
 [Install]
-WantedBy=default.target"
+WantedBy=$SERVICE_WANTED_BY"
     HEIDI_SERVICE_UNITS+="heidi-caddy.service "
   fi
 fi
@@ -345,7 +360,7 @@ chmod +x "$HEIDI_HOME/current/source/bin/heidi" "$HEIDI_HOME/current/source/scri
 
 if [[ "$SUPERVISOR" == systemd ]]; then
   step "Activating stable systemd services"
-  activate_user_services
+  activate_services
   [[ "$INCLUDES_BACKEND" == 0 ]] || wait_http "$CPTR_URL/api/health/ready" "CPTR"
   [[ "$INCLUDES_MCP" == 0 ]] || wait_http "$MCP_LOCAL_URL/health" "MCP"
 else

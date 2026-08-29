@@ -17,7 +17,7 @@ systemctl_cmd() {
 service_call() {
   local action="$1" unit="$2"; shift 2
   if [[ "${HEIDI_SERVICE_SCOPE:-user}" == system ]]; then
-    systemctl "$action" "$unit" "$@"
+    if [[ "$(id -u)" -eq 0 ]]; then systemctl "$action" "$unit" "$@"; else sudo systemctl "$action" "$unit" "$@"; fi
   else
     systemctl --user "$action" "$unit" "$@"
   fi

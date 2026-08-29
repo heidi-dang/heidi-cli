@@ -29,6 +29,17 @@ def test_split_entrypoints_are_explicit_machine_roles():
     assert "HEIDI_SPLIT_ROLE=mcp" in mcp
 
 
+def test_headless_systemd_falls_back_to_system_scope_without_changing_service_identity():
+    core = read("scripts/install-core.sh")
+    lib = read("scripts/install-lib.sh")
+    assert "select_service_scope" in core
+    assert "write_service_unit" in core
+    assert "systemctl_scope" in lib
+    assert 'SERVICE_SCOPE="system"' in lib
+    assert "User=$SERVICE_USER" in core
+    assert "Group=$SERVICE_GROUP" in core
+
+
 def test_cli_has_release_lifecycle_and_diagnostics_commands():
     source = read("bin/heidi")
     for command in ["rollback", "backup", "restore", "diagnostics", "--channel"]:
