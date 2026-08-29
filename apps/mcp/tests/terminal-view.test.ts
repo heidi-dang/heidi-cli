@@ -89,7 +89,7 @@ test("fullscreen workbench exposes intelligence, verification, and terminal navi
   assert.match(html, />Verification</);
   assert.match(html, />Terminal</);
   assert.match(html, /1 FDX/);
-  assert.match(html, /1 verification/);
+  assert.match(html, /<b>1<\/b><span>verification<\/span>/);
   assert.equal(html.includes("Open Workbench"), false, "fullscreen mode must not offer a redundant fullscreen action");
 });
 
