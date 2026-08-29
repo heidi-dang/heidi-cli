@@ -38,7 +38,15 @@ HEIDI_CHANNEL="${HEIDI_CHANNEL:-$(state_default HEIDI_CHANNEL stable)}"
 
 step "Deployment mode and topology"
 MODE="${HEIDI_MODE:-$(state_default HEIDI_MODE production)}"
-MODE="$(choose 'Deployment mode: development or production' "$MODE" 'development production')"
+if [[ -n "${HEIDI_DEPLOY_MODE:-}" ]]; then
+  case "$HEIDI_DEPLOY_MODE" in
+    production|development) MODE="$HEIDI_DEPLOY_MODE" ;;
+    dev) MODE=development ;;
+    *) fail "HEIDI_DEPLOY_MODE must be production or dev" ;;
+  esac
+else
+  MODE="$(choose 'Deployment mode: development or production' "$MODE" 'development production')"
+fi
 
 TOPOLOGY="${HEIDI_TOPOLOGY:-$(state_default HEIDI_TOPOLOGY all-in-one)}"
 TOPOLOGY="$(choose 'Deployment topology: all-in-one or split-tailscale' "$TOPOLOGY" 'all-in-one split-tailscale')"
@@ -257,7 +265,7 @@ WantedBy=$SERVICE_WANTED_BY"
   fi
   if [[ "$INCLUDES_MCP" == 1 ]]; then
     MCP_EXEC="$NODE_BIN $HEIDI_HOME/current/source/apps/mcp/dist/server/index.js"
-    [[ "$MODE" == production ]] || MCP_EXEC="$NPM_BIN --prefix $HEIDI_HOME/current/source/apps/mcp run dev"
+    [[ "$MODE" == production ]] || MCP_EXEC="$NODE_BIN $HEIDI_HOME/current/source/apps/mcp/scripts/dev.mjs"
     write_service_unit heidi-mcp.service "[Unit]
 Description=Heidi ChatGPT MCP adapter
 After=network-online.target

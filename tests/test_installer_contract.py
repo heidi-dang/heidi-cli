@@ -46,6 +46,23 @@ def test_cli_has_release_lifecycle_and_diagnostics_commands():
         assert command in source
 
 
+def test_deploy_cli_supports_explicit_production_or_dev_mode_only():
+    source = read("bin/heidi")
+    assert "deploy [--mode production|dev]" in source
+    assert 'case "$mode" in' in source
+    assert "dev|development" in source
+    assert 'HEIDI_DEPLOY_MODE="$mode"' in source
+    assert "update [--channel stable|beta|edge]" in source
+    assert "update [--mode" not in source
+
+
+def test_development_mcp_service_uses_bundled_node_hot_reload_runner():
+    source = read("scripts/install-core.sh")
+    assert 'HEIDI_DEPLOY_MODE' in source
+    assert 'MCP_EXEC="$NODE_BIN $HEIDI_HOME/current/source/apps/mcp/scripts/dev.mjs"' in source
+    assert 'MCP_EXEC="$NPM_BIN --prefix $HEIDI_HOME/current/source/apps/mcp run dev"' not in source
+
+
 def test_verifier_generates_tailored_ai_repair_prompt_on_failure():
     source = read("scripts/verify-stack.sh")
     assert "remediation.py" in source

@@ -79,9 +79,11 @@ heidi logs tunnel
 heidi restart
 heidi update
 heidi deploy
+heidi deploy --mode production
+heidi deploy --mode dev
 ```
 
-`heidi doctor` performs dependency/configuration checks without mutating the deployment. `heidi verify` performs live stack verification.
+`heidi deploy --mode production` runs the compiled MCP server. `heidi deploy --mode dev` runs the MCP development watcher with server restart and Live Workbench hot reload, and persists `development` as the deployment mode. Omitting `--mode` keeps the interactive/current-mode selection flow. `heidi doctor` performs dependency/configuration checks without mutating the deployment. `heidi verify` performs live stack verification.
 
 ## Security defaults
 

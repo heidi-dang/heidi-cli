@@ -112,7 +112,36 @@ update_cmd() {
   HEIDI_CHANNEL="$channel" HEIDI_HOME="$HEIDI_HOME" HEIDI_TTY="${HEIDI_TTY:-/dev/tty}" sh "$HEIDI_REPO_DIR/install.sh" "$@"
 }
 
-deploy_cmd() { load_state; exec bash "$HEIDI_REPO_DIR/scripts/install-core.sh" "$@"; }
+deploy_cmd() {
+  load_state
+  local mode=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --mode)
+        [[ $# -ge 2 ]] || { printf 'heidi deploy --mode requires production or dev\n' >&2; exit 2; }
+        mode="$2"
+        shift 2
+        ;;
+      --mode=*)
+        mode="${1#--mode=}"
+        shift
+        ;;
+      *)
+        printf 'usage: heidi deploy [--mode production|dev]\n' >&2
+        exit 2
+        ;;
+    esac
+  done
+  if [[ -n "$mode" ]]; then
+    case "$mode" in
+      production) ;;
+      dev|development) mode=development ;;
+      *) printf 'deploy mode must be production or dev\n' >&2; exit 2 ;;
+    esac
+    export HEIDI_DEPLOY_MODE="$mode"
+  fi
+  exec bash "$HEIDI_REPO_DIR/scripts/install-core.sh"
+}
 lifecycle_cmd() { load_state; exec python3 "$HEIDI_REPO_DIR/scripts/lifecycle.py" "$@"; }
 
 usage() {
@@ -127,7 +156,7 @@ Commands:
   config                         Print non-secret deployment configuration
   logs [component]               Follow cptr, mcp, tunnel, caddy, or all logs
   restart | start | stop         Control installed services
-  deploy                         Re-run deployment for the current signed release
+  deploy [--mode production|dev] Re-run deployment; optionally select production or dev + hot reload
   update [--channel stable|beta|edge]
                                  Install a newer signed release atomically
   rollback <version>             Backup, switch to an installed release, verify
