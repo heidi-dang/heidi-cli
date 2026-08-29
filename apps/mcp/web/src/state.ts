@@ -26,6 +26,29 @@ export type McpToolActivity = {
   };
 };
 
+export type WorkbenchToolActivity = {
+  id: string;
+  timestamp: string;
+  toolName: string;
+  summary: string;
+  status: string;
+  argumentsJson: string;
+  resultJson: string;
+  error: string;
+};
+
+export type WorkbenchPhase = "ready" | "understanding" | "implementing" | "verifying" | "complete" | "blocked";
+
+export type WorkbenchSummary = {
+  phase: WorkbenchPhase;
+  workerCount: number;
+  activeWorkers: number;
+  completedWorkers: number;
+  changedFiles: number;
+  intelligenceEvents: number;
+  verificationEvents: number;
+};
+
 export type DirectWorkerActivity = {
   event_id: string;
   timestamp: string;
@@ -83,10 +106,12 @@ export type WorkbenchState = {
   transcript: TerminalRow[];
   workers: Record<string, DirectWorkerState>;
   workerOrder: string[];
+  toolActivity?: WorkbenchToolActivity[];
 };
 
 const MAX_TERMINAL_ROWS = 2_000;
 const MAX_WORKER_ACTIVITY_ROWS = 120;
+const MAX_TOOL_ACTIVITY_ROWS = 240;
 
 export const TERMINAL_WORKBENCH_STATUSES = new Set([
   "COMPLETE",
@@ -149,9 +174,6 @@ export class LiveTargetSession {
 
 export function authoritativeWorkbenchStatus(event: WorkbenchEvent): string | null {
   if (!AUTHORITATIVE_STATUS_EVENTS.has(event.type)) return null;
-  // Command lifecycle is authoritative only when the Workbench is bound to a
-  // first-class command target. The same command events inside a task stream
-  // must not complete the parent task lifecycle.
   if (event.type.startsWith("command.") && event.target?.type !== "command") return null;
   const payloadStatus = stringValue(event.payload?.status).toUpperCase();
   if (payloadStatus) return payloadStatus;
@@ -272,9 +294,23 @@ export function appendMcpToolActivity(state: WorkbenchState, activity: McpToolAc
   }
 
   if (!rows.length) add("tool", "tool", summary);
+  const toolActivity = bounded([
+    ...(state.toolActivity ?? []),
+    {
+      id: activity.event_id,
+      timestamp: activity.timestamp,
+      toolName,
+      summary,
+      status,
+      argumentsJson,
+      resultJson,
+      error: errorText,
+    },
+  ], MAX_TOOL_ACTIVITY_ROWS);
   return {
     ...state,
     transcript: bounded([...state.transcript, ...rows], MAX_TERMINAL_ROWS),
+    toolActivity,
   };
 }
 
@@ -380,6 +416,7 @@ export function initialWorkbenchState(): WorkbenchState {
     transcript: [],
     workers: {},
     workerOrder: [],
+    toolActivity: [],
   };
 }
 
@@ -402,4 +439,58 @@ export function reduceWorkbenchEvents(state: WorkbenchState, events: readonly Wo
   let next = state;
   for (const event of events) next = reduceWorkbenchEvent(next, event);
   return next;
+}
+
+function activeWorker(status: string): boolean {
+  return ["RUNNING", "WORKING", "CONNECTING"].includes(status.toUpperCase());
+}
+
+function completedWorker(status: string): boolean {
+  return ["COMPLETE", "COMPLETED", "INTEGRATED"].includes(status.toUpperCase());
+}
+
+function intelligenceTool(toolName: string): boolean {
+  return toolName === "cptr_fdx_intelligence" || toolName.includes("fdx");
+}
+
+function verificationTool(toolName: string): boolean {
+  return /(?:test|build|typecheck|verify|release_readiness|chrome_browser)/i.test(toolName);
+}
+
+export function summarizeWorkbench(state: WorkbenchState): WorkbenchSummary {
+  const workers = state.workerOrder.map((id) => state.workers[id]).filter(Boolean);
+  const activeWorkers = workers.filter((worker) => activeWorker(worker.status)).length;
+  const completedWorkers = workers.filter((worker) => completedWorker(worker.status)).length;
+  const changedFiles = new Set(workers.flatMap((worker) => worker.changedPaths)).size;
+  const toolActivity = state.toolActivity ?? [];
+  const intelligenceEvents = toolActivity.filter((activity) => intelligenceTool(activity.toolName)).length;
+  const verification = toolActivity.filter((activity) => verificationTool(activity.toolName));
+  const verificationEvents = verification.length;
+  const latestVerification = verification.at(-1);
+  const normalizedStatus = state.status.toUpperCase();
+  let phase: WorkbenchPhase = "ready";
+
+  if (["FAILED", "BLOCKED", "CANCELLED", "REJECTED", "COMPLETE_WITH_TOOL_ERRORS"].includes(normalizedStatus)) {
+    phase = "blocked";
+  } else if (normalizedStatus === "COMPLETE") {
+    phase = "complete";
+  } else if (activeWorkers > 0) {
+    phase = "implementing";
+  } else if (latestVerification?.status === "STARTED" || (workers.length > 0 && verificationEvents > 0)) {
+    phase = "verifying";
+  } else if (intelligenceEvents > 0) {
+    phase = "understanding";
+  } else if (["RUNNING", "WORKING", "ACTIVE"].includes(normalizedStatus)) {
+    phase = "implementing";
+  }
+
+  return {
+    phase,
+    workerCount: workers.length,
+    activeWorkers,
+    completedWorkers,
+    changedFiles,
+    intelligenceEvents,
+    verificationEvents,
+  };
 }
