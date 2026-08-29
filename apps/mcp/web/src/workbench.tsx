@@ -531,7 +531,7 @@ function OwnedWorkbench() {
   const [state, setState] = useState(initialWorkbenchState);
   const [actionStatus, setActionStatus] = useState("");
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
-  const [selectedWorkerTab, setSelectedWorkerTab] = useState<DirectWorkerTab>("activity");
+  const [selectedWorkerTab, setSelectedWorkerTab] = useState<DirectWorkerTab>("overview");
   const [workerChanges, setWorkerChanges] = useState("");
   const [workerTerminal, setWorkerTerminal] = useState("");
   const callTool = useMcpBridge();
@@ -563,7 +563,7 @@ function OwnedWorkbench() {
   useEffect(() => {
     setWorkerChanges("");
     setWorkerTerminal("");
-    setSelectedWorkerTab("activity");
+    setSelectedWorkerTab("overview");
   }, [selectedWorkerId]);
 
   useEffect(() => {
@@ -700,6 +700,7 @@ function OwnedWorkbench() {
     {hasWorkers ? <DirectWorkersView
       workers={state.workers}
       workerOrder={state.workerOrder}
+      toolActivity={state.toolActivity ?? []}
       selectedWorkerId={selectedWorkerId}
       selectedTab={selectedWorkerTab}
       connection={connection}
@@ -717,6 +718,7 @@ function OwnedWorkbench() {
       updateCenter={updateCenter}
     /> : <TerminalView
       rows={state.transcript}
+      toolActivity={state.toolActivity ?? []}
       updateCenter={updateCenter}
       status={displayStatus}
       connection={connection}
