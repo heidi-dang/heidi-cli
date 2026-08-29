@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import type { TerminalRow, WorkbenchToolActivity } from "./state.js";
-import { NativeWorkbenchStyles, StatusDot } from "./native-workbench-ui.js";
+import {
+  isIntelligenceTool,
+  isVerificationTool,
+  type TerminalRow,
+  type WorkbenchToolActivity,
+} from "./state.js";
+import { displayClock, NativeWorkbenchStyles, StatusDot } from "./native-workbench-ui.js";
 import { useOpenAiDisplayMode, type ChatGptDisplayMode } from "./openai-globals.js";
 
 export type TerminalViewProps = {
@@ -21,16 +26,10 @@ export type TerminalViewProps = {
 
 type StandaloneWorkbenchTab = "overview" | "intelligence" | "verification" | "terminal";
 
+const COMPLETE_TOOL_STATUSES = new Set(["COMPLETE", "COMPLETED", "SUCCESS", "SUCCEEDED", "PASSED"]);
+
 function isDiagnosticOutput(row: TerminalRow): boolean {
   return ["stdout", "stderr", "prompt"].includes(row.tone);
-}
-
-function verificationTool(toolName: string): boolean {
-  return /(?:test|build|typecheck|verify|release_readiness|chrome_browser)/i.test(toolName);
-}
-
-function intelligenceTool(toolName: string): boolean {
-  return toolName === "cptr_fdx_intelligence" || toolName.toLowerCase().includes("fdx");
 }
 
 function ToolActivityList({
@@ -45,7 +44,7 @@ function ToolActivityList({
   if (!items.length) return <div className="cptr-empty"><strong>{emptyTitle}</strong><span>{emptyText}</span></div>;
   return <div className="cptr-activity">
     {[...items].reverse().slice(0, 16).map((item) => <div className="cptr-activity-row" key={item.id}>
-      <time>{new Date(item.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
+      <time>{displayClock(item.timestamp)}</time>
       <StatusDot status={item.status} />
       <div><strong>{item.toolName}</strong><span>{item.summary}</span></div>
     </div>)}
@@ -74,8 +73,12 @@ export function TerminalView({
   const [selectedTab, setSelectedTab] = useState<StandaloneWorkbenchTab>("overview");
   const [follow, setFollow] = useState(true);
   const recentRows = useMemo(() => rows.filter((row) => !isDiagnosticOutput(row)).slice(-5), [rows]);
-  const intelligence = toolActivity.filter((activity) => intelligenceTool(activity.toolName));
-  const verification = toolActivity.filter((activity) => verificationTool(activity.toolName));
+  const intelligence = toolActivity.filter((activity) => isIntelligenceTool(activity.toolName));
+  const verification = toolActivity.filter((activity) => isVerificationTool(activity.toolName));
+  const latestIntelligenceStatus = intelligence.at(-1)?.status.toUpperCase() ?? "";
+  const latestVerificationStatus = verification.at(-1)?.status.toUpperCase() ?? "";
+  const verificationActive = latestVerificationStatus === "STARTED";
+  const verificationComplete = COMPLETE_TOOL_STATUSES.has(latestVerificationStatus);
 
   useEffect(() => {
     if (!detailed || selectedTab !== "terminal" || !follow) return;
@@ -90,15 +93,22 @@ export function TerminalView({
   };
 
   const normalized = status.toUpperCase();
+  const failed = ["FAILED", "BLOCKED", "CANCELLED", "REJECTED", "COMPLETE_WITH_TOOL_ERRORS"].includes(normalized);
+  const running = ["RUNNING", "WORKING", "ACTIVE", "CONNECTING"].includes(normalized);
   const phase = ["COMPLETE", "COMPLETED"].includes(normalized)
     ? "Complete"
-    : ["FAILED", "BLOCKED", "CANCELLED", "REJECTED", "COMPLETE_WITH_TOOL_ERRORS"].includes(normalized)
+    : failed
       ? "Needs attention"
-      : ["RUNNING", "WORKING", "ACTIVE", "CONNECTING"].includes(normalized)
-        ? "Working"
-        : intelligence.length
+      : verificationActive
+        ? "Verifying"
+        : latestIntelligenceStatus === "STARTED"
           ? "Understanding"
-          : "Ready";
+          : running
+            ? "Working"
+            : intelligence.length
+              ? "Understanding"
+              : "Ready";
+  const verifyStatus = verificationActive ? "RUNNING" : verificationComplete ? "COMPLETE" : "READY";
 
   return <section className="cptr-native" aria-label="CPTR developer workbench" data-display-mode={mode}>
     <NativeWorkbenchStyles />
@@ -132,9 +142,9 @@ export function TerminalView({
 
       {detailed ? <>
         <div className="cptr-rail" aria-label="Development phases">
-          <div className="cptr-rail-step"><StatusDot status={intelligence.length ? "COMPLETE" : rows.length ? "COMPLETE" : "READY"} /><b>Understand</b><span>{intelligence.length ? `${intelligence.length} FDX` : "context"}</span></div>
+          <div className="cptr-rail-step"><StatusDot status={latestIntelligenceStatus === "STARTED" ? "RUNNING" : intelligence.length ? "COMPLETE" : rows.length ? "COMPLETE" : "READY"} /><b>Understand</b><span>{intelligence.length ? `${intelligence.length} FDX` : "context"}</span></div>
           <div className="cptr-rail-step"><StatusDot status={canStop ? "RUNNING" : normalized === "COMPLETE" ? "COMPLETE" : "READY"} /><b>Execute</b><span>{canStop ? "active" : "settled"}</span></div>
-          <div className="cptr-rail-step"><StatusDot status={verification.length ? "RUNNING" : normalized === "COMPLETE" ? "COMPLETE" : "READY"} /><b>Verify</b><span>{verification.length || "waiting"}</span></div>
+          <div className="cptr-rail-step"><StatusDot status={verifyStatus} /><b>Verify</b><span>{verificationActive ? "running" : verificationComplete ? "complete" : "waiting"}</span></div>
         </div>
 
         <nav className="cptr-native-nav" aria-label="Workbench views">
