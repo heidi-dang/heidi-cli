@@ -1,5 +1,10 @@
 import React from "react";
-import type { DirectWorkerState, WorkbenchToolActivity } from "./state.js";
+import {
+  isIntelligenceTool,
+  isVerificationTool,
+  type DirectWorkerState,
+  type WorkbenchToolActivity,
+} from "./state.js";
 import { displayClock, Metric, NativeWorkbenchStyles, StatusDot } from "./native-workbench-ui.js";
 import { useOpenAiDisplayMode, type ChatGptDisplayMode } from "./openai-globals.js";
 
@@ -27,20 +32,14 @@ type Props = {
   displayMode?: ChatGptDisplayMode;
 };
 
+const COMPLETE_TOOL_STATUSES = new Set(["COMPLETE", "COMPLETED", "SUCCESS", "SUCCEEDED", "PASSED"]);
+
 function activeStatus(status: string): boolean {
   return ["RUNNING", "WORKING", "CONNECTING"].includes(status.toUpperCase());
 }
 
 function completeStatus(status: string): boolean {
   return ["COMPLETE", "COMPLETED", "INTEGRATED"].includes(status.toUpperCase());
-}
-
-function verificationTool(toolName: string): boolean {
-  return /(?:test|build|typecheck|verify|release_readiness|chrome_browser)/i.test(toolName);
-}
-
-function intelligenceTool(toolName: string): boolean {
-  return toolName === "cptr_fdx_intelligence" || toolName.toLowerCase().includes("fdx");
 }
 
 function ToolActivityList({
@@ -90,27 +89,43 @@ export function DirectWorkersView({
   const selected = (selectedWorkerId && workers[selectedWorkerId]) || orderedWorkers[0] || null;
   const activeCount = orderedWorkers.filter((worker) => activeStatus(worker.status)).length;
   const completeCount = orderedWorkers.filter((worker) => completeStatus(worker.status)).length;
+  const allWorkersComplete = orderedWorkers.length > 0 && completeCount === orderedWorkers.length;
   const changedPathCount = new Set(orderedWorkers.flatMap((worker) => worker.changedPaths)).size;
   const reportedChangedFiles = orderedWorkers.reduce((sum, worker) => sum + worker.changedFileCount, 0);
   const changedFiles = changedPathCount || reportedChangedFiles;
   const runningCommands = orderedWorkers.reduce((sum, worker) => sum + worker.activeCommandIds.length, 0);
-  const intelligence = toolActivity.filter((activity) => intelligenceTool(activity.toolName));
-  const verification = toolActivity.filter((activity) => verificationTool(activity.toolName));
+  const intelligence = toolActivity.filter((activity) => isIntelligenceTool(activity.toolName));
+  const verification = toolActivity.filter((activity) => isVerificationTool(activity.toolName));
+  const latestVerificationStatus = verification.at(-1)?.status.toUpperCase() ?? "";
+  const verificationActive = latestVerificationStatus === "STARTED";
+  const verificationComplete = COMPLETE_TOOL_STATUSES.has(latestVerificationStatus);
   const phase = activeCount > 0
     ? "Implementing"
-    : completeCount === orderedWorkers.length && orderedWorkers.length && verification.length
+    : verificationActive
       ? "Verifying"
-      : completeCount === orderedWorkers.length && orderedWorkers.length
-        ? "Ready to verify"
-        : intelligence.length
-          ? "Understanding"
-          : "Ready";
+      : allWorkersComplete && verificationComplete
+        ? "Complete"
+        : allWorkersComplete
+          ? "Ready to verify"
+          : intelligence.length
+            ? "Understanding"
+            : "Ready";
   const connectionStatus = connection.toLowerCase().includes("error") || connection.toLowerCase().includes("failed")
     ? "FAILED"
     : connection.toLowerCase().includes("live")
       ? "RUNNING"
       : "READY";
   const latestActivity = toolActivity.slice(-8);
+  const summaryText = activeCount
+    ? `${activeCount} worker${activeCount === 1 ? "" : "s"} executing isolated changes.`
+    : phase === "Verifying"
+      ? `${completeCount}/${orderedWorkers.length} workers settled; verification is running.`
+      : phase === "Complete"
+        ? `${completeCount}/${orderedWorkers.length} workers settled; latest verification completed.`
+        : completeCount
+          ? `${completeCount}/${orderedWorkers.length} workers settled; ready for verification.`
+          : "ChatGPT is preparing the development workflow.";
+  const verifyStatus = verificationActive ? "RUNNING" : verificationComplete ? "COMPLETE" : "READY";
 
   return <section className="cptr-native" aria-label="CPTR developer workbench" data-display-mode={mode}>
     <NativeWorkbenchStyles />
@@ -135,22 +150,18 @@ export function DirectWorkersView({
       <div className="cptr-summary">
         <div className="cptr-summary-main">
           <strong>{phase}</strong>
-          <span>{activeCount
-            ? `${activeCount} worker${activeCount === 1 ? "" : "s"} executing isolated changes.`
-            : completeCount
-              ? `${completeCount}/${orderedWorkers.length} workers settled${verification.length ? "; verification activity detected." : "; ready for verification."}`
-              : "ChatGPT is preparing the development workflow."}</span>
+          <span>{summaryText}</span>
         </div>
         <Metric value={orderedWorkers.length} label="workers" />
         <Metric value={changedFiles} label="changed files" />
-        <Metric value={verification.length} label="verification" />
+        <Metric value={verification.length} label="check events" />
       </div>
 
       {detailed ? <>
         <div className="cptr-rail" aria-label="Development phases">
           <div className="cptr-rail-step"><StatusDot status={intelligence.length ? "COMPLETE" : "READY"} /><b>Understand</b><span>{intelligence.length ? `${intelligence.length} FDX` : "FDX-first"}</span></div>
           <div className="cptr-rail-step"><StatusDot status={activeCount ? "RUNNING" : completeCount ? "COMPLETE" : "READY"} /><b>Implement</b><span>{completeCount}/{orderedWorkers.length}</span></div>
-          <div className="cptr-rail-step"><StatusDot status={verification.length ? "RUNNING" : "READY"} /><b>Verify</b><span>{verification.length || "waiting"}</span></div>
+          <div className="cptr-rail-step"><StatusDot status={verifyStatus} /><b>Verify</b><span>{verificationActive ? "running" : verificationComplete ? "complete" : "waiting"}</span></div>
         </div>
 
         <nav className="cptr-native-nav" aria-label="Workbench views">
@@ -172,7 +183,7 @@ export function DirectWorkersView({
         {selectedTab === "overview" ? <div className="cptr-panel">
           <div className="cptr-panel-head">
             <div><strong>Development overview</strong><span>One authoritative view of ChatGPT reasoning support, execution lanes, and validation.</span></div>
-            <span className="cptr-status"><StatusDot status={activeCount ? "RUNNING" : "COMPLETE"} />{runningCommands ? `${runningCommands} commands active` : "execution settled"}</span>
+            <span className="cptr-status"><StatusDot status={activeCount ? "RUNNING" : phase === "Complete" ? "COMPLETE" : "READY"} />{runningCommands ? `${runningCommands} commands active` : "execution settled"}</span>
           </div>
           <ToolActivityList
             items={latestActivity}
