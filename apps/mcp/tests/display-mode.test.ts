@@ -9,10 +9,23 @@ test("requests Apps SDK display mode with the current object-shaped contract", a
       received = input;
       return { mode: "pip" };
     },
-  }, "pip");
+  }, "pip", { userActivated: true });
 
   assert.deepEqual(received, { mode: "pip" });
   assert.equal(granted, "pip");
+});
+
+test("ignores automatic display-mode requests without a user gesture", async () => {
+  let called = false;
+  const granted = await requestHostDisplayMode({
+    requestDisplayMode: async () => {
+      called = true;
+      return { mode: "pip" };
+    },
+  }, "pip", { userActivated: false });
+
+  assert.equal(called, false);
+  assert.equal(granted, null);
 });
 
 test("returns null when the host does not expose display-mode control", async () => {
