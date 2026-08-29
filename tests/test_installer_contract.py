@@ -52,6 +52,13 @@ def test_verifier_generates_tailored_ai_repair_prompt_on_failure():
     assert "HEIDI AI REPAIR PROMPT" in read("scripts/remediation.py")
 
 
+def test_verifier_uses_bundled_node_runtime_for_contract_check():
+    source = read("scripts/verify-stack.sh")
+    assert 'runtime/node/bin/node' in source
+    assert 'dirname "$REPO_DIR"' in source
+    assert '"$node_binary" "$REPO_DIR/apps/mcp/scripts/check-deployed-contract.mjs"' in source
+
+
 def test_bootstrap_has_signed_release_trust_boundary():
     source = read("install.sh")
     assert "heidi-release.json" in source

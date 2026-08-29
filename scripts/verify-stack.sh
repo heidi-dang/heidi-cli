@@ -84,15 +84,21 @@ check_mcp() {
   fi
   if curl -fsS --max-time 10 "$HEIDI_MCP_LOCAL_URL/health" >/dev/null 2>&1; then pass "MCP local health"; else fail_check mcp_health "MCP local health" "$HEIDI_MCP_LOCAL_URL/health is unavailable"; return; fi
 
-  local smoke_token
+  local smoke_token node_binary
   smoke_token="$(read_env_value "$MCP_ENV_FILE" MCP_ACCESS_TOKEN 2>/dev/null || true)"
+  node_binary="${HEIDI_NODE_BINARY:-$(dirname "$REPO_DIR")/runtime/node/bin/node}"
+  if [[ ! -x "$node_binary" ]]; then
+    node_binary="$(command -v node 2>/dev/null || true)"
+  fi
   if [[ -z "$smoke_token" ]]; then
     fail_check mcp_contract "MCP smoke credential" "MCP_ACCESS_TOKEN cannot be read from the configured environment file"
+  elif [[ -z "$node_binary" || ! -x "$node_binary" ]]; then
+    fail_check mcp_contract "MCP contract runtime" "Heidi bundled Node runtime is unavailable"
   elif [[ -f "$REPO_DIR/apps/mcp/scripts/check-deployed-contract.mjs" ]]; then
     if CPTR_DEPLOYED_MCP_URL="$HEIDI_MCP_LOCAL_URL/mcp" \
        CPTR_DEPLOYED_MCP_TOKEN="$smoke_token" \
        CPTR_DEPLOYED_PUBLIC_ORIGIN="${HEIDI_PUBLIC_ORIGIN:-$HEIDI_MCP_LOCAL_URL}" \
-       node "$REPO_DIR/apps/mcp/scripts/check-deployed-contract.mjs" >/dev/null 2>&1; then
+       "$node_binary" "$REPO_DIR/apps/mcp/scripts/check-deployed-contract.mjs" >/dev/null 2>&1; then
       pass "MCP exact 20-tool/resource contract"
     else
       fail_check mcp_contract "MCP exact contract" "registered tools/resources differ from the signed Heidi release"

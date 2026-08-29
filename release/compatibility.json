@@ -1,8 +1,8 @@
 {
   "schema": "heidi.compatibility.v1",
-  "heidi_version": "2.0.2",
+  "heidi_version": "2.0.3",
   "mcp": {
-    "contract_version": "2.0.2",
+    "contract_version": "2.0.3",
     "registered_action_count": 20,
     "minimum_node_major": 22
   },
