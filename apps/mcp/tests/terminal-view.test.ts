@@ -4,7 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TerminalView } from "../web/src/terminal-view.js";
 
-test("default widget surface renders only the live terminal UI", () => {
+test("default widget surface renders a compact native workbench with terminal diagnostics collapsed", () => {
   const html = renderToStaticMarkup(React.createElement(TerminalView, {
     rows: [{
       id: "row-1",
@@ -30,21 +30,20 @@ test("default widget surface renders only the live terminal UI", () => {
     onExpand: () => {},
   }));
 
-  assert.match(html, /Live Terminal/);
+  assert.match(html, /CPTR Workbench/);
   assert.match(html, /ChatGPT completed cptr_code_read_file/);
   assert.match(html, />tool</);
-  assert.match(html, /CPTR_LIVE_OUTPUT/);
-  assert.match(html, /Live redacted terminal transcript/);
-  assert.match(html, />Stop</);
-  assert.match(html, />Copy</);
+  assert.match(html, /Recent activity/);
+  assert.match(html, />Show output</);
   assert.match(html, />Pin</);
-  assert.match(html, />Expand</);
-  for (const removedSurface of ["Activity", "Tools", "Changes", "Evidence", "Review required", "Steer"]) {
-    assert.equal(html.includes(removedSurface), false, `${removedSurface} must not be visible on the default widget surface`);
-  }
+  assert.match(html, /Open Workbench/);
+  assert.equal(html.includes("CPTR_LIVE_OUTPUT"), false, "raw stdout must stay hidden until diagnostics are opened");
+  assert.equal(html.includes("Redacted terminal diagnostics"), false, "diagnostic viewport must not render by default");
+  assert.equal(html.includes(">Stop<"), false, "destructive controls stay inside the diagnostic surface");
+  assert.equal(html.includes(">Copy<"), false, "raw-output controls stay inside the diagnostic surface");
 });
 
-test("terminal empty state contains no synthetic command output", () => {
+test("workbench empty state contains no synthetic command output", () => {
   const html = renderToStaticMarkup(React.createElement(TerminalView, {
     rows: [],
     status: "READY",
@@ -57,8 +56,9 @@ test("terminal empty state contains no synthetic command output", () => {
     onExpand: () => {},
   }));
 
-  assert.match(html, /Terminal ready/);
-  assert.match(html, /CPTR tool activity and real command output will appear here/);
+  assert.match(html, /Ready for CPTR activity/);
+  assert.match(html, /Lifecycle and verification checkpoints will appear here as ChatGPT works/);
   assert.equal(html.includes("$ "), false);
   assert.equal(html.includes("mock"), false);
+  assert.equal(html.includes("No command output available"), false, "hidden terminal diagnostics must not fabricate visible output");
 });
