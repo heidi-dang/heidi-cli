@@ -139,8 +139,19 @@ const AUTHORITATIVE_STATUS_EVENTS = new Set([
   "command.completed",
 ]);
 
+const COMPLETE_TOOL_STATUSES = new Set(["COMPLETE", "COMPLETED", "SUCCESS", "SUCCEEDED", "PASSED"]);
+
 export function isTerminalWorkbenchStatus(status: string): boolean {
   return TERMINAL_WORKBENCH_STATUSES.has(status.toUpperCase());
+}
+
+export function isIntelligenceTool(toolName: string): boolean {
+  const normalized = toolName.toLowerCase();
+  return normalized === "cptr_fdx_intelligence" || normalized.includes("fdx");
+}
+
+export function isVerificationTool(toolName: string): boolean {
+  return /(?:test|build|typecheck|verify|release_readiness|chrome_browser)/i.test(toolName);
 }
 
 export function workbenchTargetIdentity(
@@ -449,25 +460,20 @@ function completedWorker(status: string): boolean {
   return ["COMPLETE", "COMPLETED", "INTEGRATED"].includes(status.toUpperCase());
 }
 
-function intelligenceTool(toolName: string): boolean {
-  return toolName === "cptr_fdx_intelligence" || toolName.includes("fdx");
-}
-
-function verificationTool(toolName: string): boolean {
-  return /(?:test|build|typecheck|verify|release_readiness|chrome_browser)/i.test(toolName);
-}
-
 export function summarizeWorkbench(state: WorkbenchState): WorkbenchSummary {
   const workers = state.workerOrder.map((id) => state.workers[id]).filter(Boolean);
   const activeWorkers = workers.filter((worker) => activeWorker(worker.status)).length;
   const completedWorkers = workers.filter((worker) => completedWorker(worker.status)).length;
-  const changedFiles = new Set(workers.flatMap((worker) => worker.changedPaths)).size;
+  const changedPathCount = new Set(workers.flatMap((worker) => worker.changedPaths)).size;
+  const reportedChangedFiles = workers.reduce((sum, worker) => sum + worker.changedFileCount, 0);
+  const changedFiles = changedPathCount || reportedChangedFiles;
   const toolActivity = state.toolActivity ?? [];
-  const intelligenceEvents = toolActivity.filter((activity) => intelligenceTool(activity.toolName)).length;
-  const verification = toolActivity.filter((activity) => verificationTool(activity.toolName));
+  const intelligenceEvents = toolActivity.filter((activity) => isIntelligenceTool(activity.toolName)).length;
+  const verification = toolActivity.filter((activity) => isVerificationTool(activity.toolName));
   const verificationEvents = verification.length;
-  const latestVerification = verification.at(-1);
+  const latestVerificationStatus = verification.at(-1)?.status.toUpperCase() ?? "";
   const normalizedStatus = state.status.toUpperCase();
+  const allWorkersComplete = workers.length > 0 && completedWorkers === workers.length;
   let phase: WorkbenchPhase = "ready";
 
   if (["FAILED", "BLOCKED", "CANCELLED", "REJECTED", "COMPLETE_WITH_TOOL_ERRORS"].includes(normalizedStatus)) {
@@ -476,8 +482,10 @@ export function summarizeWorkbench(state: WorkbenchState): WorkbenchSummary {
     phase = "complete";
   } else if (activeWorkers > 0) {
     phase = "implementing";
-  } else if (latestVerification?.status === "STARTED" || (workers.length > 0 && verificationEvents > 0)) {
+  } else if (latestVerificationStatus === "STARTED") {
     phase = "verifying";
+  } else if (allWorkersComplete && COMPLETE_TOOL_STATUSES.has(latestVerificationStatus)) {
+    phase = "complete";
   } else if (intelligenceEvents > 0) {
     phase = "understanding";
   } else if (["RUNNING", "WORKING", "ACTIVE"].includes(normalizedStatus)) {
