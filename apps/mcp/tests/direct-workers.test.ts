@@ -56,7 +56,48 @@ test("direct worker activity creates and updates a compact worker lane without t
 });
 
 
-test("worker dashboard renders the native Workbench overview, changes, and terminal surfaces", () => {
+test("inline worker surface stays compact and sends deep navigation to fullscreen", () => {
+  const state = appendDirectWorkerActivity(initialWorkbenchState(), {
+    event_id: "worker-inline",
+    timestamp: "2026-08-28T00:00:00Z",
+    type: "direct.worker",
+    payload: {
+      worker_id: "dcw_backend",
+      name: "Backend",
+      responsibility: "Backend stability",
+      status: "RUNNING",
+      summary: "Running pytest",
+      active_command_ids: ["cmd-1"],
+      changed_file_count: 4,
+    },
+  });
+  const html = renderToStaticMarkup(React.createElement(DirectWorkersView, {
+    workers: state.workers,
+    workerOrder: state.workerOrder,
+    selectedWorkerId: "dcw_backend",
+    selectedTab: "overview",
+    connection: "prompt live",
+    actionStatus: "",
+    changesText: "4 files changed",
+    terminalText: "",
+    onSelectWorker: () => {},
+    onSelectTab: () => {},
+    onRefreshChanges: () => {},
+    onRefreshTerminal: () => {},
+    onPin: () => {},
+    onExpand: () => {},
+    displayMode: "inline",
+  }));
+
+  assert.match(html, /CPTR Workbench/);
+  assert.match(html, /ChatGPT Direct Coding/);
+  assert.match(html, /Open Workbench/);
+  assert.equal(html.includes("Workbench views"), false, "inline mode must not render deep navigation");
+  assert.equal(html.includes("Terminal diagnostics"), false, "inline mode must not render terminal diagnostics");
+});
+
+
+test("fullscreen worker dashboard exposes native developer panels", () => {
   const state = appendDirectWorkerActivity(initialWorkbenchState(), {
     event_id: "worker-ui",
     timestamp: "2026-08-28T00:00:00Z",
@@ -74,8 +115,18 @@ test("worker dashboard renders the native Workbench overview, changes, and termi
   const html = renderToStaticMarkup(React.createElement(DirectWorkersView, {
     workers: state.workers,
     workerOrder: state.workerOrder,
+    toolActivity: [{
+      id: "fdx-1",
+      timestamp: "2026-08-28T00:00:01Z",
+      toolName: "cptr_fdx_intelligence",
+      summary: "Impact mapped.",
+      status: "COMPLETE",
+      argumentsJson: "",
+      resultJson: "",
+      error: "",
+    }],
     selectedWorkerId: "dcw_backend",
-    selectedTab: "activity",
+    selectedTab: "workers",
     connection: "prompt live",
     actionStatus: "",
     changesText: "4 files changed",
@@ -86,19 +137,22 @@ test("worker dashboard renders the native Workbench overview, changes, and termi
     onRefreshTerminal: () => {},
     onPin: () => {},
     onExpand: () => {},
+    displayMode: "fullscreen",
   }));
 
-  assert.match(html, /CPTR Workbench/);
-  assert.match(html, /ChatGPT Direct Coding/);
   assert.match(html, /Direct Coding Workers/);
   assert.match(html, /Backend/);
   assert.match(html, /Backend stability/);
   assert.match(html, /Running pytest/);
   assert.match(html, />Overview</);
+  assert.match(html, />Workers</);
   assert.match(html, />Changes</);
+  assert.match(html, />Intelligence</);
+  assert.match(html, />Verification</);
   assert.match(html, />Terminal</);
-  assert.match(html, /Open Workbench/);
+  assert.match(html, /1 FDX/);
   assert.match(html, /1 active/);
+  assert.equal(html.includes("Open Workbench"), false, "fullscreen mode must not offer a redundant fullscreen action");
 });
 
 
