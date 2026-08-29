@@ -67,6 +67,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Allow Chrome sandbox user namespaces
+        run: |
+          if sysctl -n kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
