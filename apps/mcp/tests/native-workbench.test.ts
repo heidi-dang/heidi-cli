@@ -124,3 +124,43 @@ test("moves to verification when workers are complete and verification is active
 
   assert.equal(summarizeWorkbench(state).phase, "verifying");
 });
+
+test("marks completed worker verification as complete instead of permanently verifying", () => {
+  let state = initialWorkbenchState();
+  state = appendDirectWorkerActivity(state, {
+    event_id: "worker-done",
+    timestamp: "2026-08-29T03:03:00Z",
+    type: "direct.worker",
+    payload: {
+      worker_id: "worker-done",
+      workspace_id: "ws",
+      status: "COMPLETE",
+      summary: "Implementation complete.",
+      changed_file_count: 2,
+    },
+  });
+  state = appendMcpToolActivity(state, {
+    event_id: "verify-start",
+    timestamp: "2026-08-29T03:03:01Z",
+    type: "mcp.tool",
+    payload: {
+      tool_name: "cptr_workspace_run_test_target",
+      summary: "Running verification.",
+      status: "STARTED",
+    },
+  });
+  state = appendMcpToolActivity(state, {
+    event_id: "verify-complete",
+    timestamp: "2026-08-29T03:03:02Z",
+    type: "mcp.tool",
+    payload: {
+      tool_name: "cptr_workspace_run_test_target",
+      summary: "68 tests passed.",
+      status: "COMPLETE",
+    },
+  });
+
+  const summary = summarizeWorkbench(state);
+  assert.equal(summary.phase, "complete");
+  assert.equal(summary.changedFiles, 2, "reported changed-file counts remain useful before exact paths arrive");
+});
