@@ -56,7 +56,7 @@ test("direct worker activity creates and updates a compact worker lane without t
 });
 
 
-test("worker dashboard renders lanes and Activity Changes Terminal tabs", () => {
+test("worker dashboard renders the native Workbench overview, changes, and terminal surfaces", () => {
   const state = appendDirectWorkerActivity(initialWorkbenchState(), {
     event_id: "worker-ui",
     timestamp: "2026-08-28T00:00:00Z",
@@ -88,13 +88,16 @@ test("worker dashboard renders lanes and Activity Changes Terminal tabs", () => 
     onExpand: () => {},
   }));
 
+  assert.match(html, /CPTR Workbench/);
+  assert.match(html, /ChatGPT Direct Coding/);
   assert.match(html, /Direct Coding Workers/);
   assert.match(html, /Backend/);
   assert.match(html, /Backend stability/);
   assert.match(html, /Running pytest/);
-  assert.match(html, />Activity</);
+  assert.match(html, />Overview</);
   assert.match(html, />Changes</);
   assert.match(html, />Terminal</);
+  assert.match(html, /Open Workbench/);
   assert.match(html, /1 active/);
 });
 
