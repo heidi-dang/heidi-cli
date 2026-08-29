@@ -43,13 +43,15 @@ export function NativeWorkbenchStyles() {
 
 export function StatusDot({ status }: { status: string }) {
   const value = status.toUpperCase();
-  const className = ["FAILED", "ERROR", "BLOCKED", "REJECTED", "CANCELLED"].includes(value)
+  const className = ["FAILED", "ERROR", "BLOCKED", "REJECTED", "CANCELLED", "COMPLETE_WITH_TOOL_ERRORS"].includes(value)
     ? "bad"
-    : ["RUNNING", "WORKING", "CONNECTING", "ACTIVE"].includes(value)
-      ? ""
-      : ["COMPLETE", "COMPLETED", "INTEGRATED"].includes(value)
+    : ["APPROVAL_REQUIRED", "REVIEW_REQUIRED", "WAITING", "QUEUED"].includes(value)
+      ? "wait"
+      : ["RUNNING", "WORKING", "CONNECTING", "ACTIVE", "STARTED", "IN_PROGRESS"].includes(value)
         ? ""
-        : "idle";
+        : ["COMPLETE", "COMPLETED", "INTEGRATED", "SUCCESS", "SUCCEEDED", "PASSED"].includes(value)
+          ? ""
+          : "idle";
   return <span className={`cptr-dot ${className}`} aria-hidden="true" />;
 }
 
