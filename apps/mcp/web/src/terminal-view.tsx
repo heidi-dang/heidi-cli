@@ -16,6 +16,10 @@ export type TerminalViewProps = {
   onExpand: () => void;
 };
 
+function isDiagnosticOutput(row: TerminalRow): boolean {
+  return ["stdout", "stderr", "prompt"].includes(row.tone);
+}
+
 export function TerminalView({
   rows,
   status,
@@ -32,7 +36,7 @@ export function TerminalView({
   const viewport = useRef<HTMLDivElement>(null);
   const [showOutput, setShowOutput] = useState(false);
   const [follow, setFollow] = useState(true);
-  const recentRows = useMemo(() => rows.slice(-5), [rows]);
+  const recentRows = useMemo(() => rows.filter((row) => !isDiagnosticOutput(row)).slice(-5), [rows]);
 
   useEffect(() => {
     if (!showOutput || !follow) return;
@@ -93,7 +97,7 @@ export function TerminalView({
 
       <div className="cptr-panel">
         <div className="cptr-panel-head">
-          <div><strong>Recent activity</strong><span>Compact, redacted status instead of continuous terminal streaming.</span></div>
+          <div><strong>Recent activity</strong><span>Compact lifecycle status instead of continuous terminal streaming.</span></div>
           <button type="button" onClick={() => setShowOutput((value) => !value)}>{showOutput ? "Hide output" : "Show output"}</button>
         </div>
 
@@ -102,7 +106,7 @@ export function TerminalView({
             <b>{row.label ?? row.tone}</b>
             <code>{row.text}</code>
           </div>)}
-        </div> : <div className="cptr-empty"><strong>Ready for CPTR activity</strong><span>Tool results and verification checkpoints will appear here as ChatGPT works.</span></div>}
+        </div> : <div className="cptr-empty"><strong>Ready for CPTR activity</strong><span>Lifecycle and verification checkpoints will appear here as ChatGPT works.</span></div>}
 
         {showOutput ? <div className="cptr-output-toggle">
           <div className="cptr-panel-head">
