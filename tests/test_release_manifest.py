@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import subprocess
 import sys
@@ -12,6 +13,25 @@ SCRIPT = ROOT / "scripts" / "release-manifest.py"
 
 def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def load_compatibility_verifier():
+    path = ROOT / "scripts" / "verify-compatibility.py"
+    spec = importlib.util.spec_from_file_location("verify_compatibility_release", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_repository_release_compatibility_matches_canonical_mcp_inventory():
+    verifier = load_compatibility_verifier()
+    compatibility = json.loads((ROOT / "release" / "compatibility.json").read_text(encoding="utf-8"))
+    result = verifier.verify(ROOT, compatibility["heidi_version"])
+    names = verifier.compact_tool_names(ROOT)
+    assert result["mcp_tool_count"] == len(names)
+    assert result["mcp_tool_count"] == compatibility["mcp"]["registered_action_count"]
+    assert names.count("cptr_workspace_lifecycle") == 1
 
 
 def test_release_manifest_is_deterministic_and_ed25519_verifiable(tmp_path: Path):
