@@ -21,6 +21,7 @@ from cptr.utils.db import init_db
 
 DEFAULT_SCOPES = [
     "workspace:read",
+    "workspace:provision",
     "task:read",
     "task:write",
     "autonomous:run",
@@ -29,13 +30,36 @@ DEFAULT_SCOPES = [
     "coding:write",
     "command:execute",
 ]
+OWNER_FULL_SCOPES = ["command:external", "workspace:delete"]
+
+
+def normalize_profile(profile: str) -> str:
+    value = profile.strip().lower()
+    if value == "full":
+        return "owner-full"
+    if value not in {"standard", "owner-full"}:
+        raise ValueError(f"unsupported control profile: {profile}")
+    return value
+
+
+def scopes_for_profile(profile: str) -> list[str]:
+    normalized = normalize_profile(profile)
+    scopes = [*DEFAULT_SCOPES]
+    if normalized == "owner-full":
+        scopes.extend(OWNER_FULL_SCOPES)
+    return scopes
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--username", required=True)
     parser.add_argument("--name", default="heidi-mcp")
-    parser.add_argument("--profile", choices=("standard", "full"), default="standard")
+    parser.add_argument(
+        "--profile",
+        choices=("standard", "owner-full", "full"),
+        default="standard",
+        help="standard enables safe Direct Coding bootstrap; owner-full adds approved external execution and confirmed managed-workspace deletion (full is a legacy alias)",
+    )
     return parser.parse_args()
 
 
@@ -43,9 +67,7 @@ async def main() -> None:
     args = parse_args()
     await init_db()
     user_id = await get_or_create_user(args.username)
-    scopes = [*DEFAULT_SCOPES]
-    if args.profile == "full":
-        scopes.append("command:external")
+    scopes = scopes_for_profile(args.profile)
 
     raw = f"sk-cptr-{secrets.token_urlsafe(32)}"
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
