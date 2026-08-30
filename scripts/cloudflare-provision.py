@@ -19,6 +19,13 @@ from typing import Any
 
 API = os.environ.get("HEIDI_CLOUDFLARE_API_BASE", "https://api.cloudflare.com/client/v4").rstrip("/")
 
+DEFAULT_MCP_OAUTH_REDIRECT_URIS = (
+    "https://chatgpt.com/connector/oauth/*",
+    "https://claude.ai/*",
+    "https://grok.com/*",
+    "https://gemini.google.com/*",
+)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -32,6 +39,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tunnel-name", default="heidi-cli-mcp")
     parser.add_argument("--tunnel-id")
     parser.add_argument("--access-app-id")
+    parser.add_argument(
+        "--oauth-redirect-uri", action="append", default=[],
+        help="Additional exact or /* Cloudflare Managed OAuth DCR redirect URI; repeat as needed",
+    )
     return parser.parse_args()
 
 
@@ -75,8 +86,6 @@ def discover_zone(domain: str) -> tuple[str, str]:
     labels = [part for part in domain.strip(".").split(".") if part]
     if len(labels) < 2:
         raise RuntimeError("public MCP domain is invalid")
-    # Start with the shortest plausible zone and grow leftward. This handles
-    # ordinary example.com as well as delegated/multi-label zones.
     candidates = [".".join(labels[-count:]) for count in range(2, len(labels) + 1)]
     for candidate in candidates:
         query = urllib.parse.urlencode({"name": candidate})
@@ -160,6 +169,36 @@ def provision_caddy(args: argparse.Namespace, zone_id: str) -> tuple[str, str, s
     return "", "", dns_id
 
 
+def oauth_redirect_uris(args: argparse.Namespace) -> list[str]:
+    configured = [str(value).strip() for value in (args.oauth_redirect_uri or []) if str(value).strip()]
+    return list(dict.fromkeys([*DEFAULT_MCP_OAUTH_REDIRECT_URIS, *configured]))
+
+
+def managed_oauth_configuration(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "enabled": True,
+        "dynamic_client_registration": {
+            "enabled": True,
+            "allow_any_on_localhost": False,
+            "allow_any_on_loopback": False,
+            "allowed_uris": oauth_redirect_uris(args),
+        },
+        "grant": {"access_token_lifetime": "15m", "session_duration": "168h"},
+    }
+
+
+def access_application_body(args: argparse.Namespace, existing: dict[str, Any] | None = None) -> dict[str, Any]:
+    current = existing or {}
+    return {
+        "name": str(current.get("name") or "Heidi CLI MCP"),
+        "domain": args.domain,
+        "type": "mcp",
+        "session_duration": str(current.get("session_duration") or "24h"),
+        "app_launcher_visible": bool(current.get("app_launcher_visible", False)),
+        "oauth_configuration": managed_oauth_configuration(args),
+    }
+
+
 def provision_access(args: argparse.Namespace, account_id: str) -> tuple[str, str, str]:
     access_app_id = args.access_app_id
     audience = ""
@@ -167,29 +206,15 @@ def provision_access(args: argparse.Namespace, account_id: str) -> tuple[str, st
         access_app = request("GET", f"/accounts/{account_id}/access/apps/{access_app_id}")
         if str(access_app.get("domain") or "").rstrip("/") != args.domain.rstrip("/"):
             raise RuntimeError("configured Cloudflare Access application protects a different domain")
-        if (access_app.get("oauth_configuration") or {}).get("enabled") is not True:
-            raise RuntimeError("configured Cloudflare Access application does not have Managed OAuth enabled")
+        access_app = request(
+            "PUT", f"/accounts/{account_id}/access/apps/{access_app_id}",
+            body=access_application_body(args, access_app),
+        )
         audience = str(access_app.get("aud") or "")
     else:
         access_app = request(
             "POST", f"/accounts/{account_id}/access/apps",
-            body={
-                "name": "Heidi CLI MCP",
-                "domain": args.domain,
-                "type": "mcp",
-                "session_duration": "24h",
-                "app_launcher_visible": False,
-                "oauth_configuration": {
-                    "enabled": True,
-                    "dynamic_client_registration": {
-                        "enabled": True,
-                        "allow_any_on_localhost": False,
-                        "allow_any_on_loopback": False,
-                        "allowed_uris": ["https://chatgpt.com/connector/oauth/*"],
-                    },
-                    "grant": {"access_token_lifetime": "15m", "session_duration": "168h"},
-                },
-            },
+            body=access_application_body(args),
         )
         access_app_id = str(access_app["id"])
         audience = str(access_app.get("aud") or "")
