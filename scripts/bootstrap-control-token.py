@@ -15,39 +15,10 @@ import secrets
 import time
 import uuid
 
+from control_token_profiles import scopes_for_profile
 from cptr.services.api_keys import list_api_keys, save_api_keys
 from cptr.utils.config import get_or_create_user
 from cptr.utils.db import init_db
-
-DEFAULT_SCOPES = [
-    "workspace:read",
-    "workspace:provision",
-    "task:read",
-    "task:write",
-    "autonomous:run",
-    "git:read",
-    "coding:read",
-    "coding:write",
-    "command:execute",
-]
-OWNER_FULL_SCOPES = ["command:external", "workspace:delete"]
-
-
-def normalize_profile(profile: str) -> str:
-    value = profile.strip().lower()
-    if value == "full":
-        return "owner-full"
-    if value not in {"standard", "owner-full"}:
-        raise ValueError(f"unsupported control profile: {profile}")
-    return value
-
-
-def scopes_for_profile(profile: str) -> list[str]:
-    normalized = normalize_profile(profile)
-    scopes = [*DEFAULT_SCOPES]
-    if normalized == "owner-full":
-        scopes.extend(OWNER_FULL_SCOPES)
-    return scopes
 
 
 def parse_args() -> argparse.Namespace:
