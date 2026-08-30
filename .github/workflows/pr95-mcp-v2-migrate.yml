@@ -20,6 +20,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Complete mechanical v1 to v2 import migration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          replacements = {
+              '@modelcontextprotocol/sdk/server/mcp.js': '@modelcontextprotocol/server',
+              '@modelcontextprotocol/sdk/client/index.js': '@modelcontextprotocol/client',
+              '@modelcontextprotocol/sdk/inMemory.js': '@modelcontextprotocol/server',
+              '@modelcontextprotocol/sdk/server/streamableHttp.js': '@modelcontextprotocol/node',
+              '@modelcontextprotocol/sdk/types.js': '@modelcontextprotocol/server',
+          }
+          root = Path('apps/mcp')
+          for path in root.rglob('*.ts'):
+              text = path.read_text(encoding='utf-8')
+              updated = text
+              for old, new in replacements.items():
+                  updated = updated.replace(old, new)
+              if updated != text:
+                  path.write_text(updated, encoding='utf-8')
+          PY
       - name: Verify migrated dependency manifest
         shell: bash
         run: |
@@ -43,15 +64,15 @@ jobs:
           npm --prefix apps/mcp test
           npm --prefix apps/mcp run typecheck
           python3 -m pytest -q tests/test_mcp_v2_oauth_contract.py tests/test_cloudflare_provision.py
-      - name: Commit finalized lockfile
+      - name: Commit finalized migration
         shell: bash
         run: |
-          if git diff --quiet -- apps/mcp/package-lock.json; then
-            echo 'MCP v2 lockfile is already synchronized.'
+          if git diff --quiet -- apps/mcp/package-lock.json apps/mcp/server apps/mcp/tests; then
+            echo 'MCP v2 migration is already synchronized.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add apps/mcp/package-lock.json
-          git commit -m 'build(mcp): finalize SDK v2 lockfile'
+          git add apps/mcp/package-lock.json apps/mcp/server apps/mcp/tests
+          git commit -m 'build(mcp): finalize SDK v2 migration'
           git push origin HEAD:feat/heidi-v2.1-owner-full
