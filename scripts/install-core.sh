@@ -66,8 +66,17 @@ case "$TOPOLOGY:$ROLE" in
 esac
 
 CONTROL_PROFILE="${HEIDI_CONTROL_PROFILE:-$(state_default HEIDI_CONTROL_PROFILE standard)}"
+[[ "$CONTROL_PROFILE" != full ]] || CONTROL_PROFILE=owner-full
+case "$CONTROL_PROFILE" in
+  standard|owner-full) ;;
+  *) fail "HEIDI_CONTROL_PROFILE must be standard or owner-full" ;;
+esac
 if [[ "$INCLUDES_BACKEND" == 1 && "${HEIDI_NONINTERACTIVE:-0}" != 1 ]]; then
-  if yes_no "Allow explicitly approved external commands (SSH/browser/network) through CPTR" "$( [[ "$CONTROL_PROFILE" == full ]] && echo y || echo n )"; then CONTROL_PROFILE=full; else CONTROL_PROFILE=standard; fi
+  if yes_no "Enable owner-full control (approved external commands plus confirmed managed-workspace deletion)" "$( [[ "$CONTROL_PROFILE" == owner-full ]] && echo y || echo n )"; then
+    CONTROL_PROFILE=owner-full
+  else
+    CONTROL_PROFILE=standard
+  fi
 fi
 
 CPTR_PORT="${HEIDI_CPTR_PORT:-$(state_default HEIDI_CPTR_PORT 8000)}"
