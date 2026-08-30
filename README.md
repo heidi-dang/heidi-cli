@@ -64,6 +64,12 @@ Add that endpoint when creating a custom MCP app/connector in ChatGPT. If Cloudf
 
 OpenAI controls the final app creation, OAuth consent, tool scan, and action-review UI; a server-side installer cannot press those ChatGPT UI controls for you.
 
+### Zero-workspace bootstrap
+
+Heidi v2.1 exposes `cptr_workspace_lifecycle`, so ChatGPT can start from an empty CPTR workspace registry. `create`, `clone`, and `import` do not require an existing workspace ID. Git clones are confined below the managed Heidi workspace root, reject embedded credentials, register the new workspace immediately, and warm FDX repository intelligence when available. FDX warm-up failure is non-fatal and falls back to normal CPTR Direct Coding.
+
+External imported directories are register-only: they can be archived from CPTR, but the lifecycle API will not recursively delete them. Managed workspace deletion is a separate request/confirm operation and requires the `workspace:delete` scope.
+
 ## Heidi command
 
 After installation, ensure `~/.local/bin` is on your `PATH`, then use:
@@ -93,7 +99,9 @@ heidi deploy --mode dev
 - CPTR API credentials are generated locally and stored with mode `0600`.
 - The production MCP origin requires authentication.
 - FDX is read-only through the ChatGPT intelligence gateway and remains local to the execution identity.
-- The installer supports a standard control profile and an explicitly selected full profile that adds `command:external` for approved SSH/browser/network operations.
+- The `standard` control profile includes safe workspace provisioning but not external execution or filesystem deletion.
+- The explicit `owner-full` profile adds `command:external` and `workspace:delete`; legacy persisted `full` is accepted only as an alias and is migrated to `owner-full`.
+- Managed filesystem deletion remains a two-step request/confirm operation even under `owner-full`.
 - Existing `~/.cptr` state is reused by default so upgrades preserve CPTR workspaces and data.
 
 See `docs/SECURITY.md` before exposing a deployment to anyone other than the machine owner.
