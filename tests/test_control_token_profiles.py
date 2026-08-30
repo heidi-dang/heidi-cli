@@ -3,10 +3,12 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE_PATH = ROOT / "scripts" / "bootstrap-control-token.py"
-spec = importlib.util.spec_from_file_location("bootstrap_control_token", MODULE_PATH)
+MODULE_PATH = ROOT / "scripts" / "control_token_profiles.py"
+spec = importlib.util.spec_from_file_location("control_token_profiles", MODULE_PATH)
 assert spec and spec.loader
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
@@ -29,4 +31,10 @@ def test_owner_full_profile_adds_external_execution_and_workspace_delete():
 
 
 def test_legacy_full_profile_is_exact_alias_of_owner_full():
+    assert module.normalize_profile("full") == "owner-full"
     assert module.scopes_for_profile("full") == module.scopes_for_profile("owner-full")
+
+
+def test_unknown_profile_fails_closed():
+    with pytest.raises(ValueError, match="unsupported control profile"):
+        module.scopes_for_profile("unrestricted")
