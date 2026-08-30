@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cptr.routers.control import WorkspaceLifecycleRequest, workspace_lifecycle
+from cptr.routers.workspace_lifecycle import WorkspaceLifecycleRequest, workspace_lifecycle
 from cptr.utils.identity import ExecutionIdentity
 
 
@@ -44,9 +44,12 @@ async def test_non_delete_workspace_lifecycle_actions_require_provision_scope(
     body = WorkspaceLifecycleRequest(action=action, **payload)
 
     with (
-        patch("cptr.routers.control._user", new=AsyncMock(return_value="user_1")) as user,
-        patch("cptr.routers.control.identity_for_request", new=AsyncMock(return_value=IDENTITY)),
-        patch("cptr.routers.control.workspace_provisioning_service", service),
+        patch("cptr.routers.workspace_lifecycle._user", new=AsyncMock(return_value="user_1")) as user,
+        patch(
+            "cptr.routers.workspace_lifecycle.identity_for_request",
+            new=AsyncMock(return_value=IDENTITY),
+        ),
+        patch("cptr.routers.workspace_lifecycle.workspace_provisioning_service", service),
     ):
         result = await workspace_lifecycle(req, body)
 
@@ -71,9 +74,8 @@ async def test_delete_workspace_lifecycle_actions_require_delete_scope(
     body = WorkspaceLifecycleRequest(action=action, **payload)
 
     with (
-        patch("cptr.routers.control._user", new=AsyncMock(return_value="user_1")) as user,
-        patch("cptr.routers.control.identity_for_request", new=AsyncMock(return_value=IDENTITY)),
-        patch("cptr.routers.control.workspace_provisioning_service", service),
+        patch("cptr.routers.workspace_lifecycle._user", new=AsyncMock(return_value="user_1")) as user,
+        patch("cptr.routers.workspace_lifecycle.workspace_provisioning_service", service),
     ):
         result = await workspace_lifecycle(req, body)
 
@@ -95,9 +97,12 @@ async def test_clone_forwards_identity_url_name_and_fdx_preference():
     )
 
     with (
-        patch("cptr.routers.control._user", new=AsyncMock(return_value="user_1")),
-        patch("cptr.routers.control.identity_for_request", new=AsyncMock(return_value=IDENTITY)),
-        patch("cptr.routers.control.workspace_provisioning_service", service),
+        patch("cptr.routers.workspace_lifecycle._user", new=AsyncMock(return_value="user_1")),
+        patch(
+            "cptr.routers.workspace_lifecycle.identity_for_request",
+            new=AsyncMock(return_value=IDENTITY),
+        ),
+        patch("cptr.routers.workspace_lifecycle.workspace_provisioning_service", service),
     ):
         await workspace_lifecycle(req, body)
 
