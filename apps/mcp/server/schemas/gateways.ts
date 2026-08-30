@@ -24,6 +24,16 @@ export const workspacesGatewaySchema = {
   include_unavailable: z.boolean().default(false),
 };
 
+export const workspaceLifecycleGatewaySchema = {
+  action: z.enum(["create", "clone", "import", "refresh", "archive", "request_delete", "confirm_delete"]),
+  workspace_id: workspaceId.optional(),
+  name: z.string().min(1).max(100).optional(),
+  repository_url: z.string().min(1).max(4_096).optional(),
+  path: z.string().min(1).max(1_000).optional(),
+  confirmation_id: z.string().min(1).max(200).optional(),
+  warm_fdx: z.boolean().default(true),
+};
+
 export const workspaceInspectGatewaySchema = {
   action: z.enum(["project", "metadata", "tests", "dependencies", "scripts", "release"]),
   workspace_id: workspaceId,
