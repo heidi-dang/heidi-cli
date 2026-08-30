@@ -27,9 +27,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--name", default="heidi-mcp")
     parser.add_argument(
         "--profile",
-        choices=("standard", "owner-full", "full"),
-        default="standard",
-        help="standard enables safe Direct Coding bootstrap; owner-full adds approved external execution and confirmed managed-workspace deletion (full is a legacy alias)",
+        choices=("standard", "developer", "owner-full", "full"),
+        default="developer",
+        help="developer is the Heidi default and adds approved external execution for push/deploy; standard disables external execution; owner-full also adds confirmed managed-workspace deletion (full is a legacy alias)",
     )
     return parser.parse_args()
 

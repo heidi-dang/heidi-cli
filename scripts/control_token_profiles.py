@@ -18,7 +18,8 @@ STANDARD_SCOPES = [
     "coding:write",
     "command:execute",
 ]
-OWNER_FULL_SCOPES = ["command:external", "workspace:delete"]
+DEVELOPER_SCOPES = ["command:external"]
+OWNER_FULL_SCOPES = [*DEVELOPER_SCOPES, "workspace:delete"]
 
 
 def normalize_profile(profile: str) -> str:
@@ -26,7 +27,7 @@ def normalize_profile(profile: str) -> str:
     value = profile.strip().lower()
     if value == "full":
         return "owner-full"
-    if value not in {"standard", "owner-full"}:
+    if value not in {"standard", "developer", "owner-full"}:
         raise ValueError(f"unsupported control profile: {profile}")
     return value
 
@@ -35,6 +36,8 @@ def scopes_for_profile(profile: str) -> list[str]:
     """Return a fresh ordered scope list for a canonical or legacy profile."""
     normalized = normalize_profile(profile)
     scopes = [*STANDARD_SCOPES]
-    if normalized == "owner-full":
+    if normalized == "developer":
+        scopes.extend(DEVELOPER_SCOPES)
+    elif normalized == "owner-full":
         scopes.extend(OWNER_FULL_SCOPES)
     return scopes

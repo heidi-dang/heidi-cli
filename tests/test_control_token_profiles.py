@@ -23,6 +23,14 @@ def test_standard_profile_can_bootstrap_but_not_external_execute_or_delete():
     assert "workspace:delete" not in scopes
 
 
+def test_developer_profile_adds_external_execution_without_workspace_delete():
+    scopes = set(module.scopes_for_profile("developer"))
+    assert "workspace:provision" in scopes
+    assert "command:execute" in scopes
+    assert "command:external" in scopes
+    assert "workspace:delete" not in scopes
+
+
 def test_owner_full_profile_adds_external_execution_and_workspace_delete():
     scopes = set(module.scopes_for_profile("owner-full"))
     assert "workspace:provision" in scopes

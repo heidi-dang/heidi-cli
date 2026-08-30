@@ -68,7 +68,7 @@ export function currentPluginUpdateManifest(env: NodeJS.ProcessEnv = process.env
       "Keeps cptr_open_live_workbench as a data-only durable Workbench session bootstrap, preserving prompt authorization and session context without mounting a widget.",
       "Adds cptr_workspace_lifecycle so ChatGPT can create, clone, import, refresh, archive, and confirmed-delete workspaces without requiring an existing workspace first.",
       "Automatically warms FDX repository intelligence after Git workspace provisioning and falls back cleanly to normal CPTR Direct Coding when FDX is unavailable.",
-      "Adds an owner-full capability profile for authenticated machine owners, including approved external execution and confirmed managed-workspace deletion.",
+      "Defaults Heidi deployments to a developer capability profile with approved external execution for explicit push/deploy operations while reserving confirmed managed-workspace deletion for owner-full.",
       "Centralizes the compact MCP tool inventory so runtime tool count and release metadata cannot silently drift apart.",
       "Splits Workbench, SSH, managed Chrome, delegated task, and delegated monitor read surfaces from their control surfaces so read/status calls advertise read-only non-open-world semantics.",
       "Preserves destructive/open-world annotations on control surfaces; the change reduces false-positive host classification without weakening CPTR authorization or execution policy.",

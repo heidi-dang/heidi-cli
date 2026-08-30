@@ -65,17 +65,22 @@ case "$TOPOLOGY:$ROLE" in
   *) fail "unsupported topology/role combination: $TOPOLOGY/$ROLE" ;;
 esac
 
-CONTROL_PROFILE="${HEIDI_CONTROL_PROFILE:-$(state_default HEIDI_CONTROL_PROFILE standard)}"
+if [[ -n "${HEIDI_CONTROL_PROFILE:-}" ]]; then
+  CONTROL_PROFILE="$HEIDI_CONTROL_PROFILE"
+else
+  CONTROL_PROFILE="$(state_default HEIDI_CONTROL_PROFILE developer)"
+  [[ "$CONTROL_PROFILE" != standard ]] || CONTROL_PROFILE=developer
+fi
 [[ "$CONTROL_PROFILE" != full ]] || CONTROL_PROFILE=owner-full
 case "$CONTROL_PROFILE" in
-  standard|owner-full) ;;
-  *) fail "HEIDI_CONTROL_PROFILE must be standard or owner-full" ;;
+  standard|developer|owner-full) ;;
+  *) fail "HEIDI_CONTROL_PROFILE must be standard, developer, or owner-full" ;;
 esac
 if [[ "$INCLUDES_BACKEND" == 1 && "${HEIDI_NONINTERACTIVE:-0}" != 1 ]]; then
   if yes_no "Enable owner-full control (approved external commands plus confirmed managed-workspace deletion)" "$( [[ "$CONTROL_PROFILE" == owner-full ]] && echo y || echo n )"; then
     CONTROL_PROFILE=owner-full
-  else
-    CONTROL_PROFILE=standard
+  elif [[ "$CONTROL_PROFILE" == owner-full ]]; then
+    CONTROL_PROFILE=developer
   fi
 fi
 

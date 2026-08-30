@@ -15,11 +15,13 @@ Do not create a direct public route to CPTR.
 
 ## Credentials and control profiles
 
-The installer creates a dedicated CPTR key named `heidi-mcp`. The `standard` profile contains the scopes required for normal Direct Coding and safe workspace bootstrap, including `workspace:provision`, but it does not grant `command:external` or `workspace:delete`.
+The installer creates a dedicated CPTR key named `heidi-mcp`. Heidi now defaults to the `developer` profile: it contains the normal Direct Coding and safe workspace-bootstrap scopes plus `command:external`, allowing explicitly network-opted operations such as Git push and deployment commands. It does not grant `workspace:delete`.
 
-The explicit `owner-full` profile adds `command:external` for approved SSH/browser/non-loopback network operations and `workspace:delete` for confirmed deletion of Heidi-managed workspaces. Legacy `full` is accepted only as a compatibility alias and is normalized to `owner-full` during deployment.
+The `standard` profile remains available for locked-down installations and omits both `command:external` and `workspace:delete`. Existing persisted `standard` deployments migrate to `developer` on upgrade unless the operator explicitly sets `HEIDI_CONTROL_PROFILE=standard`.
 
-`owner-full` is not an authentication or safety bypass. CPTR authentication, workspace ownership, secret redaction, destructive-command classification, explicit network opt-in, managed-root confinement, and purpose-built confirmation boundaries remain enforced. Managed workspace deletion requires a short-lived request/confirm exchange; imported external directories can be archived from CPTR but cannot be recursively deleted through the lifecycle API.
+The explicit `owner-full` profile adds `workspace:delete` on top of the developer capabilities for confirmed deletion of Heidi-managed workspaces. Legacy `full` is accepted only as a compatibility alias and is normalized to `owner-full` during deployment.
+
+Neither `developer` nor `owner-full` is an authentication or safety bypass. CPTR authentication, workspace ownership, secret redaction, destructive-command classification, explicit `allow_network=true` opt-in, managed-root confinement, and purpose-built confirmation boundaries remain enforced. Managed workspace deletion requires a short-lived request/confirm exchange; imported external directories can be archived from CPTR but cannot be recursively deleted through the lifecycle API.
 
 The raw CPTR token exists only in `~/.config/heidi-cli/mcp.env`. CPTR stores only its SHA-256 digest. Re-running deployment rotates this key.
 

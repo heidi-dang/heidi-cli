@@ -176,14 +176,21 @@ def test_compatibility_manifest_matches_canonical_runtime_inventory_and_sandbox(
     assert "sandbox" in compatibility
 
 
-def test_installer_canonicalizes_legacy_full_to_owner_full_and_fails_closed():
+def test_installer_defaults_to_developer_profile_and_keeps_owner_full_explicit():
     source = read("scripts/install-core.sh")
+    bootstrap = read("scripts/bootstrap-control-token.py")
+    assert 'if [[ -n "${HEIDI_CONTROL_PROFILE:-}" ]]; then' in source
+    assert 'CONTROL_PROFILE="$HEIDI_CONTROL_PROFILE"' in source
+    assert 'state_default HEIDI_CONTROL_PROFILE developer' in source
+    assert '[[ "$CONTROL_PROFILE" != standard ]] || CONTROL_PROFILE=developer' in source
     assert '[[ "$CONTROL_PROFILE" != full ]] || CONTROL_PROFILE=owner-full' in source
-    assert 'standard|owner-full)' in source
-    assert "HEIDI_CONTROL_PROFILE must be standard or owner-full" in source
+    assert 'standard|developer|owner-full)' in source
+    assert "HEIDI_CONTROL_PROFILE must be standard, developer, or owner-full" in source
     assert "Enable owner-full control" in source
     assert "confirmed managed-workspace deletion" in source
     assert "CONTROL_PROFILE=full" not in source
+    assert 'choices=("standard", "developer", "owner-full", "full")' in bootstrap
+    assert 'default="developer"' in bootstrap
 
 
 def test_runtime_lock_pins_every_downloaded_runtime_for_both_linux_architectures():

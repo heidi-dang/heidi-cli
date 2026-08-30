@@ -113,8 +113,9 @@ heidi deploy --mode dev
 - CPTR API credentials are generated locally and stored with mode `0600`.
 - The production MCP origin requires authentication.
 - FDX is read-only through the ChatGPT intelligence gateway and remains local to the execution identity.
-- The `standard` control profile includes safe workspace provisioning but not external execution or filesystem deletion.
-- The explicit `owner-full` profile adds `command:external` and `workspace:delete`; legacy persisted `full` is accepted only as an alias and is migrated to `owner-full`.
+- The default `developer` control profile includes safe workspace provisioning plus `command:external` for explicitly network-opted push/deploy operations; it does not grant managed-workspace deletion.
+- The `standard` profile remains available for locked-down installations and omits both external execution and filesystem deletion.
+- The explicit `owner-full` profile adds `workspace:delete` on top of the developer capabilities; legacy persisted `full` is accepted only as an alias and is migrated to `owner-full`.
 - Managed filesystem deletion remains a two-step request/confirm operation even under `owner-full`.
 - Existing `~/.cptr` state is reused by default so upgrades preserve CPTR workspaces and data.
 
