@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { NodeStreamableHTTPServerTransport, toNodeHandler, toWebRequest } from "@modelcontextprotocol/node";
+import { createMcpHandler, isInitializeRequest, isLegacyRequest } from "@modelcontextprotocol/server";
 import {
   authenticateMcpRequest,
   createProtectedResourceMetadata,
@@ -33,6 +33,10 @@ const publicOrigin = resolvePublicOrigin(process.env, host, port);
 const allowedBrowserOrigins = resolveAllowedOrigins(process.env);
 const oauthResource = process.env.MCP_OAUTH_RESOURCE ?? `${publicOrigin}${mcpPath}`;
 const oauthIssuer = process.env.CLOUDFLARE_ACCESS_ISSUER;
+const authMode = process.env.MCP_AUTH_MODE ??
+  (oauthIssuer ? "cloudflare-managed-oauth" : mcpAccessToken ? "static-token" : "unconfigured");
+const oauthAuthorizationServer = process.env.MCP_OAUTH_AUTHORIZATION_SERVER ??
+  (authMode === "cloudflare-managed-oauth" ? publicOrigin : oauthIssuer);
 const oauthAudience = process.env.CLOUDFLARE_ACCESS_AUDIENCE;
 const oauthAllowedEmail = process.env.MCP_OAUTH_ALLOWED_EMAIL;
 const oauthJwksUri = process.env.CLOUDFLARE_ACCESS_JWKS_URI ??
@@ -67,8 +71,6 @@ const liveGateway = new LiveGateway(client, liveTickets);
 const promptSessions = new PromptTerminalStore({
   streamUrl: `${publicOrigin}/live/prompt/stream`,
   snapshotUrl: `${publicOrigin}/live/prompt/snapshot`,
-  // Prompt activity is intentionally lightweight and remains available even
-  // when raw live-terminal streaming is disabled for chat/UI performance.
   streamingEnabled: true,
 });
 const promptGateway = new PromptTerminalGateway(promptSessions);
@@ -126,7 +128,7 @@ async function readJsonBody(req: IncomingMessage, maxBytes = 2_000_000): Promise
 }
 
 type McpSessionRecord = {
-  transport: StreamableHTTPServerTransport;
+  transport: NodeStreamableHTTPServerTransport;
   server: ReturnType<typeof createMcpServer>;
   authIdentity: string;
   lastSeenAt: number;
@@ -171,6 +173,9 @@ function createSessionServer() {
   });
 }
 
+const modernMcpHandler = createMcpHandler(() => createSessionServer(), { legacy: "reject" });
+const modernNodeHandler = toNodeHandler(modernMcpHandler);
+
 async function handleStatefulInitialize(
   req: IncomingMessage,
   res: ServerResponse,
@@ -180,9 +185,9 @@ async function handleStatefulInitialize(
   await pruneMcpSessions();
   await evictMcpSessionIfFull();
   let initializedSessionId: string | null = null;
-  let transport!: StreamableHTTPServerTransport;
+  let transport!: NodeStreamableHTTPServerTransport;
   const server = createSessionServer();
-  transport = new StreamableHTTPServerTransport({
+  transport = new NodeStreamableHTTPServerTransport({
     sessionIdGenerator: () => randomUUID(),
     enableJsonResponse: true,
     onsessioninitialized: (sessionId) => {
@@ -198,7 +203,6 @@ async function handleStatefulInitialize(
           try {
             server.sendToolListChanged();
           } catch {
-            // ChatGPT currently keeps approved action snapshots host-controlled; notification is best-effort.
           }
         }, 250);
         timer.unref?.();
@@ -227,7 +231,7 @@ async function handleStatelessCompatibilityRequest(
   body: unknown,
 ): Promise<void> {
   const server = createSessionServer();
-  const transport = new StreamableHTTPServerTransport({
+  const transport = new NodeStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
   });
@@ -334,7 +338,7 @@ const httpServer = createServer(async (req, res) => {
   if (url.pathname === mcpPath && req.method === "OPTIONS") {
     res.writeHead(204, {
       ...originHeaders,
-      "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept, Mcp-Session-Id, MCP-Protocol-Version",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept, Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Last-Event-Id",
       "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
     }).end();
     return;
@@ -361,8 +365,10 @@ const httpServer = createServer(async (req, res) => {
       mcp_contract: {
         version: MCP_CONTRACT_VERSION,
         tool_count: MCP_CONTRACT_TOOL_COUNT,
-        session_mode: "stateful-with-stateless-migration-fallback",
-        active_sessions: mcpSessions.size,
+        protocol_revision: "2026-07-28",
+        modern_transport: "request-scoped-streamable-http",
+        legacy_session_mode: "stateful-with-stateless-migration-fallback",
+        active_legacy_sessions: mcpSessions.size,
       },
       release: process.env.GIT_COMMIT_SHA ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? null,
     }));
@@ -370,13 +376,13 @@ const httpServer = createServer(async (req, res) => {
   }
 
   if (url.pathname === "/.well-known/oauth-protected-resource" && req.method === "GET") {
-    if (!oauthIssuer) {
+    if (!oauthAuthorizationServer) {
       writeJson(res, 404, { error: "OAuth is not configured" });
       return;
     }
     writeJson(res, 200, createProtectedResourceMetadata({
       resource: oauthResource,
-      authorizationServer: oauthIssuer,
+      authorizationServer: oauthAuthorizationServer,
       scopes: oauthScopes,
     }));
     return;
@@ -436,8 +442,8 @@ const httpServer = createServer(async (req, res) => {
   }
   const identity = authIdentity(auth);
 
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Mcp-Session-Id, MCP-Protocol-Version");
-  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Last-Event-Id");
+  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id, MCP-Protocol-Version, WWW-Authenticate, Last-Event-Id");
 
   try {
     const sessionHeader = Array.isArray(req.headers["mcp-session-id"])
@@ -463,13 +469,15 @@ const httpServer = createServer(async (req, res) => {
 
     if (req.method === "POST") {
       const body = await readJsonBody(req);
+      const probe = await toWebRequest(req, body);
+      if (!(await isLegacyRequest(probe))) {
+        await modernNodeHandler(req, res, body);
+        return;
+      }
       if (isInitializeRequest(body)) {
         await handleStatefulInitialize(req, res, body, identity);
         return;
       }
-      // Migration compatibility for a ChatGPT connection created before the
-      // current contract. After connector metadata Refresh, initialize-capable
-      // clients receive an Mcp-Session-Id and all prompt activity stays scoped.
       res.setHeader("X-CPTR-Contract-Refresh", `required-v${CPTR_APP_VERSION}`);
       await handleStatelessCompatibilityRequest(req, res, body);
       return;
@@ -491,6 +499,7 @@ async function shutdown(signal: string) {
   console.log(`Shutting down ChatGPT Computer MCP server (${signal})`);
   clearInterval(sessionPruner);
   await Promise.all([...mcpSessions.keys()].map((sessionId) => closeMcpSession(sessionId)));
+  await modernMcpHandler.close().catch(() => undefined);
   httpServer.close();
 }
 
