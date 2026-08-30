@@ -21,25 +21,11 @@ jobs:
       - name: Shell syntax
         run: bash -n install.sh scripts/install-core.sh scripts/install-lib.sh scripts/install-split-backend.sh scripts/install-split-mcp.sh scripts/verify-stack.sh bin/heidi
       - name: Python syntax
-        run: python3 -m py_compile scripts/bootstrap-control-token.py scripts/cloudflare-provision.py scripts/lifecycle.py scripts/release-manifest.py scripts/remediation.py scripts/split-handoff.py
-      - name: Installer, lifecycle, release, and Cloudflare contracts
-        run: python3 -m pytest -q tests/test_installer_contract.py tests/test_lifecycle.py tests/test_release_manifest.py tests/test_cloudflare_provision.py
+        run: python3 -m py_compile scripts/bootstrap-control-token.py scripts/control_token_profiles.py scripts/verify-compatibility.py scripts/cloudflare-provision.py scripts/lifecycle.py scripts/release-manifest.py scripts/remediation.py scripts/split-handoff.py
+      - name: Installer, lifecycle, release, profile, and Cloudflare contracts
+        run: python3 -m pytest -q tests
       - name: Cross-component compatibility contract
-        run: |
-          python3 - <<'PY'
-          import json, pathlib, re
-          root=json.load(open('package.json', encoding='utf-8'))['version']
-          compat=json.load(open('release/compatibility.json', encoding='utf-8'))
-          mcp=json.load(open('apps/mcp/package.json', encoding='utf-8'))['version']
-          cptr=re.search(r'(?m)^version\s*=\s*"([^"]+)"', pathlib.Path('apps/cptr/pyproject.toml').read_text()).group(1)
-          fdx=re.search(r'(?m)^version\s*=\s*"([^"]+)"', pathlib.Path('crates/fdx/Cargo.toml').read_text()).group(1)
-          assert root == compat['heidi_version'] == compat['mcp']['contract_version'] == mcp
-          assert compat['mcp']['registered_action_count'] == 20
-          assert compat['cptr']['package_version'] == cptr
-          assert compat['fdx']['package_version'] == fdx
-          assert pathlib.Path('release/signing-public.pem').read_text().strip() in pathlib.Path('install.sh').read_text()
-          print('compatibility-contract=PASS')
-          PY
+        run: python3 scripts/verify-compatibility.py
       - name: Executable contracts
         run: |
           for file in install.sh bin/heidi scripts/install-core.sh scripts/install-lib.sh scripts/install-split-backend.sh scripts/install-split-mcp.sh scripts/verify-stack.sh scripts/bootstrap-control-token.py scripts/cloudflare-provision.py scripts/lifecycle.py scripts/release-manifest.py scripts/remediation.py scripts/split-handoff.py; do
