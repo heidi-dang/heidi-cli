@@ -19,29 +19,24 @@ from typing import Any
 
 API = os.environ.get("HEIDI_CLOUDFLARE_API_BASE", "https://api.cloudflare.com/client/v4").rstrip("/")
 
-DEFAULT_MCP_OAUTH_REDIRECT_URIS = (
-    "https://chatgpt.com/connector/oauth/*",
-    "https://claude.ai/*",
-    "https://grok.com/*",
-    "https://gemini.google.com/*",
-)
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--account-id")
     parser.add_argument("--zone-id")
     parser.add_argument("--domain", required=True)
-    parser.add_argument("--origin", required=True, help="Loopback MCP origin, for example http://127.0.0.1:8787")
+    parser.add_argument("--origin", required=True, help="MCP origin URL")
     parser.add_argument("--email", required=True)
     parser.add_argument("--transport", choices=["tunnel", "caddy"], default="tunnel")
     parser.add_argument("--origin-address", help="Public IPv4/IPv6 of the Caddy origin")
-    parser.add_argument("--tunnel-name", default="heidi-cli-mcp")
+    parser.add_argument("--tunnel-name")
     parser.add_argument("--tunnel-id")
     parser.add_argument("--access-app-id")
     parser.add_argument(
-        "--oauth-redirect-uri", action="append", default=[],
-        help="Additional exact or /* Cloudflare Managed OAuth DCR redirect URI; repeat as needed",
+        "--oauth-redirect-uri",
+        action="append",
+        default=[],
+        help="Exact or wildcard Cloudflare Managed OAuth DCR redirect URI; repeat as needed",
     )
     return parser.parse_args()
 
@@ -57,7 +52,7 @@ def request(method: str, path: str, *, body: dict[str, Any] | None = None) -> An
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "heidi-cli-cloudflare-provisioner/2.0",
+            "User-Agent": "heidi-cli-cloudflare-provisioner/2.1",
         },
     )
     try:
@@ -135,9 +130,10 @@ def provision_tunnel(args: argparse.Namespace, account_id: str, zone_id: str) ->
         token_result = request("GET", f"/accounts/{account_id}/cfd_tunnel/{tunnel_id}/token")
         tunnel_token = str(token_result.get("token") if isinstance(token_result, dict) else token_result)
     else:
+        tunnel_name = (args.tunnel_name or os.environ.get("HEIDI_CLOUDFLARE_TUNNEL_NAME") or args.domain).strip()
         tunnel = request(
             "POST", f"/accounts/{account_id}/cfd_tunnel",
-            body={"name": args.tunnel_name, "config_src": "cloudflare"},
+            body={"name": tunnel_name, "config_src": "cloudflare"},
         )
         tunnel_id = str(tunnel["id"])
         tunnel_token = str(tunnel.get("token") or "")
@@ -169,19 +165,35 @@ def provision_caddy(args: argparse.Namespace, zone_id: str) -> tuple[str, str, s
     return "", "", dns_id
 
 
-def oauth_redirect_uris(args: argparse.Namespace) -> list[str]:
-    configured = [str(value).strip() for value in (args.oauth_redirect_uri or []) if str(value).strip()]
-    return list(dict.fromkeys([*DEFAULT_MCP_OAUTH_REDIRECT_URIS, *configured]))
+def configured_oauth_redirect_uris(args: argparse.Namespace) -> list[str]:
+    env_values = [
+        value.strip()
+        for value in os.environ.get("MCP_OAUTH_REDIRECT_URIS", "").split(",")
+        if value.strip()
+    ]
+    cli_values = [str(value).strip() for value in (args.oauth_redirect_uri or []) if str(value).strip()]
+    return list(dict.fromkeys([*env_values, *cli_values]))
 
 
-def managed_oauth_configuration(args: argparse.Namespace) -> dict[str, Any]:
+def existing_oauth_redirect_uris(existing: dict[str, Any] | None) -> list[str]:
+    oauth = (existing or {}).get("oauth_configuration") or {}
+    dcr = oauth.get("dynamic_client_registration") or {}
+    values = dcr.get("allowed_uris") or []
+    return [str(value).strip() for value in values if str(value).strip()]
+
+
+def managed_oauth_configuration(args: argparse.Namespace, existing: dict[str, Any] | None = None) -> dict[str, Any]:
+    redirect_uris = list(dict.fromkeys([
+        *existing_oauth_redirect_uris(existing),
+        *configured_oauth_redirect_uris(args),
+    ]))
     return {
         "enabled": True,
         "dynamic_client_registration": {
-            "enabled": True,
+            "enabled": bool(redirect_uris),
             "allow_any_on_localhost": False,
             "allow_any_on_loopback": False,
-            "allowed_uris": oauth_redirect_uris(args),
+            "allowed_uris": redirect_uris,
         },
         "grant": {"access_token_lifetime": "15m", "session_duration": "168h"},
     }
@@ -190,12 +202,12 @@ def managed_oauth_configuration(args: argparse.Namespace) -> dict[str, Any]:
 def access_application_body(args: argparse.Namespace, existing: dict[str, Any] | None = None) -> dict[str, Any]:
     current = existing or {}
     return {
-        "name": str(current.get("name") or "Heidi CLI MCP"),
+        "name": str(current.get("name") or os.environ.get("HEIDI_CLOUDFLARE_ACCESS_APP_NAME") or args.domain),
         "domain": args.domain,
         "type": "mcp",
-        "session_duration": str(current.get("session_duration") or "24h"),
+        "session_duration": str(current.get("session_duration") or os.environ.get("HEIDI_CLOUDFLARE_ACCESS_SESSION_DURATION") or "24h"),
         "app_launcher_visible": bool(current.get("app_launcher_visible", False)),
-        "oauth_configuration": managed_oauth_configuration(args),
+        "oauth_configuration": managed_oauth_configuration(args, existing),
     }
 
 
@@ -221,7 +233,7 @@ def provision_access(args: argparse.Namespace, account_id: str) -> tuple[str, st
         request(
             "POST", f"/accounts/{account_id}/access/apps/{access_app_id}/policies",
             body={
-                "name": "Allow Heidi MCP user",
+                "name": os.environ.get("HEIDI_CLOUDFLARE_ACCESS_POLICY_NAME") or "Allow MCP user",
                 "decision": "allow",
                 "precedence": 1,
                 "include": [{"email": {"email": args.email}}],
