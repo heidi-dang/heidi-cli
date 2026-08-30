@@ -3,7 +3,7 @@
 use crate::intelligence::build::freshness::get_build_providers;
 use crate::intelligence::build::provider::{BuildIngestResult, ProviderDetection};
 use crate::intelligence::db::{DatabaseOpenMode, EvidenceDatabase};
-use crate::intelligence::index::{BUILD_FILE_PLACEHOLDER_HASH, TransactionalGraph};
+use crate::intelligence::index::{TransactionalGraph, BUILD_FILE_PLACEHOLDER_HASH};
 use crate::intelligence::model::{GraphEdge, IndexedFile, SemanticNode};
 use crate::protocol::EvidenceProviderKind;
 use std::path::Path;

@@ -539,6 +539,7 @@ class DirectCodingHttpFlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workspace_root:
             workspace = SimpleNamespace(path=workspace_root, user_id="user_1")
             with (
+                patch.dict("os.environ", {"CPTR_DIRECT_CODING_SANDBOX": "host"}),
                 patch(
                     "cptr.services.control_auth.resolve_api_key_principal",
                     new=AsyncMock(

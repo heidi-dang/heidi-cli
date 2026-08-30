@@ -94,7 +94,10 @@ fn test_build_refresh_preserves_structural_file_hashes() {
             )
             .unwrap()
     };
-    assert_eq!(before, after, "build refresh must not replace the structural SHA-256");
+    assert_eq!(
+        before, after,
+        "build refresh must not replace the structural SHA-256"
+    );
 
     let no_op = run_incremental_index(root, false).unwrap();
     assert_eq!(

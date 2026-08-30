@@ -38,7 +38,7 @@ async def test_zero_workspace_clone_registers_workspace_and_warms_fdx_without_ne
 
     managed_root = tmp_path / "managed"
     fdx = SimpleNamespace(
-        execute=AsyncMock(return_value={"status": "ok", "provider": "fdx_native"})
+        warm_repository=AsyncMock(return_value={"status": "ok", "provider": "fdx_native"})
     )
     service = WorkspaceProvisioningService(workspace_root=managed_root, fdx_service=fdx)
     request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
@@ -114,7 +114,7 @@ async def test_zero_workspace_clone_registers_workspace_and_warms_fdx_without_ne
     }
     assert "path" not in created
     assert (managed_root / "bootstrap" / ".git").is_dir()
-    fdx.execute.assert_awaited_once()
+    fdx.warm_repository.assert_awaited_once()
 
     with (
         patch("cptr.routers.control._user", new=AsyncMock(return_value="user_1")),
