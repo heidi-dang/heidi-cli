@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,15 +32,21 @@ def test_gateway_routes_modern_and_legacy_protocol_eras_on_one_mcp_url():
 
 def test_managed_oauth_is_host_neutral_and_updates_existing_access_apps():
     source = (ROOT / "scripts" / "cloudflare-provision.py").read_text(encoding="utf-8")
-    for origin in (
-        "https://chatgpt.com/connector/oauth/*",
-        "https://claude.ai/*",
-        "https://grok.com/*",
-        "https://gemini.google.com/*",
-    ):
-        assert origin in source
     assert "--oauth-redirect-uri" in source
-    assert 'request("PUT", f"/accounts/{account_id}/access/apps/{access_app_id}"' in source
+    assert "MCP_OAUTH_REDIRECT_URIS" in source
+    assert re.search(
+        r'request\(\s*"PUT"\s*,\s*f"/accounts/\{account_id\}/access/apps/\{access_app_id\}"',
+        source,
+    )
+    assert "DEFAULT_MCP_OAUTH_REDIRECT_URIS" not in source
+    for forbidden in (
+        "chatgpt.com",
+        "claude.ai",
+        "grok.com",
+        "gemini.google.com",
+        "mcp.tnaprovider.com.au",
+    ):
+        assert forbidden not in source
 
 
 def test_oauth_resource_metadata_does_not_confuse_access_jwt_issuer_with_authorization_server():
@@ -48,9 +55,24 @@ def test_oauth_resource_metadata_does_not_confuse_access_jwt_issuer_with_authori
     assert "MCP_AUTH_MODE" in source
     assert "oauthAuthorizationServer" in source
     assert "authorizationServer: oauthAuthorizationServer" in source
+    assert "mcp.tnaprovider.com.au" not in source
 
 
-def test_browser_origin_example_is_not_chatgpt_only():
+def test_environment_example_contains_no_environment_or_provider_host_defaults():
     env_example = (MCP / ".env.example").read_text(encoding="utf-8")
-    for origin in ("https://chatgpt.com", "https://claude.ai", "https://grok.com", "https://gemini.google.com"):
-        assert origin in env_example
+    for forbidden in (
+        "chatgpt.com",
+        "claude.ai",
+        "grok.com",
+        "gemini.google.com",
+        "mcp.tnaprovider.com.au",
+        "owner@example.com",
+    ):
+        assert forbidden not in env_example
+    assert "PUBLIC_ORIGIN=\n" in env_example
+    assert "MCP_ALLOWED_ORIGINS=\n" in env_example
+    assert "# MCP_AUTH_MODE=cloudflare-managed-oauth" in env_example
+    assert "# MCP_OAUTH_AUTHORIZATION_SERVER=" in env_example
+    assert "# MCP_OAUTH_RESOURCE=" in env_example
+    assert "\nHOST=\n" not in env_example
+    assert "\nPORT=\n" not in env_example
