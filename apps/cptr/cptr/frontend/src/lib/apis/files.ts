@@ -3,8 +3,20 @@
  */
 import { fetchHandler, fetchJSON, jsonBody } from '$lib/apis';
 
+export interface WorkspaceFileEntry {
+	name: string;
+	type: 'file' | 'directory' | 'symlink';
+	size: number | null;
+	modified: string | null;
+}
+
+export interface ListDirResponse {
+	path: string;
+	entries: WorkspaceFileEntry[];
+}
+
 export const listDir = (path: string) =>
-	fetchJSON<{ entries: unknown[] }>(`/api/workspace/files?path=${encodeURIComponent(path)}`);
+	fetchJSON<ListDirResponse>(`/api/workspace/files?path=${encodeURIComponent(path)}`);
 
 export const readFile = (path: string) =>
 	fetchHandler(`/api/workspace/files/read?path=${encodeURIComponent(path)}`);
@@ -36,8 +48,14 @@ export const uploadFile = (form: FormData) =>
 export const downloadArchive = (paths: string[]) =>
 	fetchHandler('/api/workspace/files/archive', { method: 'POST', ...jsonBody({ paths }) });
 
+export interface SearchFileResult {
+	path: string;
+	name: string;
+	type: 'file' | 'directory';
+}
+
 export const searchFiles = (query: string, path: string) =>
-	fetchJSON(
+	fetchJSON<{ results: SearchFileResult[] }>(
 		`/api/workspace/files/search?query=${encodeURIComponent(query)}&path=${encodeURIComponent(path)}`
 	);
 

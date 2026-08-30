@@ -3,7 +3,7 @@
 use crate::intelligence::build::freshness::get_build_providers;
 use crate::intelligence::build::provider::{BuildIngestResult, ProviderDetection};
 use crate::intelligence::db::{DatabaseOpenMode, EvidenceDatabase};
-use crate::intelligence::index::TransactionalGraph;
+use crate::intelligence::index::{BUILD_FILE_PLACEHOLDER_HASH, TransactionalGraph};
 use crate::intelligence::model::{GraphEdge, IndexedFile, SemanticNode};
 use crate::protocol::EvidenceProviderKind;
 use std::path::Path;
@@ -230,13 +230,13 @@ fn publish_provider_evidence(
         if let Some(ref cpath) = node.canonical_path {
             let ifile = IndexedFile {
                 canonical_path: cpath.clone(),
-                content_hash: "build_native".to_string(),
+                content_hash: BUILD_FILE_PLACEHOLDER_HASH.to_string(),
                 size: 0,
                 mtime_ms: Some(now as u64),
                 language: None,
                 indexed_at: now as u64,
             };
-            tx.upsert_file_row(&ifile).map_err(|e| e.to_string())?;
+            tx.ensure_file_row(&ifile).map_err(|e| e.to_string())?;
         }
     }
 

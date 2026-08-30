@@ -2,7 +2,8 @@ import { CPTR_APP_VERSION } from "./version.js";
 
 export const MCP_COMPACT_TOOL_NAMES = [
   "cptr_open_live_workbench",
-  "cptr_workbench_sessions",
+  "cptr_workbench_sessions_read",
+  "cptr_workbench_sessions_control",
   "cptr_workspaces",
   "cptr_workspace_lifecycle",
   "cptr_workspace_inspect",
@@ -17,11 +18,15 @@ export const MCP_COMPACT_TOOL_NAMES = [
   "cptr_code_cancel_command",
   "cptr_direct_workers",
   "cptr_direct_worker_control",
-  "cptr_ssh",
-  "cptr_chrome_browser",
+  "cptr_ssh_read",
+  "cptr_ssh_control",
+  "cptr_chrome_read",
+  "cptr_chrome_control",
   "cptr_plugin_update",
-  "cptr_delegate_task",
-  "cptr_delegate_monitor",
+  "cptr_delegate_task_read",
+  "cptr_delegate_task_control",
+  "cptr_delegate_monitor_read",
+  "cptr_delegate_monitor_control",
 ] as const;
 
 export const MCP_CONTRACT_VERSION = CPTR_APP_VERSION;
@@ -57,7 +62,7 @@ export function currentPluginUpdateManifest(env: NodeJS.ProcessEnv = process.env
     tool_count: MCP_CONTRACT_TOOL_COUNT,
     release_sha: env.GIT_COMMIT_SHA ?? env.RAILWAY_GIT_COMMIT_SHA ?? env.CPTR_WORKBENCH_BUILD_ID ?? null,
     released_at: "2026-08-30",
-    summary: "Heidi v2.1.1 switches the ChatGPT-facing MCP contract to tool-only mode by disabling the MCP Apps UI entrypoint while preserving Workbench session state and Direct Coding tools.",
+    summary: "Heidi v2.1.2 splits mixed read/control MCP gateways so host safety classification reflects the requested capability without weakening destructive or open-world controls.",
     changes: [
       "Removes the MCP resources capability and ui.resourceUri tool metadata so ChatGPT sees Heidi as a tool-only MCP connector instead of an MCP Apps UI surface.",
       "Keeps cptr_open_live_workbench as a data-only durable Workbench session bootstrap, preserving prompt authorization and session context without mounting a widget.",
@@ -65,9 +70,11 @@ export function currentPluginUpdateManifest(env: NodeJS.ProcessEnv = process.env
       "Automatically warms FDX repository intelligence after Git workspace provisioning and falls back cleanly to normal CPTR Direct Coding when FDX is unavailable.",
       "Adds an owner-full capability profile for authenticated machine owners, including approved external execution and confirmed managed-workspace deletion.",
       "Centralizes the compact MCP tool inventory so runtime tool count and release metadata cannot silently drift apart.",
+      "Splits Workbench, SSH, managed Chrome, delegated task, and delegated monitor read surfaces from their control surfaces so read/status calls advertise read-only non-open-world semantics.",
+      "Preserves destructive/open-world annotations on control surfaces; the change reduces false-positive host classification without weakening CPTR authorization or execution policy.",
     ],
     refresh_required: true,
-    refresh_reason: "v2.1.1 removes the ChatGPT-facing MCP Apps UI entrypoint, so the host must refresh its cached action contract after deployment.",
+    refresh_reason: "The compact MCP tool inventory and safety annotations changed, so the host must refresh its cached action contract after deployment.",
     refresh_path: ["Settings", "Apps / Plugins", "Heidi", "Manage / Action control", "Refresh"],
     verification: {
       tool: "cptr_plugin_update",

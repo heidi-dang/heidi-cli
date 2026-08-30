@@ -29,7 +29,7 @@ _ALLOWED = {"host", "auto", "bubblewrap", "systemd", "container", "vm"}
 
 
 def configured_profile() -> str:
-    value = os.getenv("CPTR_DIRECT_CODING_SANDBOX", "host").strip().lower() or "host"
+    value = os.getenv("CPTR_DIRECT_CODING_SANDBOX", "bubblewrap").strip().lower() or "bubblewrap"
     if value not in _ALLOWED:
         raise SandboxUnavailable(
             f"unsupported CPTR_DIRECT_CODING_SANDBOX={value!r}; expected one of {sorted(_ALLOWED)}"

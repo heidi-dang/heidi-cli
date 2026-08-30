@@ -14,7 +14,7 @@ interface SessionResponse {
 }
 
 interface ConfigResponse {
-	auth_mode: string;
+	auth_mode: 'password' | 'pam';
 	needs_setup: boolean;
 	signup_enabled: boolean;
 	version: string;

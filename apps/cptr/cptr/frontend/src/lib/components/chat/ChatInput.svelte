@@ -165,7 +165,11 @@
 	// ── Lowlight setup ──────────────────────────────
 	const lowlight = createLowlight(all);
 	const _origHighlight = lowlight.highlight.bind(lowlight);
-	lowlight.highlight = (lang: string, value: string, opts?: Record<string, unknown>) => {
+	lowlight.highlight = (
+		lang: string,
+		value: string,
+		opts?: Parameters<typeof _origHighlight>[2]
+	) => {
 		if (!lowlight.registered(lang)) return lowlight.highlightAuto(value);
 		return _origHighlight(lang, value, opts);
 	};

@@ -2,16 +2,22 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import type { ComputerClient } from "./client/computer-client.js";
 import type { LiveTarget } from "./live-tickets.js";
 import {
+  chromeControlGatewaySchema,
+  chromeReadGatewaySchema,
   codeFilesGatewaySchema,
   codeMutateGatewaySchema,
   codeReadGatewaySchema,
-  delegateMonitorGatewaySchema,
-  delegateTaskGatewaySchema,
+  delegateMonitorControlGatewaySchema,
+  delegateMonitorReadGatewaySchema,
+  delegateTaskControlGatewaySchema,
+  delegateTaskReadGatewaySchema,
   directWorkerControlGatewaySchema,
   directWorkersGatewaySchema,
   gitGatewaySchema,
-  sshGatewaySchema,
-  workbenchSessionsGatewaySchema,
+  sshControlGatewaySchema,
+  sshReadGatewaySchema,
+  workbenchSessionsControlGatewaySchema,
+  workbenchSessionsReadGatewaySchema,
   workspaceInspectGatewaySchema,
   workspaceLifecycleGatewaySchema,
   workspacesGatewaySchema,
@@ -72,11 +78,11 @@ export function registerCompactGateways(
     handler as never,
   )) as typeof server.registerTool;
 
-  server.registerTool("cptr_workbench_sessions", {
-    title: "Workbench session lifecycle",
-    description: "List/get/events/bind/rename/archive/request-delete/confirm-delete durable Workbench sessions. Delete remains a two-step confirmed operation.",
-    inputSchema: workbenchSessionsGatewaySchema,
-    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+  server.registerTool("cptr_workbench_sessions_read", {
+    title: "Workbench session inspection",
+    description: "List, get, or read events for durable Workbench sessions without changing session state.",
+    inputSchema: workbenchSessionsReadGatewaySchema,
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     _meta: oauthMeta,
   }, async (input) => {
     switch (input.action) {
@@ -90,6 +96,17 @@ export function registerCompactGateways(
           after_sequence: input.after_sequence,
           limit: input.limit,
         }));
+    }
+  });
+
+  server.registerTool("cptr_workbench_sessions_control", {
+    title: "Workbench session control",
+    description: "Bind, rename, archive, or two-step delete durable Workbench sessions. Delete remains confirmed and destructive.",
+    inputSchema: workbenchSessionsControlGatewaySchema,
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    _meta: oauthMeta,
+  }, async (input) => {
+    switch (input.action) {
       case "bind": {
         const targetType = input.target_type;
         if (!targetType) throw new Error("target_type is required for bind");
@@ -311,25 +328,15 @@ export function registerCompactGateways(
     }
   });
 
-  server.registerTool("cptr_ssh", {
-    title: "SSH control gateway",
-    description: "List configured SSH aliases, run a remote command, read status/output, or cancel it through CPTR's dedicated SSH path.",
-    inputSchema: sshGatewaySchema,
-    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+  server.registerTool("cptr_ssh_read", {
+    title: "SSH inspection gateway",
+    description: "List configured SSH aliases or read status/output for an already-started SSH command. This surface never starts or cancels remote execution.",
+    inputSchema: sshReadGatewaySchema,
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     _meta: oauthMeta,
   }, async (input) => {
     switch (input.action) {
       case "hosts": return result(await client.listSshHosts({ workspace_id: input.workspace_id }));
-      case "run": {
-        const command = await client.runSshCommand({
-          workspace_id: input.workspace_id,
-          alias: required(input.alias, "alias"),
-          command: required(input.command, "command"),
-          wait_seconds: input.wait_seconds,
-        });
-        emitLive({ targetType: "command", targetId: command.command_id, workspaceId: input.workspace_id });
-        return result(command);
-      }
       case "status": {
         const commandId = required(input.command_id, "command_id");
         const command = await client.getSshCommand({
@@ -341,6 +348,27 @@ export function registerCompactGateways(
         emitLive({ targetType: "command", targetId: commandId, workspaceId: input.workspace_id });
         return result(command);
       }
+    }
+  });
+
+  server.registerTool("cptr_ssh_control", {
+    title: "SSH execution control gateway",
+    description: "Run or cancel explicitly requested SSH commands through configured aliases. Remote execution remains destructive/open-world and subject to CPTR authorization.",
+    inputSchema: sshControlGatewaySchema,
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    _meta: oauthMeta,
+  }, async (input) => {
+    switch (input.action) {
+      case "run": {
+        const command = await client.runSshCommand({
+          workspace_id: input.workspace_id,
+          alias: required(input.alias, "alias"),
+          command: required(input.command, "command"),
+          wait_seconds: input.wait_seconds,
+        });
+        emitLive({ targetType: "command", targetId: command.command_id, workspaceId: input.workspace_id });
+        return result(command);
+      }
       case "cancel": return result(await client.cancelSshCommand({
         workspace_id: input.workspace_id,
         command_id: required(input.command_id, "command_id"),
@@ -348,11 +376,27 @@ export function registerCompactGateways(
     }
   });
 
-  server.registerTool("cptr_delegate_task", {
-    title: "Delegated task gateway",
-    description: "Optional model/agent-backed task lifecycle. Never use for ordinary Direct Coding. Requires exact allow:delegate authorization for this prompt session.",
-    inputSchema: delegateTaskGatewaySchema,
+  server.registerTool("cptr_chrome_read", {
+    title: "Managed Chrome inspection gateway",
+    description: "Read managed Chrome status or a bounded accessibility snapshot without navigation or page interaction.",
+    inputSchema: chromeReadGatewaySchema,
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    _meta: oauthMeta,
+  }, async (input) => result(await client.controlChromeBrowser(input)));
+
+  server.registerTool("cptr_chrome_control", {
+    title: "Managed Chrome control gateway",
+    description: "Navigate or interact with CPTR managed Chrome, capture screenshots, or close the managed session. External navigation and page interaction remain conservatively destructive/open-world.",
+    inputSchema: chromeControlGatewaySchema,
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    _meta: oauthMeta,
+  }, async (input) => result(await client.controlChromeBrowser(input)));
+
+  server.registerTool("cptr_delegate_task_read", {
+    title: "Delegated task inspection gateway",
+    description: "Read delegated task models, listings, status, output, events, or review data. Never use for ordinary Direct Coding. Requires exact allow:delegate authorization for this prompt session.",
+    inputSchema: delegateTaskReadGatewaySchema,
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     _meta: oauthMeta,
   }, async (input) => {
     switch (input.action) {
@@ -362,6 +406,21 @@ export function registerCompactGateways(
         ...(input.status ? { status: input.status } : {}),
         limit: input.limit,
       }));
+      case "get": return result(await client.getTask(required(input.task_id, "task_id")));
+      case "output": return result(await client.getTaskOutput({ task_id: required(input.task_id, "task_id"), offset: input.offset, max_chars: input.max_chars }));
+      case "events": return result(await client.getTaskEvents({ task_id: required(input.task_id, "task_id"), after_sequence: input.after_sequence, max_events: input.max_events }));
+      case "review": return result(await client.getTaskReview({ task_id: required(input.task_id, "task_id"), max_diff_bytes: input.max_diff_bytes }));
+    }
+  });
+
+  server.registerTool("cptr_delegate_task_control", {
+    title: "Delegated task control gateway",
+    description: "Start, execute, review-decide, message, or cancel delegated tasks. Never use for ordinary Direct Coding. Requires exact allow:delegate authorization for this prompt session.",
+    inputSchema: delegateTaskControlGatewaySchema,
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    _meta: oauthMeta,
+  }, async (input) => {
+    switch (input.action) {
       case "start": {
         const task = await client.startTask({
           workspace_id: required(input.workspace_id, "workspace_id"),
@@ -385,10 +444,6 @@ export function registerCompactGateways(
         emitLive({ targetType: "task", targetId: task.task_id });
         return result(task);
       }
-      case "get": return result(await client.getTask(required(input.task_id, "task_id")));
-      case "output": return result(await client.getTaskOutput({ task_id: required(input.task_id, "task_id"), offset: input.offset, max_chars: input.max_chars }));
-      case "events": return result(await client.getTaskEvents({ task_id: required(input.task_id, "task_id"), after_sequence: input.after_sequence, max_events: input.max_events }));
-      case "review": return result(await client.getTaskReview({ task_id: required(input.task_id, "task_id"), max_diff_bytes: input.max_diff_bytes }));
       case "decide_review": return result(await client.decideTaskReview(required(input.task_id, "task_id"), {
         decision: input.decision ?? "REQUEST_CHANGES",
         ...(input.note ? { note: input.note } : {}),
@@ -399,11 +454,11 @@ export function registerCompactGateways(
     }
   });
 
-  server.registerTool("cptr_delegate_monitor", {
-    title: "Delegated autonomous monitor gateway",
-    description: "Optional autonomous monitor lifecycle. Never use for ordinary Direct Coding. Requires exact allow:delegate authorization for this prompt session.",
-    inputSchema: delegateMonitorGatewaySchema,
-    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+  server.registerTool("cptr_delegate_monitor_read", {
+    title: "Delegated monitor inspection gateway",
+    description: "Read delegated monitor listings, status, events, or evidence. Never use for ordinary Direct Coding. Requires exact allow:delegate authorization for this prompt session.",
+    inputSchema: delegateMonitorReadGatewaySchema,
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     _meta: oauthMeta,
   }, async (input) => {
     switch (input.action) {
@@ -412,6 +467,20 @@ export function registerCompactGateways(
         ...(input.status ? { status: input.status } : {}),
         limit: input.limit,
       }));
+      case "get": return result(await client.getAutonomous(required(input.monitor_id, "monitor_id")));
+      case "events": return result(await client.getAutonomousEvents({ monitor_id: required(input.monitor_id, "monitor_id"), after_sequence: input.after_sequence, max_events: input.max_events }));
+      case "evidence": return result(await client.getAutonomousEvidence({ monitor_id: required(input.monitor_id, "monitor_id"), ...(input.scope_id ? { scope_id: input.scope_id } : {}) }));
+    }
+  });
+
+  server.registerTool("cptr_delegate_monitor_control", {
+    title: "Delegated monitor control gateway",
+    description: "Start, steer, approve, or cancel delegated autonomous monitors. Never use for ordinary Direct Coding. Requires exact allow:delegate authorization for this prompt session.",
+    inputSchema: delegateMonitorControlGatewaySchema,
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    _meta: oauthMeta,
+  }, async (input) => {
+    switch (input.action) {
       case "start": {
         const monitor = await client.createAutonomous({
           workspace_id: required(input.workspace_id, "workspace_id"),
@@ -426,9 +495,6 @@ export function registerCompactGateways(
         emitLive({ targetType: "monitor", targetId: monitorId });
         return result({ ...monitor, monitor_id: monitorId });
       }
-      case "get": return result(await client.getAutonomous(required(input.monitor_id, "monitor_id")));
-      case "events": return result(await client.getAutonomousEvents({ monitor_id: required(input.monitor_id, "monitor_id"), after_sequence: input.after_sequence, max_events: input.max_events }));
-      case "evidence": return result(await client.getAutonomousEvidence({ monitor_id: required(input.monitor_id, "monitor_id"), ...(input.scope_id ? { scope_id: input.scope_id } : {}) }));
       case "steer": return result(await client.steerAutonomous(required(input.monitor_id, "monitor_id"), required(input.content, "content"), input.idempotency_key));
       case "approve": return result(await client.approveAutonomous(
         required(input.monitor_id, "monitor_id"),

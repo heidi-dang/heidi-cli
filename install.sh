@@ -105,10 +105,56 @@ ACTUAL_COMPAT="$(sha256sum "$STAGE/source/release/compatibility.json" | awk '{pr
 [ -x "$STAGE/source/scripts/install-core.sh" ] || chmod +x "$STAGE/source/scripts/install-core.sh"
 
 # A release is immutable once installed. If the exact version already exists,
-# reuse it only when its source manifest still matches the signed release.
+# reuse it only when every signed source file still matches the freshly
+# downloaded, signature-verified source archive. Extra generated build files are
+# ignored because they are not part of the signed source payload.
+verify_existing_signed_source() {
+  python3 - "$1" "$2" <<'PY'
+from __future__ import annotations
+
+import hashlib
+import os
+import sys
+from pathlib import Path
+
+expected = Path(sys.argv[1]).resolve()
+installed_arg = Path(sys.argv[2])
+if installed_arg.is_symlink():
+    raise SystemExit("installed source directory must not be a symlink")
+installed = installed_arg.resolve()
+if not installed.is_dir():
+    raise SystemExit("installed source directory is missing")
+
+
+def digest(path: Path) -> str:
+    value = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            value.update(chunk)
+    return value.hexdigest()
+
+for source in expected.rglob("*"):
+    relative = source.relative_to(expected)
+    target = installed / relative
+    if source.is_symlink():
+        if not target.is_symlink() or os.readlink(target) != os.readlink(source):
+            raise SystemExit(f"signed source mismatch: {relative}")
+        continue
+    if source.is_dir():
+        if target.is_symlink() or not target.is_dir():
+            raise SystemExit(f"signed source directory missing or unsafe: {relative}")
+        continue
+    if not target.is_file() or target.is_symlink():
+        raise SystemExit(f"signed source file missing: {relative}")
+    if source.stat().st_size != target.stat().st_size or digest(source) != digest(target):
+        raise SystemExit(f"signed source mismatch: {relative}")
+PY
+}
+
 if [ -e "$RELEASE_DIR" ]; then
   EXISTING_COMPAT="$(sha256sum "$RELEASE_DIR/source/release/compatibility.json" 2>/dev/null | awk '{print $1}' || true)"
   [ "$EXISTING_COMPAT" = "$COMPAT_SHA" ] || fail "installed release v$SIGNED_VERSION differs from the signed release; refusing overwrite"
+  verify_existing_signed_source "$STAGE/source" "$RELEASE_DIR/source" || fail "installed release v$SIGNED_VERSION has modified signed source files"
   rm -rf "$STAGE"
 else
   mv "$STAGE" "$RELEASE_DIR"

@@ -352,8 +352,10 @@ const autonomousSummaryOutputSchema = {
 };
 
 const DELEGATED_AGENT_TOOL_NAMES = new Set([
-  "cptr_delegate_task",
-  "cptr_delegate_monitor",
+  "cptr_delegate_task_read",
+  "cptr_delegate_task_control",
+  "cptr_delegate_monitor_read",
+  "cptr_delegate_monitor_control",
   // Legacy names remain gated when CPTR_MCP_LEGACY_CONTRACT=1.
   "cptr_list_models", "cptr_list_tasks", "cptr_list_autonomous", "cptr_get_task_events",
   "cptr_start_task", "cptr_execute_task", "cptr_monitor_autonomous", "cptr_get_autonomous",
@@ -385,7 +387,7 @@ function requiresDelegationAuthorization(name: string, input: unknown): boolean 
     const targetType = (input as { target_type?: unknown }).target_type;
     return targetType === "task" || targetType === "monitor";
   }
-  if (name === "cptr_workbench_sessions") {
+  if (name === "cptr_workbench_sessions_control") {
     const record = input as { action?: unknown; target_type?: unknown };
     return record.action === "bind" && (record.target_type === "task" || record.target_type === "monitor");
   }
@@ -652,7 +654,7 @@ export function createMcpServer(
         initial_summary: z.string(),
         delegation_allowed: z.boolean(),
       },
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
       _meta: openWorkbenchToolMetadata,
     },
     async (input) => {
@@ -1279,7 +1281,7 @@ export function createMcpServer(
     {
       title: "FDX Intelligence CLI",
       description:
-        "Preferred first repository-intelligence entry point for Direct Coding. Choose the FDX action that best fits the task: capabilities/status, token-optimized read, search/grep, batch, outline/tree/listing, dependency impact, why explanations, evidence/semantic/build intelligence, symbol-aware diff, index status, or verification planning. This is structured read-only intelligence, not a raw shell and not agent delegation. If status is unavailable/degraded, fallback_recommended=true, assurance is DEGRADED/UNVERIFIED, or output is truncated/insufficient, corroborate or continue with normal CPTR Direct Coding tools. Use exact cptr_code_read_file output and SHA-256 before editing.",
+        "Preferred first repository-intelligence entry point for Direct Coding. Choose the FDX action that best fits the task: capabilities/status, token-optimized read, search/grep, batch, outline/tree/listing, dependency impact, why explanations, evidence/semantic/build intelligence, symbol-aware diff, index status, or verification planning. This is structured read-only intelligence, not a raw shell and not agent delegation. If status is unavailable/degraded, fallback_recommended=true, assurance is DEGRADED/UNVERIFIED, or output is truncated/insufficient, corroborate or continue with normal CPTR Direct Coding tools. Use exact cptr_code_read output and SHA-256 before editing.",
       inputSchema: fdxIntelligenceSchema,
       outputSchema: {
         workspace_id: z.string(),

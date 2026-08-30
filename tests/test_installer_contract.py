@@ -130,6 +130,12 @@ def test_development_mcp_service_uses_bundled_node_hot_reload_runner():
     assert 'MCP_EXEC="$NPM_BIN --prefix $HEIDI_HOME/current/source/apps/mcp run dev"' not in source
 
 
+def test_cptr_execution_environment_includes_bundled_runtime_path():
+    source = read("scripts/install-core.sh")
+    cptr_block = source.split('>"$CPTR_ENV_FILE"', 1)[0].rsplit("if [[ \"$INCLUDES_BACKEND\" == 1 ]]", 1)[-1]
+    assert 'env_line PATH "$HEIDI_HOME/current/venv/bin:$HEIDI_HOME/current/runtime/node/bin:$HEIDI_HOME/current/bin:' in cptr_block
+
+
 def test_verifier_generates_tailored_ai_repair_prompt_on_failure():
     source = read("scripts/verify-stack.sh")
     assert "remediation.py" in source
@@ -149,6 +155,15 @@ def test_bootstrap_has_signed_release_trust_boundary():
     assert "heidi-release.json.sig" in source
     assert "openssl" in source
     assert "release/signing-public.pem" in source or "BEGIN PUBLIC KEY" in source
+
+
+def test_bootstrap_revalidates_all_signed_source_files_before_reusing_release():
+    source = read("install.sh")
+    assert "verify_existing_signed_source" in source
+    assert 'verify_existing_signed_source "$STAGE/source" "$RELEASE_DIR/source"' in source
+    assert "modified signed source files" in source
+    assert "installed source directory must not be a symlink" in source
+    assert "target.is_symlink() or not target.is_dir()" in source
 
 
 def test_compatibility_manifest_matches_canonical_runtime_inventory_and_sandbox():
@@ -197,3 +212,9 @@ def test_release_workflow_builds_signs_and_publishes_channel_assets():
     assert "options: [stable, beta, edge]" in source
     assert 'CHANNEL_TAG="channel-${CHANNEL}"' in source
     assert "scripts/verify-compatibility.py" in source
+
+
+def test_versioned_release_assets_are_never_clobbered():
+    source = read(".github/workflows/release.yml")
+    assert "--clobber" not in source
+    assert "already exists; refusing to replace immutable release assets" in source

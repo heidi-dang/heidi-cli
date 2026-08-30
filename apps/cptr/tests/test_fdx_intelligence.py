@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 from cptr.routers.coding import FdxIntelligenceRequest, run_fdx_intelligence
 from cptr.services.fdx_intelligence import (
+    FDX_FALLBACK_TOOLS,
     FdxIntelligenceError,
     FdxIntelligenceService,
 )
@@ -261,6 +262,43 @@ class FdxIntelligenceServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "degraded")
         self.assertEqual(result["error_code"], "FDX_REPOSITORY_ROOT_REQUIRED")
         self.assertTrue(result["fallback_recommended"])
+        self.assertEqual(result["fallback_tools"], list(FDX_FALLBACK_TOOLS))
+        self.assertNotIn("cptr_code_read_file", result["fallback_tools"])
+
+    async def test_warm_repository_builds_index_and_build_graph_before_status_checks(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / ".git").mkdir()
+            service = FdxIntelligenceService()
+            runner = AsyncMock(
+                side_effect=[
+                    {"text": "INDEX fresh"},
+                    {"text": "REFRESH build ok"},
+                    {"text": "INDEX fresh files=10"},
+                    {"text": "BUILD providers=2 nodes=20 edges=30"},
+                    {"text": "SEMANTIC no providers"},
+                ]
+            )
+            with patch.object(service, "_run_cli", new=runner):
+                result = await service.warm_repository(
+                    user_id="user_1",
+                    workspace_id="ws_1",
+                    root=root,
+                    identity=_identity(temp),
+                )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertFalse(result["fallback_recommended"])
+        self.assertEqual(
+            [call.kwargs["argv"] for call in runner.await_args_list],
+            [
+                ["index"],
+                ["build", "refresh"],
+                ["index", "status"],
+                ["build", "status"],
+                ["semantic", "status"],
+            ],
+        )
 
     def test_resolve_binary_discovers_standard_cargo_install_location(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -295,7 +333,7 @@ class FdxIntelligenceServiceTests(unittest.IsolatedAsyncioTestCase):
                 )
         self.assertEqual(result["status"], "unavailable")
         self.assertEqual(result["error_code"], "FDX_BINARY_UNAVAILABLE")
-        self.assertIn("cptr_code_search_files", result["fallback_tools"])
+        self.assertEqual(result["fallback_tools"], list(FDX_FALLBACK_TOOLS))
 
     async def test_cli_capture_fails_closed_when_native_output_exceeds_transport_bound(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -396,7 +434,7 @@ class FdxIntelligenceServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["fallback_recommended"])
         self.assertEqual(result["assurance"], "DEGRADED")
         self.assertEqual(result["data"]["selected_checks"], [])
-        self.assertIn("cptr_code_read_file", result["fallback_tools"])
+        self.assertEqual(result["fallback_tools"], list(FDX_FALLBACK_TOOLS))
 
     async def test_semantic_degraded_marker_recommends_fallback(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -5,12 +5,17 @@ const workerId = z.string().min(1).max(200).optional();
 const workbenchSessionId = z.string().regex(/^wbs_[A-Za-z0-9_-]{16,80}$/);
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
 
-export const workbenchSessionsGatewaySchema = {
-  action: z.enum(["list", "get", "events", "bind", "rename", "archive", "request_delete", "confirm_delete"]),
+export const workbenchSessionsReadGatewaySchema = {
+  action: z.enum(["list", "get", "events"]),
   workbench_session_id: workbenchSessionId.optional(),
   include_archived: z.boolean().default(false),
   limit: z.number().int().min(1).max(200).default(50),
   after_sequence: z.number().int().min(0).max(100_000_000).default(0),
+};
+
+export const workbenchSessionsControlGatewaySchema = {
+  action: z.enum(["bind", "rename", "archive", "request_delete", "confirm_delete"]),
+  workbench_session_id: workbenchSessionId.optional(),
   target_type: z.enum(["task", "monitor", "command"]).optional(),
   target_id: z.string().min(1).max(200).optional(),
   workspace_id: workspaceId.optional(),
@@ -118,14 +123,41 @@ export const directWorkerControlGatewaySchema = {
   discard_changes: z.boolean().default(false),
 };
 
-export const sshGatewaySchema = {
-  action: z.enum(["hosts", "run", "status", "cancel"]),
+export const sshReadGatewaySchema = {
+  action: z.enum(["hosts", "status"]),
+  workspace_id: workspaceId,
+  command_id: z.string().min(1).max(200).optional(),
+  wait_seconds: z.number().int().min(0).max(60).default(0),
+  offset: z.number().int().min(0).max(100_000_000).default(0),
+};
+
+export const sshControlGatewaySchema = {
+  action: z.enum(["run", "cancel"]),
   workspace_id: workspaceId,
   alias: z.string().min(1).max(128).optional(),
   command: z.string().min(1).max(20_000).optional(),
   command_id: z.string().min(1).max(200).optional(),
   wait_seconds: z.number().int().min(0).max(60).default(0),
-  offset: z.number().int().min(0).max(100_000_000).default(0),
+};
+
+export const chromeReadGatewaySchema = {
+  action: z.enum(["status", "snapshot"]),
+  workspace_id: workspaceId,
+};
+
+export const chromeControlGatewaySchema = {
+  action: z.enum(["navigate", "click", "type", "press_key", "scroll", "screenshot", "close"]),
+  workspace_id: workspaceId,
+  url: z.string().max(4_096).optional(),
+  ref: z.string().max(64).optional(),
+  text: z.string().max(20_000).optional(),
+  key: z.string().max(128).optional(),
+  modifiers: z.array(z.enum(["Alt", "Control", "Meta", "Shift"])).max(4).default([]),
+  direction: z.enum(["up", "down"]).default("down"),
+  amount: z.number().int().min(1).max(20).default(3),
+  width: z.number().int().min(320).max(3_840).optional(),
+  height: z.number().int().min(240).max(2_160).optional(),
+  allow_network: z.boolean().default(false),
 };
 
 const taskExecutionPolicy = z.object({
@@ -140,43 +172,53 @@ const taskExecutionPolicy = z.object({
   allow_package_install: false,
 });
 
-export const delegateTaskGatewaySchema = {
-  action: z.enum(["models", "list", "start", "execute", "get", "output", "events", "review", "decide_review", "message", "cancel"]),
+export const delegateTaskReadGatewaySchema = {
+  action: z.enum(["models", "list", "get", "output", "events", "review"]),
   workspace_id: workspaceId.optional(),
   task_id: z.string().min(1).max(200).optional(),
-  prompt: z.string().min(1).max(100_000).optional(),
-  model_id: z.string().min(1).max(500).optional(),
   status: z.string().max(120).optional(),
   limit: z.number().int().min(1).max(100).default(20),
-  wait_seconds: z.number().int().min(1).max(60).default(30),
-  idempotency_key: z.string().min(1).max(200).optional(),
-  execution_policy: taskExecutionPolicy,
-  workbench_session_id: workbenchSessionId.optional(),
   offset: z.number().int().min(0).default(0),
   max_chars: z.number().int().min(1).max(200_000).default(20_000),
   after_sequence: z.number().int().min(0).default(0),
   max_events: z.number().int().min(1).max(500).default(50),
   max_diff_bytes: z.number().int().min(1).max(2_000_000).default(100_000),
+};
+
+export const delegateTaskControlGatewaySchema = {
+  action: z.enum(["start", "execute", "decide_review", "message", "cancel"]),
+  workspace_id: workspaceId.optional(),
+  task_id: z.string().min(1).max(200).optional(),
+  prompt: z.string().min(1).max(100_000).optional(),
+  model_id: z.string().min(1).max(500).optional(),
+  wait_seconds: z.number().int().min(1).max(60).default(30),
+  idempotency_key: z.string().min(1).max(200).optional(),
+  execution_policy: taskExecutionPolicy,
   decision: z.enum(["ACCEPT", "REJECT", "REQUEST_CHANGES"]).optional(),
   note: z.string().max(50_000).optional(),
   content: z.string().min(1).max(50_000).optional(),
 };
 
-export const delegateMonitorGatewaySchema = {
-  action: z.enum(["list", "start", "get", "events", "evidence", "steer", "approve", "cancel"]),
+export const delegateMonitorReadGatewaySchema = {
+  action: z.enum(["list", "get", "events", "evidence"]),
+  workspace_id: workspaceId.optional(),
+  monitor_id: z.string().min(1).max(200).optional(),
+  status: z.string().max(120).optional(),
+  limit: z.number().int().min(1).max(100).default(20),
+  after_sequence: z.number().int().min(0).default(0),
+  max_events: z.number().int().min(1).max(500).default(100),
+  scope_id: z.string().max(200).optional(),
+};
+
+export const delegateMonitorControlGatewaySchema = {
+  action: z.enum(["start", "steer", "approve", "cancel"]),
   workspace_id: workspaceId.optional(),
   monitor_id: z.string().min(1).max(200).optional(),
   goal: z.string().min(1).max(100_000).optional(),
   acceptance_criteria: z.array(z.string().min(1).max(10_000)).min(1).max(100).optional(),
   model_id: z.string().min(1).max(500).optional(),
-  status: z.string().max(120).optional(),
-  limit: z.number().int().min(1).max(100).default(20),
   idempotency_key: z.string().min(1).max(200).optional(),
   execution_policy: taskExecutionPolicy,
-  workbench_session_id: workbenchSessionId.optional(),
-  after_sequence: z.number().int().min(0).default(0),
-  max_events: z.number().int().min(1).max(500).default(100),
-  scope_id: z.string().max(200).optional(),
   content: z.string().min(1).max(50_000).optional(),
   approval_id: z.string().min(1).max(200).optional(),
   approved: z.boolean().optional(),

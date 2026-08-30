@@ -95,7 +95,17 @@ const monitorSchema = looseObject({
 });
 
 export const compactGatewayOutputSchemas = {
-  cptr_workbench_sessions: looseObject({
+  cptr_workbench_sessions_read: looseObject({
+    ...workbenchSessionSchema.shape,
+    sessions: z.array(workbenchSessionSchema).optional(),
+    events: unknownObjectArray.optional(),
+    last_sequence: z.number().int().optional(),
+    confirmation_id: z.string().optional(),
+    expires_at: z.number().optional(),
+    impact: z.string().optional(),
+  }),
+
+  cptr_workbench_sessions_control: looseObject({
     ...workbenchSessionSchema.shape,
     sessions: z.array(workbenchSessionSchema).optional(),
     events: unknownObjectArray.optional(),
@@ -207,12 +217,20 @@ export const compactGatewayOutputSchemas = {
     closed: z.boolean().optional(),
   }),
 
-  cptr_ssh: looseObject({
+  cptr_ssh_read: looseObject({
     ...commandSchema.shape,
     aliases: z.array(z.string()).optional(),
   }),
 
-  cptr_delegate_task: looseObject({
+  cptr_ssh_control: looseObject({
+    ...commandSchema.shape,
+    aliases: z.array(z.string()).optional(),
+  }),
+
+  cptr_chrome_read: unknownObject,
+  cptr_chrome_control: unknownObject,
+
+  cptr_delegate_task_read: looseObject({
     ...taskSchema.shape,
     models: unknownObjectArray.optional(),
     tasks: z.array(taskSchema).optional(),
@@ -224,7 +242,27 @@ export const compactGatewayOutputSchemas = {
     delivery_status: z.string().optional(),
   }),
 
-  cptr_delegate_monitor: looseObject({
+  cptr_delegate_task_control: looseObject({
+    ...taskSchema.shape,
+    models: unknownObjectArray.optional(),
+    tasks: z.array(taskSchema).optional(),
+    events: unknownObjectArray.optional(),
+    review_available: z.boolean().optional(),
+    message_id: z.string().optional(),
+    accepted: z.boolean().optional(),
+    control_message_id: z.string().optional(),
+    delivery_status: z.string().optional(),
+  }),
+
+  cptr_delegate_monitor_read: looseObject({
+    ...monitorSchema.shape,
+    monitors: z.array(monitorSchema).optional(),
+    events: unknownObjectArray.optional(),
+    evidence: z.unknown().optional(),
+    approval: unknownObject.optional(),
+  }),
+
+  cptr_delegate_monitor_control: looseObject({
     ...monitorSchema.shape,
     monitors: z.array(monitorSchema).optional(),
     events: unknownObjectArray.optional(),

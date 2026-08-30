@@ -41,4 +41,9 @@ export const deleteWorkspace = (path: string) =>
 
 // ── Welcome page ────────────────────────────────────────────────
 
-export const getWelcome = () => fetchJSON<Record<string, unknown>>('/api/state/welcome');
+export interface WelcomeResponse {
+	suggestions?: Array<{ path: string; name?: string }>;
+	[key: string]: unknown;
+}
+
+export const getWelcome = () => fetchJSON<WelcomeResponse>('/api/state/welcome');

@@ -187,6 +187,7 @@ if [[ "$INCLUDES_BACKEND" == 1 ]]; then
     env_line CPTR_FDX_DAEMON_IDLE_TTL_SECONDS 600
     env_line CPTR_FDX_MAX_DAEMONS 8
     env_line CPTR_DIRECT_CODING_SANDBOX "$SANDBOX_PROFILE"
+    env_line PATH "$HEIDI_HOME/current/venv/bin:$HEIDI_HOME/current/runtime/node/bin:$HEIDI_HOME/current/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
     env_line PYTHONUNBUFFERED 1
   } >"$CPTR_ENV_FILE"; chmod 600 "$CPTR_ENV_FILE"
 fi

@@ -1161,8 +1161,11 @@
 						class="toolbar-btn {saved ? 'saved' : ''}"
 						onclick={saveFile}
 						disabled={saving}
-						use:tooltip={saving ? $t('settings.saving') : saved ? $t('settings.saved') : $t('settings.save')}
-						><Icon name={saved ? 'check' : 'save'} size={11} /></button
+						use:tooltip={saving
+							? $t('settings.saving')
+							: saved
+								? $t('settings.saved')
+								: $t('settings.save')}><Icon name={saved ? 'check' : 'save'} size={11} /></button
 					>
 				{/if}
 				{#if !isUntitled && hasGitChanges}
@@ -1175,8 +1178,10 @@
 					>
 				{/if}
 				{#if !isUntitled}
-					<button class="toolbar-btn" onclick={() => loadFile(filePath)} use:tooltip={$t('files.refresh')}
-						><Icon name="refresh" size={11} /></button
+					<button
+						class="toolbar-btn"
+						onclick={() => loadFile(filePath)}
+						use:tooltip={$t('files.refresh')}><Icon name="refresh" size={11} /></button
 					>
 				{/if}
 			</div>

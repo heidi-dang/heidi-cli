@@ -170,13 +170,11 @@ class WorkspaceProvisioningService:
         fdx: dict[str, Any]
         if git_repository and warm_fdx:
             try:
-                value = await self.fdx_service.execute(
+                value = await self.fdx_service.warm_repository(
                     user_id=user_id,
                     workspace_id=workspace.id,
                     root=root,
                     identity=identity,
-                    action="status",
-                    options={},
                 )
                 fdx = value if isinstance(value, dict) else {"status": "degraded"}
             except Exception:

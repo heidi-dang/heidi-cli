@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from cptr.routers.coding import _command_context
-from cptr.services.command_sandbox import SandboxUnavailable, sandbox_command
+from cptr.services.command_sandbox import SandboxUnavailable, configured_profile, sandbox_command
 
 
 def test_direct_coding_command_context_marks_sandbox_and_network_policy():
@@ -45,6 +45,11 @@ def test_bubblewrap_denies_network_and_writes_only_workspace(tmp_path: Path):
         wrapped.argv.index("--bind") : wrapped.argv.index("--bind") + 3
     ]
     assert wrapped.argv[-4:] == ["--", "/bin/sh", "-lc", "printf hello"]
+
+
+def test_default_direct_coding_sandbox_is_fail_closed_bubblewrap(monkeypatch):
+    monkeypatch.delenv("CPTR_DIRECT_CODING_SANDBOX", raising=False)
+    assert configured_profile() == "bubblewrap"
 
 
 def test_explicit_unavailable_sandbox_fails_closed(tmp_path: Path):

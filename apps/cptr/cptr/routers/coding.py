@@ -715,6 +715,15 @@ async def _bounded_tree(
     return results
 
 
+def _is_test_path(path: str) -> bool:
+    normalized = "/" + path.replace("\\", "/")
+    return (
+        path.endswith(("_test.py", ".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx"))
+        or "/test_" in normalized
+        or "/tests/" in normalized
+    )
+
+
 async def _try_read_text(
     request: Request,
     full: Path,
@@ -853,14 +862,7 @@ async def _workspace_insight(
         tests = [
             entry["path"]
             for entry in entries
-            if entry["type"] == "file"
-            and (
-                entry["path"].endswith(
-                    ("_test.py", ".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")
-                )
-                or "/test_" in entry["path"]
-                or "/tests/" in f"/{entry['path']}"
-            )
+            if entry["type"] == "file" and _is_test_path(entry["path"])
         ][:160]
         return {
             "path": relative,
@@ -929,14 +931,21 @@ async def _workspace_insight(
                 "parse_error": "invalid JSON",
             }
     if body.kind == "release":
-        entries = await _bounded_tree(request, root=root, start=root, max_depth=3, max_entries=300)
+        # Release readiness must remain bounded but large enough to cover modern
+        # monorepos. The previous 300-entry/depth-3 scan could exhaust its budget
+        # inside a frontend tree before reaching top-level or nested test suites.
+        max_release_entries = 2_000
+        entries = await _bounded_tree(
+            request,
+            root=root,
+            start=root,
+            max_depth=6,
+            max_entries=max_release_entries,
+        )
         test_count = sum(
             1
             for entry in entries
-            if entry["type"] == "file"
-            and entry["path"].endswith(
-                ("_test.py", ".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")
-            )
+            if entry["type"] == "file" and _is_test_path(entry["path"])
         )
         return {
             "checks": [
@@ -951,6 +960,7 @@ async def _workspace_insight(
                 },
                 {"name": "git_metadata", "status": "use_git_status_tool"},
             ],
+            "scan_truncated": len(entries) >= max_release_entries,
             "note": "Static readiness inventory only; run an approved test target for execution evidence.",
         }
     raise HTTPException(status_code=422, detail="unsupported workspace inspection kind")

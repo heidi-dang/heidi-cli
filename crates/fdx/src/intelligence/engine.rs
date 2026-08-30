@@ -1,5 +1,5 @@
 use crate::intelligence::db::EvidenceDatabase;
-use crate::intelligence::index::TransactionalGraph;
+use crate::intelligence::index::{BUILD_FILE_PLACEHOLDER_HASH, TransactionalGraph};
 use crate::intelligence::invalidation::InvalidationEngine;
 use crate::intelligence::model::IndexedFile;
 use crate::intelligence::status::IndexFreshness;
@@ -123,10 +123,10 @@ fn run_incremental_index_impl(
     let mut current_files: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
     {
-        let mut stmt = db
-            .conn
-            .prepare("SELECT canonical_path, content_hash FROM files")?;
-        let rows = stmt.query_map([], |row| {
+        let mut stmt = db.conn.prepare(
+            "SELECT canonical_path, content_hash FROM files WHERE content_hash != ?1",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![BUILD_FILE_PLACEHOLDER_HASH], |row| {
             let path: String = row.get(0)?;
             let hash: String = row.get(1)?;
             Ok((path, hash))
@@ -324,9 +324,11 @@ fn run_incremental_index_impl(
 
     tx.commit()?;
 
-    let total_files: i64 = db
-        .conn
-        .query_row("SELECT count(*) FROM files", [], |row| row.get(0))?;
+    let total_files: i64 = db.conn.query_row(
+        "SELECT count(*) FROM files WHERE content_hash != ?1",
+        rusqlite::params![BUILD_FILE_PLACEHOLDER_HASH],
+        |row| row.get(0),
+    )?;
 
     Ok(IndexRunReport {
         state,

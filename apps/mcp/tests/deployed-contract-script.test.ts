@@ -11,12 +11,14 @@ test("deployed contract verifier tracks the canonical compact v2 contract", () =
   const toolsBlock = source.match(/const expectedTools = \[(.*?)\];/s)?.[1] ?? "";
   const tools = [...toolsBlock.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
 
-  assert.equal(tools.length, 21);
+  assert.equal(tools.length, 26);
   assert.deepEqual([...tools].sort(), [...MCP_COMPACT_TOOL_NAMES].sort());
   assert.equal(tools.includes("cptr_workspace_lifecycle"), true);
-  assert.equal(tools.includes("cptr_chrome_browser"), true);
+  assert.equal(tools.includes("cptr_chrome_read"), true);
+  assert.equal(tools.includes("cptr_chrome_control"), true);
   assert.equal(tools.includes("cptr_plugin_update"), true);
-  assert.equal(tools.includes("cptr_workbench_sessions"), true);
+  assert.equal(tools.includes("cptr_workbench_sessions_read"), true);
+  assert.equal(tools.includes("cptr_workbench_sessions_control"), true);
   assert.equal(tools.includes("cptr_workspace_run_test_target"), true);
   assert.equal(tools.includes("cptr_fdx_intelligence"), true);
   assert.equal(tools.includes("cptr_direct_worker_control"), true);

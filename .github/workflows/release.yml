@@ -117,12 +117,12 @@ jobs:
           CHANNEL='${{ steps.release.outputs.channel }}'
           ASSETS=("dist/heidi-cli-${VERSION}.tar.gz" dist/heidi-release.json dist/heidi-release.json.sig)
           if gh release view "v${VERSION}" >/dev/null 2>&1; then
-            gh release upload "v${VERSION}" "${ASSETS[@]}" --clobber
-          else
-            ARGS=(release create "v${VERSION}" "${ASSETS[@]}" --title "Heidi CLI v${VERSION}" --generate-notes)
-            if [[ "$CHANNEL" == stable ]]; then ARGS+=(--latest); else ARGS+=(--prerelease --latest=false); fi
-            gh "${ARGS[@]}"
+            echo "v${VERSION} already exists; refusing to replace immutable release assets" >&2
+            exit 1
           fi
+          ARGS=(release create "v${VERSION}" "${ASSETS[@]}" --title "Heidi CLI v${VERSION}" --generate-notes)
+          if [[ "$CHANNEL" == stable ]]; then ARGS+=(--latest); else ARGS+=(--prerelease --latest=false); fi
+          gh "${ARGS[@]}"
 
       - name: Publish signed channel pointer assets
         shell: bash

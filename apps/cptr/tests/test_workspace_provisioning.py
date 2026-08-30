@@ -28,6 +28,7 @@ IDENTITY = ExecutionIdentity(
 class FakeFdx:
     def __init__(self, result: dict | None = None):
         self.result = result or {"status": "ok", "provider": "fdx_native"}
+        self.warm_repository = AsyncMock(return_value=self.result)
         self.execute = AsyncMock(return_value=self.result)
 
 
@@ -89,7 +90,7 @@ async def test_clone_uses_argv_subprocess_and_warms_fdx_for_git_repo(tmp_path: P
     assert argv[-1] == str(root / "heidi-cli")
     assert result["git_repository"] is True
     assert result["fdx"]["status"] == "ok"
-    fdx.execute.assert_awaited_once()
+    fdx.warm_repository.assert_awaited_once()
 
 
 @pytest.mark.asyncio

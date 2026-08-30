@@ -70,68 +70,79 @@
 	let authMode = $state<'password' | 'pam'>('password');
 	let signupEnabled = $state(false);
 
-	onMount(async () => {
-		// Check auth first
-		await checkAuth();
+	onMount(() => {
+		let cleanup: (() => void) | undefined;
+		let disposed = false;
+		void (async () => {
+			// Check auth first
+			await checkAuth();
 
-		// Periodic session health check (every 30 min).
-		// This triggers the backend's sliding session refresh and
-		// proactively catches expired sessions before a 401 mid-action.
-		const healthCheck = setInterval(
-			() => {
-				if (authState === 'authenticated') {
-					getSession()
-						.then((auth) => {
-							if (!auth.authenticated) clearSession();
-						})
-						.catch(() => {});
-				}
-			},
-			30 * 60 * 1000
-		);
-		// iOS Safari keeps 100vh/100dvh at the layout viewport height when
-		// the keyboard opens. visualViewport tells us how much of the bottom
-		// of that layout viewport is covered, so reserve that space inside the
-		// main column instead of moving or clipping the whole shell.
-		const vv = window.visualViewport;
-		const syncKeyboardInset = () => {
-			const visualBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
-			const keyboardInset = Math.max(0, window.innerHeight - visualBottom);
-			document.documentElement.style.setProperty(
-				'--keyboard-inset-bottom',
-				keyboardInset > 100 ? `${keyboardInset}px` : '0'
+			// Periodic session health check (every 30 min).
+			// This triggers the backend's sliding session refresh and
+			// proactively catches expired sessions before a 401 mid-action.
+			const healthCheck = setInterval(
+				() => {
+					if (authState === 'authenticated') {
+						getSession()
+							.then((auth) => {
+								if (!auth.authenticated) clearSession();
+							})
+							.catch(() => {});
+					}
+				},
+				30 * 60 * 1000
 			);
-		};
+			// iOS Safari keeps 100vh/100dvh at the layout viewport height when
+			// the keyboard opens. visualViewport tells us how much of the bottom
+			// of that layout viewport is covered, so reserve that space inside the
+			// main column instead of moving or clipping the whole shell.
+			const vv = window.visualViewport;
+			const syncKeyboardInset = () => {
+				const visualBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+				const keyboardInset = Math.max(0, window.innerHeight - visualBottom);
+				document.documentElement.style.setProperty(
+					'--keyboard-inset-bottom',
+					keyboardInset > 100 ? `${keyboardInset}px` : '0'
+				);
+			};
 
-		syncKeyboardInset();
-		window.addEventListener('resize', syncKeyboardInset);
-		// iOS may fire 'scroll' instead of 'resize' when keyboard opens.
-		vv?.addEventListener('resize', syncKeyboardInset);
-		vv?.addEventListener('scroll', syncKeyboardInset);
+			syncKeyboardInset();
+			window.addEventListener('resize', syncKeyboardInset);
+			// iOS may fire 'scroll' instead of 'resize' when keyboard opens.
+			vv?.addEventListener('resize', syncKeyboardInset);
+			vv?.addEventListener('scroll', syncKeyboardInset);
 
-		if (isInstalledPwa()) {
-			registerServiceWorker().catch(() => {});
-		} else {
-			cleanBrowserServiceWorker().catch(() => {});
-		}
-		window.addEventListener('offline', showOfflineToast);
-		window.addEventListener('online', showOnlineToast);
-		const openSettings = (event: Event) => {
-			const detail = (event as CustomEvent<{ tab?: string }>).detail;
-			settingsTab = detail?.tab || 'general';
-			showSettings = true;
-		};
-		window.addEventListener('cptr:open-settings', openSettings as EventListener);
+			if (isInstalledPwa()) {
+				registerServiceWorker().catch(() => {});
+			} else {
+				cleanBrowserServiceWorker().catch(() => {});
+			}
+			window.addEventListener('offline', showOfflineToast);
+			window.addEventListener('online', showOnlineToast);
+			const openSettings = (event: Event) => {
+				const detail = (event as CustomEvent<{ tab?: string }>).detail;
+				settingsTab = detail?.tab || 'general';
+				showSettings = true;
+			};
+			window.addEventListener('cptr:open-settings', openSettings as EventListener);
+
+			const teardown = () => {
+				clearInterval(healthCheck);
+				document.documentElement.style.removeProperty('--keyboard-inset-bottom');
+				window.removeEventListener('resize', syncKeyboardInset);
+				vv?.removeEventListener('resize', syncKeyboardInset);
+				vv?.removeEventListener('scroll', syncKeyboardInset);
+				window.removeEventListener('offline', showOfflineToast);
+				window.removeEventListener('online', showOnlineToast);
+				window.removeEventListener('cptr:open-settings', openSettings as EventListener);
+			};
+			if (disposed) teardown();
+			else cleanup = teardown;
+		})();
 
 		return () => {
-			clearInterval(healthCheck);
-			document.documentElement.style.removeProperty('--keyboard-inset-bottom');
-			window.removeEventListener('resize', syncKeyboardInset);
-			vv?.removeEventListener('resize', syncKeyboardInset);
-			vv?.removeEventListener('scroll', syncKeyboardInset);
-			window.removeEventListener('offline', showOfflineToast);
-			window.removeEventListener('online', showOnlineToast);
-			window.removeEventListener('cptr:open-settings', openSettings as EventListener);
+			disposed = true;
+			cleanup?.();
 		};
 	});
 

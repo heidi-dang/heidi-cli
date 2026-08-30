@@ -15,6 +15,11 @@ pub struct TransactionalGraph<'a> {
 /// Stable-ID prefix for repository FILE nodes (shared, provider-neutral).
 pub const FILE_NODE_PREFIX: &str = "file:";
 
+/// Sentinel used only for synthetic `files` rows required by build-graph
+/// canonical-path foreign keys (for example workspace/package directories).
+/// Structural indexing must never treat these rows as source-file hashes.
+pub const BUILD_FILE_PLACEHOLDER_HASH: &str = "build_native";
+
 impl<'a> TransactionalGraph<'a> {
     pub fn new(conn: &'a mut rusqlite::Connection) -> Result<Self, IndexError> {
         let tx = conn.transaction()?;
@@ -40,6 +45,25 @@ impl<'a> TransactionalGraph<'a> {
             "UPDATE nodes SET stale = 1
              WHERE canonical_path = ?1 AND provider IS NOT NULL",
             rusqlite::params![canonical_path],
+        )?;
+        Ok(())
+    }
+
+    /// Ensure a row exists in `files` without replacing structural file metadata.
+    /// Build providers use placeholder rows only to satisfy canonical-path foreign
+    /// keys; an existing structural/semantic SHA-256 remains authoritative.
+    pub fn ensure_file_row(&self, file: &IndexedFile) -> Result<(), IndexError> {
+        self.tx.execute(
+            "INSERT OR IGNORE INTO files (canonical_path, content_hash, size, mtime_ms, language, indexed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                file.canonical_path,
+                file.content_hash,
+                file.size as i64,
+                file.mtime_ms.map(|v| v as i64),
+                file.language,
+                file.indexed_at as i64,
+            ],
         )?;
         Ok(())
     }

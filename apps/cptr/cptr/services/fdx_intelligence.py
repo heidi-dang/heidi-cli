@@ -68,6 +68,11 @@ FDX_GATEWAY_ACTIONS = (
     "index_status",
     "plan",
 )
+FDX_FALLBACK_TOOLS = (
+    "cptr_code_read",
+    "cptr_workspace_inspect",
+    "cptr_git",
+)
 _DAEMON_ACTION_TO_OP = {
     "read": "read",
     "search": "search",
@@ -371,6 +376,62 @@ class FdxIntelligenceService:
             daemons = list(self._daemons.values())
             self._daemons.clear()
         await asyncio.gather(*(daemon.stop() for daemon in daemons), return_exceptions=True)
+
+    async def warm_repository(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str,
+        root: Path,
+        identity: ExecutionIdentity,
+    ) -> dict[str, Any]:
+        """Build the persistent structural/build intelligence used by read-only FDX queries.
+
+        Semantic SCIP providers are optional and are therefore inspected but not
+        force-installed or treated as a workspace-readiness requirement.
+        """
+        phases: dict[str, Any] = {}
+        critical_failure = False
+        for phase, argv in (
+            ("index_warm", ["index"]),
+            ("build_refresh", ["build", "refresh"]),
+        ):
+            try:
+                phases[phase] = await self._run_cli(root=root, identity=identity, argv=argv)
+            except FdxIntelligenceError as exc:
+                critical_failure = True
+                phases[phase] = {
+                    "status": "degraded",
+                    "error_code": exc.code,
+                    "reason": self._sanitize_string(str(exc), root),
+                }
+
+        for phase, argv in (
+            ("index_status", ["index", "status"]),
+            ("build_status", ["build", "status"]),
+            ("semantic_status", ["semantic", "status"]),
+        ):
+            try:
+                phases[phase] = await self._run_cli(root=root, identity=identity, argv=argv)
+            except FdxIntelligenceError as exc:
+                if phase != "semantic_status":
+                    critical_failure = True
+                phases[phase] = {
+                    "status": "degraded",
+                    "error_code": exc.code,
+                    "reason": self._sanitize_string(str(exc), root),
+                }
+
+        bounded, truncated = self._bound_result(phases, root)
+        degraded = critical_failure or truncated
+        return {
+            "workspace_id": workspace_id,
+            "provider": "fdx_native",
+            "status": "degraded" if degraded else "ok",
+            "fallback_recommended": degraded,
+            "truncated": truncated,
+            "data": bounded,
+        }
 
     async def _run_cli(
         self,
@@ -757,13 +818,7 @@ class FdxIntelligenceService:
                     "repo_path or use normal CPTR Direct Coding tools. FDX will not walk above the "
                     "authorized root."
                 ),
-                "fallback_tools": [
-                    "cptr_workspace_tree",
-                    "cptr_workspace_search_symbols",
-                    "cptr_code_search_files",
-                    "cptr_code_read_file",
-                    "cptr_code_get_git_status",
-                ],
+                "fallback_tools": list(FDX_FALLBACK_TOOLS),
             }
         base = self._validate_ref(options.get("base"), "base")
         head = self._validate_ref(options.get("head"), "head")
@@ -845,13 +900,7 @@ class FdxIntelligenceService:
                     "FDX returned degraded, unverified, or truncated intelligence; "
                     "corroborate with normal CPTR Direct Coding tools."
                 )
-                response["fallback_tools"] = [
-                    "cptr_workspace_tree",
-                    "cptr_workspace_search_symbols",
-                    "cptr_code_search_files",
-                    "cptr_code_read_file",
-                    "cptr_code_get_git_status",
-                ]
+                response["fallback_tools"] = list(FDX_FALLBACK_TOOLS)
             return response
         except FdxUnavailable as exc:
             return {
@@ -862,13 +911,7 @@ class FdxIntelligenceService:
                 "fallback_recommended": True,
                 "error_code": exc.code,
                 "reason": self._sanitize_string(str(exc), root),
-                "fallback_tools": [
-                    "cptr_workspace_tree",
-                    "cptr_workspace_search_symbols",
-                    "cptr_code_search_files",
-                    "cptr_code_read_file",
-                    "cptr_code_get_git_status",
-                ],
+                "fallback_tools": list(FDX_FALLBACK_TOOLS),
             }
         except FdxIntelligenceError as exc:
             return {
@@ -880,13 +923,7 @@ class FdxIntelligenceService:
                 "error_code": exc.code,
                 "reason": self._sanitize_string(str(exc), root),
                 "retriable": exc.retriable,
-                "fallback_tools": [
-                    "cptr_workspace_tree",
-                    "cptr_workspace_search_symbols",
-                    "cptr_code_search_files",
-                    "cptr_code_read_file",
-                    "cptr_code_get_git_status",
-                ],
+                "fallback_tools": list(FDX_FALLBACK_TOOLS),
             }
 
 

@@ -8,7 +8,8 @@ import { MCP_COMPACT_TOOL_NAMES, MCP_CONTRACT_TOOL_COUNT } from "../server/relea
 
 const COMPACT_TOOLS = [
   "cptr_open_live_workbench",
-  "cptr_workbench_sessions",
+  "cptr_workbench_sessions_read",
+  "cptr_workbench_sessions_control",
   "cptr_workspaces",
   "cptr_workspace_lifecycle",
   "cptr_workspace_inspect",
@@ -23,11 +24,15 @@ const COMPACT_TOOLS = [
   "cptr_code_cancel_command",
   "cptr_direct_workers",
   "cptr_direct_worker_control",
-  "cptr_ssh",
-  "cptr_chrome_browser",
+  "cptr_ssh_read",
+  "cptr_ssh_control",
+  "cptr_chrome_read",
+  "cptr_chrome_control",
   "cptr_plugin_update",
-  "cptr_delegate_task",
-  "cptr_delegate_monitor",
+  "cptr_delegate_task_read",
+  "cptr_delegate_task_control",
+  "cptr_delegate_monitor_read",
+  "cptr_delegate_monitor_control",
 ].sort();
 
 function fixtureClient(fetchImpl: typeof fetch = async () => new Response(JSON.stringify({}), { status: 200 })) {
@@ -50,26 +55,54 @@ function assertEveryToolHasObjectOutputSchema(tools: Array<{ name: string; outpu
   }
 }
 
-test("default MCP contract advertises exactly the 21 compact owner-control tools", async () => {
+test("default MCP contract advertises split read/control safety surfaces", async () => {
   const { server, client } = await connectedServer();
   const listed = await client.listTools();
   const names = listed.tools.map((tool) => tool.name).sort();
 
-  assert.equal(MCP_CONTRACT_TOOL_COUNT, 21);
+  assert.equal(MCP_CONTRACT_TOOL_COUNT, 26);
   assert.deepEqual([...MCP_COMPACT_TOOL_NAMES].sort(), COMPACT_TOOLS);
   assert.deepEqual(names, COMPACT_TOOLS);
-  assert.equal(listed.tools.length, 21);
+  assert.equal(listed.tools.length, 26);
   assertEveryToolHasObjectOutputSchema(listed.tools);
 
   const tools = new Map(listed.tools.map((tool) => [tool.name, tool]));
+  for (const tool of listed.tools) {
+    assert.ok(tool.outputSchema, `${tool.name} must advertise outputSchema`);
+  }
+  assert.equal(tools.get("cptr_open_live_workbench")?.annotations?.readOnlyHint, false);
+  assert.equal(tools.get("cptr_open_live_workbench")?.annotations?.destructiveHint, false);
+  assert.equal(tools.get("cptr_open_live_workbench")?.annotations?.openWorldHint, false);
   assert.equal(tools.get("cptr_code_read")?.annotations?.readOnlyHint, true);
   assert.equal(tools.get("cptr_code_mutate")?.annotations?.destructiveHint, true);
   assert.equal(tools.get("cptr_workspace_lifecycle")?.annotations?.destructiveHint, true);
   assert.equal(tools.get("cptr_workspace_lifecycle")?.annotations?.openWorldHint, true);
   assert.equal(tools.get("cptr_git")?.annotations?.readOnlyHint, true);
-  assert.equal(tools.get("cptr_ssh")?.annotations?.openWorldHint, true);
-  assert.match(tools.get("cptr_delegate_task")?.description ?? "", /allow:delegate/i);
-  assert.match(tools.get("cptr_delegate_monitor")?.description ?? "", /allow:delegate/i);
+  for (const name of [
+    "cptr_workbench_sessions_read",
+    "cptr_ssh_read",
+    "cptr_chrome_read",
+    "cptr_delegate_task_read",
+    "cptr_delegate_monitor_read",
+  ]) {
+    assert.equal(tools.get(name)?.annotations?.readOnlyHint, true, name);
+    assert.equal(tools.get(name)?.annotations?.destructiveHint, false, name);
+    assert.equal(tools.get(name)?.annotations?.openWorldHint, false, name);
+  }
+  assert.equal(tools.get("cptr_workbench_sessions_control")?.annotations?.destructiveHint, true);
+  for (const name of [
+    "cptr_ssh_control",
+    "cptr_chrome_control",
+    "cptr_delegate_task_control",
+    "cptr_delegate_monitor_control",
+  ]) {
+    assert.equal(tools.get(name)?.annotations?.destructiveHint, true, name);
+    assert.equal(tools.get(name)?.annotations?.openWorldHint, true, name);
+  }
+  assert.match(tools.get("cptr_delegate_task_read")?.description ?? "", /allow:delegate/i);
+  assert.match(tools.get("cptr_delegate_task_control")?.description ?? "", /allow:delegate/i);
+  assert.match(tools.get("cptr_delegate_monitor_read")?.description ?? "", /allow:delegate/i);
+  assert.match(tools.get("cptr_delegate_monitor_control")?.description ?? "", /allow:delegate/i);
   assert.deepEqual(
     listed.tools
       .filter((tool) => (tool._meta as { ui?: { resourceUri?: string } } | undefined)?.ui?.resourceUri)
@@ -127,7 +160,7 @@ test("compact delegated gateway fails closed until Workbench records allow:deleg
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
 
-  const blocked = await client.callTool({ name: "cptr_delegate_task", arguments: { action: "models" } });
+  const blocked = await client.callTool({ name: "cptr_delegate_task_read", arguments: { action: "models" } });
   assert.equal(blocked.isError, true);
   assert.match(JSON.stringify(blocked.content), /allow:delegate/i);
   assert.equal(modelRequests, 0);
@@ -136,7 +169,7 @@ test("compact delegated gateway fails closed until Workbench records allow:deleg
     name: "cptr_open_live_workbench",
     arguments: { delegation_authorization: "allow:delegate" },
   });
-  const allowed = await client.callTool({ name: "cptr_delegate_task", arguments: { action: "models" } });
+  const allowed = await client.callTool({ name: "cptr_delegate_task_read", arguments: { action: "models" } });
   assert.equal(allowed.isError, undefined);
   assert.equal(modelRequests, 1);
 

@@ -1,5 +1,6 @@
 use crate::intelligence::compatibility::{check_compatibility, CompatibilityStatus};
 use crate::intelligence::db::EvidenceDatabase;
+use crate::intelligence::index::BUILD_FILE_PLACEHOLDER_HASH;
 use crate::intelligence::snapshot::get_repository_snapshot;
 use crate::protocol::GraphCompatibility;
 use std::path::Path;
@@ -165,7 +166,11 @@ pub fn evaluate_index_status(
         .unwrap_or(0);
     let files: i32 = db
         .conn
-        .query_row("SELECT count(*) FROM files", [], |r| r.get(0))
+        .query_row(
+            "SELECT count(*) FROM files WHERE content_hash != ?1",
+            rusqlite::params![BUILD_FILE_PLACEHOLDER_HASH],
+            |r| r.get(0),
+        )
         .unwrap_or(0);
     let nodes: i32 = db
         .conn
