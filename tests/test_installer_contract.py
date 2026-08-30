@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+import importlib.util
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -5,6 +9,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+def load_compatibility_verifier():
+    path = ROOT / "scripts" / "verify-compatibility.py"
+    spec = importlib.util.spec_from_file_location("verify_compatibility", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_installer_exposes_all_in_one_and_split_tailscale_topologies():
@@ -58,7 +71,7 @@ def test_deploy_cli_supports_explicit_production_or_dev_mode_only():
 
 def test_development_mcp_service_uses_bundled_node_hot_reload_runner():
     source = read("scripts/install-core.sh")
-    assert 'HEIDI_DEPLOY_MODE' in source
+    assert "HEIDI_DEPLOY_MODE" in source
     assert 'MCP_EXEC="$NODE_BIN $HEIDI_HOME/current/source/apps/mcp/scripts/dev.mjs"' in source
     assert 'MCP_EXEC="$NPM_BIN --prefix $HEIDI_HOME/current/source/apps/mcp run dev"' not in source
 
@@ -71,7 +84,7 @@ def test_verifier_generates_tailored_ai_repair_prompt_on_failure():
 
 def test_verifier_uses_bundled_node_runtime_for_contract_check():
     source = read("scripts/verify-stack.sh")
-    assert 'runtime/node/bin/node' in source
+    assert "runtime/node/bin/node" in source
     assert 'dirname "$REPO_DIR"' in source
     assert '"$node_binary" "$REPO_DIR/apps/mcp/scripts/check-deployed-contract.mjs"' in source
 
@@ -84,16 +97,27 @@ def test_bootstrap_has_signed_release_trust_boundary():
     assert "release/signing-public.pem" in source or "BEGIN PUBLIC KEY" in source
 
 
-def test_compatibility_manifest_declares_v2_compact_contract_and_sandbox():
-    source = read("release/compatibility.json")
-    assert '"registered_action_count": 20' in source
-    assert '"topologies": ["all-in-one", "split-tailscale"]' in source
-    assert '"sandbox"' in source
+def test_compatibility_manifest_matches_canonical_runtime_inventory_and_sandbox():
+    compatibility = json.loads(read("release/compatibility.json"))
+    verifier = load_compatibility_verifier()
+    result = verifier.verify(ROOT, compatibility["heidi_version"])
+    assert result["mcp_tool_count"] == compatibility["mcp"]["registered_action_count"]
+    assert "cptr_workspace_lifecycle" in verifier.compact_tool_names(ROOT)
+    assert compatibility["deployment"]["topologies"] == ["all-in-one", "split-tailscale"]
+    assert "sandbox" in compatibility
+
+
+def test_installer_canonicalizes_legacy_full_to_owner_full_and_fails_closed():
+    source = read("scripts/install-core.sh")
+    assert '[[ "$CONTROL_PROFILE" != full ]] || CONTROL_PROFILE=owner-full' in source
+    assert 'standard|owner-full)' in source
+    assert "HEIDI_CONTROL_PROFILE must be standard or owner-full" in source
+    assert "Enable owner-full control" in source
+    assert "confirmed managed-workspace deletion" in source
+    assert "CONTROL_PROFILE=full" not in source
 
 
 def test_runtime_lock_pins_every_downloaded_runtime_for_both_linux_architectures():
-    import json
-
     lock = json.loads(read("release/runtime-lock.json"))
     assert lock["schema"] == "heidi.runtime-lock.v1"
     for runtime in ["node", "rustup", "cloudflared", "caddy"]:
@@ -118,3 +142,4 @@ def test_release_workflow_builds_signs_and_publishes_channel_assets():
     assert "heidi-release.json.sig" in source
     assert "options: [stable, beta, edge]" in source
     assert 'CHANNEL_TAG="channel-${CHANNEL}"' in source
+    assert "scripts/verify-compatibility.py" in source
