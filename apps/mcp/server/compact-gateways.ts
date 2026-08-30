@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import type { ComputerClient } from "./client/computer-client.js";
 import type { LiveTarget } from "./live-tickets.js";
 import {

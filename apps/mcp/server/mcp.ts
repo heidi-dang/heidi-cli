@@ -1,4 +1,4 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import { ComputerApiError, ComputerClient } from "./client/computer-client.js";
 import { LiveTicketStore, type LiveTarget } from "./live-tickets.js";
 import { PromptTerminalStore } from "./prompt-terminal.js";
@@ -1914,7 +1914,7 @@ export function createMcpServer(
       title: "Render the CPTR Live Terminal",
       description:
         "Bind or refresh the already-open CPTR Live Terminal to a task, monitor, or workspace-owned command target. This tool is data-only and must never create another widget; cptr_open_live_workbench is the sole UI-producing call for the prompt. The terminal remains redacted and resumable and this binding grants no additional permissions.",
-      inputSchema: z.object({
+      inputSchema: {
         target_type: z.enum(["task", "monitor", "command"]),
         target_id: z.string().min(1),
         workspace_id: z.string().min(1).max(200).optional(),
@@ -1922,7 +1922,7 @@ export function createMcpServer(
         presentation: z.record(z.string(), z.unknown()).optional().describe(
           "Optional Apps SDK presentation preferences. They do not change CPTR permissions and are forwarded only in result _meta.ui.presentation.",
         ),
-      }),
+      },
       outputSchema: {
         target_type: z.enum(["task", "monitor", "command"]),
         target_id: z.string(),
