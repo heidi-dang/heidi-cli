@@ -63,35 +63,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION='${{ steps.release.outputs.version }}'
-          python3 - "$VERSION" <<'PY'
-          import json, pathlib, re, sys
-          version=sys.argv[1]
-          root=json.load(open('package.json', encoding='utf-8'))['version']
-          compat=json.load(open('release/compatibility.json', encoding='utf-8'))
-          mcp=json.load(open('apps/mcp/package.json', encoding='utf-8'))['version']
-          cargo=pathlib.Path('crates/fdx/Cargo.toml').read_text(encoding='utf-8')
-          fdx=re.search(r'(?m)^version\s*=\s*"([^"]+)"', cargo).group(1)
-          expected={
-              'root Heidi version': root,
-              'compatibility Heidi version': compat['heidi_version'],
-              'MCP contract version': compat['mcp']['contract_version'],
-              'MCP package version': mcp,
-          }
-          for label, actual in expected.items():
-              if actual != version:
-                  raise SystemExit(f'{label} {actual} != release {version}')
-          if compat['fdx']['package_version'] != fdx:
-              raise SystemExit(f"FDX compatibility {compat['fdx']['package_version']} != Cargo {fdx}")
-          if compat['mcp']['registered_action_count'] != 20:
-              raise SystemExit('signed v2 release must advertise exactly 20 MCP tools')
-          PY
+          python3 scripts/verify-compatibility.py --expected-version '${{ steps.release.outputs.version }}'
 
       - name: Run release-contract tests
         run: |
-          python3 -m pytest -q tests/test_release_manifest.py tests/test_installer_contract.py tests/test_lifecycle.py tests/test_cloudflare_provision.py
+          python3 -m pytest -q tests
           bash -n install.sh scripts/install-core.sh scripts/install-lib.sh scripts/verify-stack.sh bin/heidi
-          python3 -m py_compile scripts/release-manifest.py scripts/lifecycle.py scripts/remediation.py scripts/split-handoff.py scripts/cloudflare-provision.py
+          python3 -m py_compile scripts/bootstrap-control-token.py scripts/control_token_profiles.py scripts/verify-compatibility.py scripts/release-manifest.py scripts/lifecycle.py scripts/remediation.py scripts/split-handoff.py scripts/cloudflare-provision.py
 
       - name: Build deterministic source archive
         shell: bash
