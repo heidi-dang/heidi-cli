@@ -140,6 +140,7 @@ deploy_cmd() {
     esac
     export HEIDI_DEPLOY_MODE="$mode"
   fi
+  export HEIDI_HOME HEIDI_VERSION HEIDI_CHANNEL HEIDI_RELEASE_DIR HEIDI_REPO_DIR
   exec bash "$HEIDI_REPO_DIR/scripts/install-core.sh"
 }
 lifecycle_cmd() { load_state; exec python3 "$HEIDI_REPO_DIR/scripts/lifecycle.py" "$@"; }

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,6 +69,58 @@ def test_deploy_cli_supports_explicit_production_or_dev_mode_only():
     assert 'HEIDI_DEPLOY_MODE="$mode"' in source
     assert "update [--channel stable|beta|edge]" in source
     assert "update [--mode" not in source
+
+
+def test_deploy_cli_exports_loaded_release_state_to_installer(tmp_path):
+    config_dir = tmp_path / "config"
+    release_dir = tmp_path / "release"
+    repo_dir = release_dir / "source"
+    scripts_dir = repo_dir / "scripts"
+    scripts_dir.mkdir(parents=True)
+    config_dir.mkdir()
+    (config_dir / "state.env").write_text(
+        "\n".join(
+            [
+                'HEIDI_HOME="/tmp/heidi-home"',
+                'HEIDI_VERSION="2.1.0"',
+                'HEIDI_CHANNEL="stable"',
+                f'HEIDI_RELEASE_DIR="{release_dir}"',
+                f'HEIDI_REPO_DIR="{repo_dir}"',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (scripts_dir / "install-core.sh").write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                'printf "%s\n" "${HEIDI_HOME:-}" "${HEIDI_VERSION:-}" "${HEIDI_CHANNEL:-}" "${HEIDI_RELEASE_DIR:-}" "${HEIDI_REPO_DIR:-}" "${HEIDI_DEPLOY_MODE:-}"',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["HEIDI_CONFIG_DIR"] = str(config_dir)
+    result = subprocess.run(
+        ["bash", str(ROOT / "bin" / "heidi"), "deploy", "--mode", "dev"],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        "/tmp/heidi-home",
+        "2.1.0",
+        "stable",
+        str(release_dir),
+        str(repo_dir),
+        "development",
+    ]
 
 
 def test_development_mcp_service_uses_bundled_node_hot_reload_runner():
