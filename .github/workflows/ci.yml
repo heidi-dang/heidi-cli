@@ -9,6 +9,46 @@ permissions:
   contents: read
 
 jobs:
+  migration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply PR95 MCP v2 migration in CI workspace
+        run: python3 scripts/pr95-mcp-v2-migrate.py
+      - name: Regenerate MCP lockfile
+        run: npm --prefix apps/mcp install --package-lock-only --ignore-scripts
+      - name: Install migrated MCP dependencies
+        run: npm --prefix apps/mcp ci
+      - name: Build migrated MCP
+        run: npm --prefix apps/mcp run build
+      - name: Test migrated MCP
+        run: npm --prefix apps/mcp test
+      - name: Typecheck migrated MCP
+        run: npm --prefix apps/mcp run typecheck
+      - name: Test universal OAuth migration contract
+        run: python3 -m unittest tests.test_cloudflare_provision tests.test_mcp_v2_oauth_contract
+      - name: Assert v1 SDK imports are gone
+        run: test -z "$(grep -R '@modelcontextprotocol/sdk' apps/mcp/server apps/mcp/tests --include='*.ts' || true)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr95-mcp-v2-migrated-tree
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            apps/mcp/package.json
+            apps/mcp/package-lock.json
+            apps/mcp/server
+            apps/mcp/tests
+            apps/mcp/.env.example
+            apps/mcp/README.md
+            scripts/cloudflare-provision.py
+
   installer:
     runs-on: ubuntu-latest
     steps:
