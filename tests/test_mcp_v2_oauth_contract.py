@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,7 +34,10 @@ def test_managed_oauth_is_host_neutral_and_updates_existing_access_apps():
     source = (ROOT / "scripts" / "cloudflare-provision.py").read_text(encoding="utf-8")
     assert "--oauth-redirect-uri" in source
     assert "MCP_OAUTH_REDIRECT_URIS" in source
-    assert 'request("PUT", f"/accounts/{account_id}/access/apps/{access_app_id}"' in source
+    assert re.search(
+        r'request\(\s*"PUT"\s*,\s*f"/accounts/\{account_id\}/access/apps/\{access_app_id\}"',
+        source,
+    )
     assert "DEFAULT_MCP_OAUTH_REDIRECT_URIS" not in source
     for forbidden in (
         "chatgpt.com",
