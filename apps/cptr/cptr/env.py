@@ -70,6 +70,11 @@ CLAUDE_CODE_MAX_BUFFER_SIZE = _env_int("CPTR_CLAUDE_CODE_MAX_BUFFER_SIZE", 128 *
 # ── Workspace storage ───────────────────────────────────────
 WORKSPACE_AUTO_GITIGNORE_DOT_CPTR_ENV = os.environ.get("CPTR_AUTO_GITIGNORE_DOT_CPTR")
 WORKSPACE_AUTO_GITIGNORE_DOT_CPTR = _env_bool("CPTR_AUTO_GITIGNORE_DOT_CPTR", "true")
+WORKSPACE_ROOT = Path(os.environ.get("CPTR_WORKSPACE_ROOT", str(DATA_DIR / "workspaces")))
+WORKSPACE_CLONE_TIMEOUT_SECONDS = max(10, _env_int("CPTR_WORKSPACE_CLONE_TIMEOUT_SECONDS", 180))
+WORKSPACE_DELETE_CONFIRM_TTL_SECONDS = max(
+    30, _env_int("CPTR_WORKSPACE_DELETE_CONFIRM_TTL_SECONDS", 5 * 60)
+)
 
 # ── Execute timeout ─────────────────────────────────────────
 # Default wait (seconds) for run_command / check_task when the caller
