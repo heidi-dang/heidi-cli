@@ -67,4 +67,8 @@ def test_environment_example_contains_no_environment_or_provider_host_defaults()
         assert forbidden not in env_example
     assert "PUBLIC_ORIGIN=\n" in env_example
     assert "MCP_ALLOWED_ORIGINS=\n" in env_example
-    assert "MCP_OAUTH_AUTHORIZATION_SERVER=\n" in env_example
+    assert "# MCP_AUTH_MODE=cloudflare-managed-oauth" in env_example
+    assert "# MCP_OAUTH_AUTHORIZATION_SERVER=" in env_example
+    assert "# MCP_OAUTH_RESOURCE=" in env_example
+    assert "\nHOST=\n" not in env_example
+    assert "\nPORT=\n" not in env_example
