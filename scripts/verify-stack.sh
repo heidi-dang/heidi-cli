@@ -38,20 +38,16 @@ check_tailscale() {
 }
 
 check_compatibility() {
-  local compat="$REPO_DIR/release/compatibility.json"
-  if [[ ! -f "$compat" ]]; then
-    fail_check compatibility "Compatibility manifest" "release/compatibility.json is missing"
+  local verifier="$REPO_DIR/scripts/verify-compatibility.py"
+  if [[ ! -f "$verifier" ]]; then
+    fail_check compatibility "Compatibility verifier" "scripts/verify-compatibility.py is missing"
     return
   fi
-  if python3 - "$compat" "${HEIDI_VERSION:-}" <<'PY' >/dev/null 2>&1
-import json, sys
-value=json.load(open(sys.argv[1], encoding="utf-8"))
-assert value["heidi_version"] == sys.argv[2]
-assert value["mcp"]["registered_action_count"] == 20
-assert value["fdx"]["protocol_version"] == 2
-PY
-  then pass "Release compatibility manifest"
-  else fail_check compatibility "Compatibility manifest" "installed component contract does not match Heidi release ${HEIDI_VERSION:-unknown}"; fi
+  if python3 "$verifier" --root "$REPO_DIR" --expected-version "${HEIDI_VERSION:-}" >/dev/null 2>&1; then
+    pass "Release compatibility manifest matches canonical component contracts"
+  else
+    fail_check compatibility "Compatibility manifest" "installed component contract does not match Heidi release ${HEIDI_VERSION:-unknown}"
+  fi
 }
 
 check_backend() {
@@ -99,7 +95,7 @@ check_mcp() {
        CPTR_DEPLOYED_MCP_TOKEN="$smoke_token" \
        CPTR_DEPLOYED_PUBLIC_ORIGIN="${HEIDI_PUBLIC_ORIGIN:-$HEIDI_MCP_LOCAL_URL}" \
        "$node_binary" "$REPO_DIR/apps/mcp/scripts/check-deployed-contract.mjs" >/dev/null 2>&1; then
-      pass "MCP exact 20-tool/resource contract"
+      pass "MCP exact signed tool/resource contract"
     else
       fail_check mcp_contract "MCP exact contract" "registered tools/resources differ from the signed Heidi release"
     fi
@@ -114,6 +110,7 @@ check_mcp() {
   else
     http_code="$(curl -sS -o "$CONFIG_DIR/.verify-workspaces.json" -w '%{http_code}' --max-time 10 -H "Authorization: Bearer $cptr_token" "$HEIDI_CPTR_URL/api/control/v1/workspaces" 2>/dev/null || true)"
     if [[ "$http_code" == 200 ]]; then pass "MCP→CPTR authenticated control path"; else fail_check cptr_auth "MCP→CPTR authenticated control path" "HTTP ${http_code:-transport-error}"; fi
+    rm -f "$CONFIG_DIR/.verify-workspaces.json"
   fi
 
   if [[ -n "${HEIDI_PUBLIC_ORIGIN:-}" && "$HEIDI_PUBLIC_ORIGIN" != "$HEIDI_MCP_LOCAL_URL" ]]; then
@@ -172,7 +169,7 @@ if [[ -n "${HEIDI_MCP_URL:-}" ]]; then
   printf '  2. Create or refresh the custom MCP app.\n'
   printf '  3. Enter exactly: %s\n' "$HEIDI_MCP_URL"
   printf '  4. Complete the Cloudflare Access / OAuth authorization when prompted.\n'
-  printf '  5. Scan/refresh tools and confirm the Heidi v2 contract shows 20 tools.\n'
+  printf '  5. Scan/refresh tools and confirm the Heidi v2.1 contract matches the signed compatibility manifest.\n'
   printf '  6. Start a new chat and run a harmless status/workspace check first.\n'
 else
   printf 'This backend role is verified. Use its Split Handoff Report to install the MCP role on the second machine.\n'
