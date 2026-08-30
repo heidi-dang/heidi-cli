@@ -98,6 +98,15 @@ pub fn tree_paths(path: &Path, options: &TreeOptions) -> Result<TreeResult> {
         entries.push((entry, depth));
     }
 
+    // Preserve shallow directory structure before applying the hard cap. The
+    // walker may descend into a large subtree before visiting sibling entries;
+    // truncating in walker order can therefore hide top-level directories.
+    entries.sort_by(|(left, left_depth), (right, right_depth)| {
+        left_depth
+            .cmp(right_depth)
+            .then_with(|| left.path().cmp(right.path()))
+    });
+
     // Check hard cap
     let truncated = entries.len() > MAX_NODES;
     if entries.len() > MAX_NODES {
