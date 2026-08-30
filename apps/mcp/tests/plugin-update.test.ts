@@ -25,7 +25,7 @@ test("publishes a bounded CPTR update manifest for the current MCP contract", ()
   assert.equal(manifest.contract_version, MCP_CONTRACT_VERSION);
   assert.equal(manifest.tool_count, MCP_CONTRACT_TOOL_COUNT);
   assert.equal(manifest.release_sha, "abc123");
-  assert.equal(manifest.refresh_required, false);
+  assert.equal(manifest.refresh_required, true);
   assert.equal(manifest.verification.tool, "cptr_plugin_update");
   assert.deepEqual(manifest.verification.arguments, { action: "status" });
   assert.ok(manifest.changes.length >= 3);
