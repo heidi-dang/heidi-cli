@@ -41,7 +41,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/client/v4/zones/zone/dns_records?"):
             return self._send([])
         if self.path == "/client/v4/accounts/acct/access/organizations":
-            return self._send({"auth_domain": "team.cloudflareaccess.com"})
+            return self._send({"auth_domain": "team.cloudflareaccess.test"})
         self.send_error(404)
 
     def do_POST(self):
@@ -57,7 +57,7 @@ class Handler(BaseHTTPRequestHandler):
                     "id": "app-1",
                     "aud": "audience-1",
                     "domain": "mcp.example.com",
-                    "oauth_configuration": {"enabled": True},
+                    "oauth_configuration": body["oauth_configuration"],
                 }
             )
         if self.path == "/client/v4/accounts/acct/access/apps/app-1/policies":
@@ -84,13 +84,65 @@ class CloudflareProvisionTests(unittest.TestCase):
         self.server.server_close()
         self.thread.join(timeout=2)
 
-    def test_provisions_tunnel_dns_managed_oauth_and_email_policy(self):
+    def _env(self):
         env = os.environ.copy()
         env["CLOUDFLARE_API_TOKEN"] = "test-token"
-        env["HEIDI_CLOUDFLARE_API_BASE"] = (
-            f"http://127.0.0.1:{self.server.server_port}/client/v4"
-        )
+        env["HEIDI_CLOUDFLARE_API_BASE"] = f"http://127.0.0.1:{self.server.server_port}/client/v4"
+        env.pop("MCP_OAUTH_REDIRECT_URIS", None)
+        env.pop("HEIDI_CLOUDFLARE_TUNNEL_NAME", None)
+        env.pop("HEIDI_CLOUDFLARE_ACCESS_APP_NAME", None)
+        return env
+
+    def test_provisions_runtime_configured_managed_oauth_and_email_policy(self):
         result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--account-id",
+                "acct",
+                "--zone-id",
+                "zone",
+                "--domain",
+                "mcp.example.com",
+                "--origin",
+                "http://127.0.0.1:8787",
+                "--email",
+                "owner@example.com",
+                "--oauth-redirect-uri",
+                "https://client.example.test/oauth/callback",
+            ],
+            cwd=ROOT,
+            env=self._env(),
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["tunnel_id"], "tunnel-1")
+        self.assertEqual(payload["tunnel_token"], "tunnel-token")
+        self.assertEqual(payload["access_app_id"], "app-1")
+        self.assertEqual(payload["access_audience"], "audience-1")
+        self.assertEqual(payload["access_auth_domain"], "team.cloudflareaccess.test")
+
+        by_path = {(method, path): body for method, path, body in Handler.requests}
+        tunnel = by_path[("POST", "/client/v4/accounts/acct/cfd_tunnel")]
+        self.assertEqual(tunnel, {"name": "mcp.example.com", "config_src": "cloudflare"})
+        ingress = by_path[("PUT", "/client/v4/accounts/acct/cfd_tunnel/tunnel-1/configurations")]
+        self.assertEqual(ingress["config"]["ingress"][0]["hostname"], "mcp.example.com")
+        self.assertEqual(ingress["config"]["ingress"][0]["service"], "http://127.0.0.1:8787")
+        app = by_path[("POST", "/client/v4/accounts/acct/access/apps")]
+        self.assertEqual(app["name"], "mcp.example.com")
+        self.assertEqual(app["type"], "mcp")
+        self.assertTrue(app["oauth_configuration"]["enabled"])
+        dcr = app["oauth_configuration"]["dynamic_client_registration"]
+        self.assertTrue(dcr["enabled"])
+        self.assertEqual(dcr["allowed_uris"], ["https://client.example.test/oauth/callback"])
+        policy = by_path[("POST", "/client/v4/accounts/acct/access/apps/app-1/policies")]
+        self.assertEqual(policy["decision"], "allow")
+        self.assertEqual(policy["include"], [{"email": {"email": "owner@example.com"}}])
+
+    def test_no_redirect_configuration_disables_dcr_instead_of_inventing_client_hosts(self):
+        subprocess.run(
             [
                 sys.executable,
                 str(SCRIPT),
@@ -106,40 +158,54 @@ class CloudflareProvisionTests(unittest.TestCase):
                 "owner@example.com",
             ],
             cwd=ROOT,
+            env=self._env(),
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        by_path = {(method, path): body for method, path, body in Handler.requests}
+        dcr = by_path[("POST", "/client/v4/accounts/acct/access/apps")]["oauth_configuration"]["dynamic_client_registration"]
+        self.assertFalse(dcr["enabled"])
+        self.assertEqual(dcr["allowed_uris"], [])
+
+    def test_redirect_uris_can_come_from_environment_and_cli_without_builtin_defaults(self):
+        env = self._env()
+        env["MCP_OAUTH_REDIRECT_URIS"] = "https://alpha.example.test/callback,https://beta.example.test/callback"
+        subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--account-id",
+                "acct",
+                "--zone-id",
+                "zone",
+                "--domain",
+                "mcp.example.com",
+                "--origin",
+                "http://127.0.0.1:8787",
+                "--email",
+                "owner@example.com",
+                "--oauth-redirect-uri",
+                "https://gamma.example.test/callback",
+            ],
+            cwd=ROOT,
             env=env,
             text=True,
             capture_output=True,
             check=True,
         )
-        payload = json.loads(result.stdout)
-        self.assertEqual(payload["tunnel_id"], "tunnel-1")
-        self.assertEqual(payload["tunnel_token"], "tunnel-token")
-        self.assertEqual(payload["access_app_id"], "app-1")
-        self.assertEqual(payload["access_audience"], "audience-1")
-        self.assertEqual(payload["access_auth_domain"], "team.cloudflareaccess.com")
-
         by_path = {(method, path): body for method, path, body in Handler.requests}
-        tunnel = by_path[("POST", "/client/v4/accounts/acct/cfd_tunnel")]
-        self.assertEqual(tunnel, {"name": "heidi-cli-mcp", "config_src": "cloudflare"})
-        ingress = by_path[("PUT", "/client/v4/accounts/acct/cfd_tunnel/tunnel-1/configurations")]
-        self.assertEqual(ingress["config"]["ingress"][0]["hostname"], "mcp.example.com")
-        self.assertEqual(ingress["config"]["ingress"][0]["service"], "http://127.0.0.1:8787")
-        app = by_path[("POST", "/client/v4/accounts/acct/access/apps")]
-        self.assertEqual(app["type"], "mcp")
-        self.assertTrue(app["oauth_configuration"]["enabled"])
-        self.assertTrue(app["oauth_configuration"]["dynamic_client_registration"]["enabled"])
-        self.assertIn(
-            "https://chatgpt.com/connector/oauth/*",
-            app["oauth_configuration"]["dynamic_client_registration"]["allowed_uris"],
+        allowed = by_path[("POST", "/client/v4/accounts/acct/access/apps")]["oauth_configuration"]["dynamic_client_registration"]["allowed_uris"]
+        self.assertEqual(
+            allowed,
+            [
+                "https://alpha.example.test/callback",
+                "https://beta.example.test/callback",
+                "https://gamma.example.test/callback",
+            ],
         )
-        policy = by_path[("POST", "/client/v4/accounts/acct/access/apps/app-1/policies")]
-        self.assertEqual(policy["decision"], "allow")
-        self.assertEqual(policy["include"], [{"email": {"email": "owner@example.com"}}])
 
     def test_caddy_transport_discovers_zone_and_creates_proxied_origin_dns(self):
-        env = os.environ.copy()
-        env["CLOUDFLARE_API_TOKEN"] = "test-token"
-        env["HEIDI_CLOUDFLARE_API_BASE"] = f"http://127.0.0.1:{self.server.server_port}/client/v4"
         result = subprocess.run(
             [
                 sys.executable,
@@ -156,7 +222,7 @@ class CloudflareProvisionTests(unittest.TestCase):
                 "owner@example.com",
             ],
             cwd=ROOT,
-            env=env,
+            env=self._env(),
             text=True,
             capture_output=True,
             check=True,
