@@ -3,12 +3,13 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { ComputerClient } from "../server/client/computer-client.js";
-import { MCP_CONTRACT_TOOL_COUNT, createMcpServer } from "../server/mcp.js";
+import { MCP_CONTRACT_TOOL_COUNT, MCP_COMPACT_TOOL_NAMES, createMcpServer } from "../server/mcp.js";
 
 const COMPACT_TOOLS = [
   "cptr_open_live_workbench",
   "cptr_workbench_sessions",
   "cptr_workspaces",
+  "cptr_workspace_lifecycle",
   "cptr_workspace_inspect",
   "cptr_fdx_intelligence",
   "cptr_code_read",
@@ -40,18 +41,21 @@ async function connectedServer(options: { legacyContract?: boolean } = {}) {
   return { server, client };
 }
 
-test("default MCP contract advertises exactly the 20 compact safety-class tools", async () => {
+test("default MCP contract advertises exactly the 21 compact owner-control tools", async () => {
   const { server, client } = await connectedServer();
   const listed = await client.listTools();
   const names = listed.tools.map((tool) => tool.name).sort();
 
-  assert.equal(MCP_CONTRACT_TOOL_COUNT, 20);
+  assert.equal(MCP_CONTRACT_TOOL_COUNT, 21);
+  assert.deepEqual([...MCP_COMPACT_TOOL_NAMES].sort(), COMPACT_TOOLS);
   assert.deepEqual(names, COMPACT_TOOLS);
-  assert.equal(listed.tools.length, 20);
+  assert.equal(listed.tools.length, 21);
 
   const tools = new Map(listed.tools.map((tool) => [tool.name, tool]));
   assert.equal(tools.get("cptr_code_read")?.annotations?.readOnlyHint, true);
   assert.equal(tools.get("cptr_code_mutate")?.annotations?.destructiveHint, true);
+  assert.equal(tools.get("cptr_workspace_lifecycle")?.annotations?.destructiveHint, true);
+  assert.equal(tools.get("cptr_workspace_lifecycle")?.annotations?.openWorldHint, true);
   assert.equal(tools.get("cptr_git")?.annotations?.readOnlyHint, true);
   assert.equal(tools.get("cptr_ssh")?.annotations?.openWorldHint, true);
   assert.match(tools.get("cptr_delegate_task")?.description ?? "", /allow:delegate/i);
