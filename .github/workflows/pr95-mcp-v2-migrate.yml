@@ -20,11 +20,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Complete mechanical v1 to v2 import migration
+      - name: Complete MCP SDK v2 source migration
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
+
           replacements = {
               '@modelcontextprotocol/sdk/server/mcp.js': '@modelcontextprotocol/server',
               '@modelcontextprotocol/sdk/client/index.js': '@modelcontextprotocol/client',
@@ -40,6 +41,34 @@ jobs:
                   updated = updated.replace(old, new)
               if updated != text:
                   path.write_text(updated, encoding='utf-8')
+
+          mcp_path = root / 'server' / 'mcp.ts'
+          text = mcp_path.read_text(encoding='utf-8')
+          old = '''      outputSchema: {
+            target_type: z.enum(["task", "monitor", "command"]),
+            target_id: z.string(),
+            status: z.string(),
+            workspace_id: z.string().optional(),
+            review_status: z.string().optional(),
+            title: z.string(),
+            initial_summary: z.string(),
+            recent_events: z.array(z.record(z.string(), z.unknown())),
+          },'''
+          new = '''      outputSchema: z.object({
+            target_type: z.enum(["task", "monitor", "command"]),
+            target_id: z.string(),
+            status: z.string(),
+            workspace_id: z.string().optional(),
+            review_status: z.string().optional(),
+            title: z.string(),
+            initial_summary: z.string(),
+            recent_events: z.array(z.record(z.string(), z.unknown())),
+          }),'''
+          if old in text:
+              text = text.replace(old, new, 1)
+              mcp_path.write_text(text, encoding='utf-8')
+          elif new not in text:
+              raise SystemExit('cptr_render_live_terminal output schema changed unexpectedly')
           PY
       - name: Verify migrated dependency manifest
         shell: bash
