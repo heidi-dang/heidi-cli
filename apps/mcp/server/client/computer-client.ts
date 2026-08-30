@@ -101,18 +101,14 @@ function normalizeTaskOutputCompletion(task: TaskOutput): TaskOutput {
 
 function publicErrorMessage(value: string): string {
   const redacted = value
-    // Unix-style absolute paths, including the stale-workspace paths found by
-    // the audit. Keep diagnostics meaningful without disclosing host layout.
     .replace(/(?:^|[\s:(])\/(?:[^\s/:]+\/)*[^\s/:]+/g, (match) => {
       const prefix = /^[\s:(]/.test(match) ? match[0] : "";
       return `${prefix}<redacted-path>`;
     })
-    // Windows paths are equally unsuitable for a ChatGPT-visible diagnostic.
     .replace(/[A-Za-z]:\\(?:[^\\\s]+\\)*[^\\\s]+/g, "<redacted-path>")
     .trim();
   return (redacted || "CPTR request failed").slice(0, 500);
 }
-
 
 export class ComputerApiError extends Error {
   readonly status: number;
@@ -146,6 +142,16 @@ export class ComputerApiError extends Error {
 }
 
 export type FetchLike = typeof fetch;
+
+export type WorkspaceLifecycleInput = {
+  action: "create" | "clone" | "import" | "refresh" | "archive" | "request_delete" | "confirm_delete";
+  workspace_id?: string;
+  name?: string;
+  repository_url?: string;
+  path?: string;
+  confirmation_id?: string;
+  warm_fdx?: boolean;
+};
 
 export type DirectCodingWorker = {
   worker_id: string;
@@ -267,6 +273,15 @@ export class ComputerClient {
     return this.request(`/workspaces/${encodeURIComponent(workspaceId)}`);
   }
 
+  async workspaceLifecycle(input: WorkspaceLifecycleInput): Promise<Record<string, unknown>> {
+    const value = await this.request<Record<string, unknown>>("/workspaces/lifecycle", {
+      method: "POST",
+      body: input,
+    });
+    this.workspaceCache.clear();
+    return value;
+  }
+
   async createDirectWorker(input: {
     workspace_id: string;
     name: string;
@@ -336,11 +351,6 @@ export class ComputerClient {
     return normalizeTaskCompletion(await this.request<Task>("/tasks", { method: "POST", body: input }));
   }
 
-  /**
-   * Start an already-authorized CPTR task and wait for a short, bounded
-   * interval. Long-running work remains a normal durable task that can be
-   * inspected with the existing task tools.
-   */
   async executeTask(input: {
     workspace_id: string;
     prompt: string;
