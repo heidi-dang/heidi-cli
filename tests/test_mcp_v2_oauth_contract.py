@@ -49,6 +49,16 @@ def test_managed_oauth_is_host_neutral_and_updates_existing_access_apps():
         assert forbidden not in source
 
 
+def test_public_installer_enables_claude_dcr_callback_without_polluting_generic_provisioner():
+    installer = (ROOT / "scripts" / "install-core.sh").read_text(encoding="utf-8")
+    provisioner = (ROOT / "scripts" / "cloudflare-provision.py").read_text(encoding="utf-8")
+    callback = "https://claude.ai/api/mcp/auth_callback"
+
+    assert f'CLAUDE_MCP_OAUTH_REDIRECT_URI="{callback}"' in installer
+    assert 'CF_ARGS+=(--oauth-redirect-uri "$CLAUDE_MCP_OAUTH_REDIRECT_URI")' in installer
+    assert callback not in provisioner
+
+
 def test_oauth_resource_metadata_does_not_confuse_access_jwt_issuer_with_authorization_server():
     source = (MCP / "server" / "index.ts").read_text(encoding="utf-8")
     assert "MCP_OAUTH_AUTHORIZATION_SERVER" in source
