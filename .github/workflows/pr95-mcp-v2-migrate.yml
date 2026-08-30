@@ -65,8 +65,8 @@ jobs:
 
           mcp_path = mcp / "server" / "mcp.ts"
           text = mcp_path.read_text(encoding="utf-8")
-          marker = '"cptr_render_live_terminal"'
-          start = text.find(marker)
+          registration = 'server.registerTool(\n    "cptr_render_live_terminal"'
+          start = text.find(registration)
           output = text.find("      outputSchema:", start)
           if start < 0 or output < 0:
               raise SystemExit("cptr_render_live_terminal schema boundary is missing")
@@ -154,7 +154,7 @@ jobs:
           npm --prefix apps/mcp run typecheck
           npm --prefix apps/mcp audit --audit-level=high
       - name: OAuth and v2 contracts
-        run: python3 -m pytest -q tests/test_mcp_v2_oauth_contract.py tests/test_cloudflare_provision.py
+        run: python3 -m unittest tests.test_mcp_v2_oauth_contract tests.test_cloudflare_provision
 
   verify-installer:
     needs: prepare
