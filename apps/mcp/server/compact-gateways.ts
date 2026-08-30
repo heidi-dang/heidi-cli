@@ -13,6 +13,7 @@ import {
   sshGatewaySchema,
   workbenchSessionsGatewaySchema,
   workspaceInspectGatewaySchema,
+  workspaceLifecycleGatewaySchema,
   workspacesGatewaySchema,
 } from "./schemas/gateways.js";
 
@@ -115,6 +116,22 @@ export function registerCompactGateways(
   }, async (input) => result(input.action === "list"
     ? await client.listWorkspaces(input.include_unavailable)
     : await client.getWorkspace(required(input.workspace_id, "workspace_id"))));
+
+  server.registerTool("cptr_workspace_lifecycle", {
+    title: "Workspace lifecycle",
+    description: "Create, clone, import, refresh, archive, or confirmed-delete CPTR workspaces. Clone can bootstrap Heidi from zero workspaces and automatically warms FDX repository intelligence.",
+    inputSchema: workspaceLifecycleGatewaySchema,
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    _meta: oauthMeta,
+  }, async (input) => result(await client.workspaceLifecycle({
+    action: input.action,
+    ...(input.workspace_id ? { workspace_id: input.workspace_id } : {}),
+    ...(input.name ? { name: input.name } : {}),
+    ...(input.repository_url ? { repository_url: input.repository_url } : {}),
+    ...(input.path ? { path: input.path } : {}),
+    ...(input.confirmation_id ? { confirmation_id: input.confirmation_id } : {}),
+    warm_fdx: input.warm_fdx,
+  })));
 
   server.registerTool("cptr_workspace_inspect", {
     title: "Workspace static inspection",
