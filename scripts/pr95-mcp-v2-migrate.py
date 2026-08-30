@@ -61,6 +61,7 @@ def migrate_gateway() -> None:
         "MCP v2 server imports",
     )
     text = text.replace("StreamableHTTPServerTransport", "NodeStreamableHTTPServerTransport")
+    text = text.replace("NodeNodeStreamableHTTPServerTransport", "NodeStreamableHTTPServerTransport")
 
     issuer_anchor = 'const oauthIssuer = process.env.CLOUDFLARE_ACCESS_ISSUER;\n'
     if "MCP_OAUTH_AUTHORIZATION_SERVER" not in text:
@@ -172,6 +173,33 @@ def migrate_gateway() -> None:
     )
     if "@modelcontextprotocol/sdk" in text:
         raise RuntimeError("legacy @modelcontextprotocol/sdk import remains in index.ts")
+    path.write_text(text, encoding="utf-8")
+
+
+def migrate_v2_schema_shapes() -> None:
+    path = MCP / "server" / "mcp.ts"
+    text = path.read_text(encoding="utf-8")
+    old = '''      outputSchema: {
+        target_type: z.enum(["task", "monitor", "command"]),
+        target_id: z.string(),
+        status: z.string(),
+        workspace_id: z.string().optional(),
+        review_status: z.string().optional(),
+        title: z.string(),
+        initial_summary: z.string(),
+        recent_events: z.array(z.record(z.string(), z.unknown())),
+      },'''
+    new = '''      outputSchema: z.object({
+        target_type: z.enum(["task", "monitor", "command"]),
+        target_id: z.string(),
+        status: z.string(),
+        workspace_id: z.string().optional(),
+        review_status: z.string().optional(),
+        title: z.string(),
+        initial_summary: z.string(),
+        recent_events: z.array(z.record(z.string(), z.unknown())),
+      }),'''
+    text = replace_required(text, old, new, "SDK v2 render-live-terminal output schema")
     path.write_text(text, encoding="utf-8")
 
 
@@ -321,6 +349,7 @@ def main() -> None:
     migrate_package()
     migrate_imports()
     migrate_gateway()
+    migrate_v2_schema_shapes()
     migrate_cloudflare()
     migrate_env_and_docs()
 
