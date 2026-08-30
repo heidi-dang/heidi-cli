@@ -16,6 +16,7 @@ import {
   workspaceLifecycleGatewaySchema,
   workspacesGatewaySchema,
 } from "./schemas/gateways.js";
+import { getCompactGatewayOutputSchema } from "./schemas/outputs.js";
 
 const oauthMeta = { securitySchemes: [{ type: "oauth2", scopes: [] }] };
 
@@ -57,6 +58,19 @@ export function registerCompactGateways(
   } = {},
 ): void {
   const emitLive = options.emitLive ?? (() => undefined);
+  const rawRegisterTool = server.registerTool.bind(server);
+  (server as unknown as { registerTool: typeof server.registerTool }).registerTool = ((
+    name: string,
+    config: Record<string, unknown>,
+    handler: (...args: unknown[]) => unknown,
+  ) => rawRegisterTool(
+    name as never,
+    {
+      ...config,
+      outputSchema: config.outputSchema ?? getCompactGatewayOutputSchema(name),
+    } as never,
+    handler as never,
+  )) as typeof server.registerTool;
 
   server.registerTool("cptr_workbench_sessions", {
     title: "Workbench session lifecycle",
