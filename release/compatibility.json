@@ -1,8 +1,8 @@
 {
   "schema": "heidi.compatibility.v1",
-  "heidi_version": "2.1.0",
+  "heidi_version": "2.1.1",
   "mcp": {
-    "contract_version": "2.1.0",
+    "contract_version": "2.1.1",
     "registered_action_count": 21,
     "minimum_node_major": 22
   },
@@ -28,6 +28,7 @@
     "network_default": "deny"
   },
   "migrations": [
+    "MCP v2.1.1 disables the MCP Apps UI entrypoint: no resources capability is advertised and no tool publishes ui.resourceUri metadata; Workbench session tools remain data-only.",
     "MCP v2.1 adds cptr_workspace_lifecycle for zero-workspace create, clone, import, refresh, archive, and confirmed managed deletion.",
     "The standard control profile gains workspace:provision; owner-full adds command:external and workspace:delete. Legacy full is accepted as an owner-full alias.",
     "Git workspaces warm FDX automatically after provisioning; FDX failure remains a non-fatal fallback to normal CPTR Direct Coding.",

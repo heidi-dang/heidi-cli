@@ -74,8 +74,9 @@ test("default MCP contract advertises exactly the 21 compact owner-control tools
     listed.tools
       .filter((tool) => (tool._meta as { ui?: { resourceUri?: string } } | undefined)?.ui?.resourceUri)
       .map((tool) => tool.name),
-    ["cptr_open_live_workbench"],
+    [],
   );
+  assert.equal(client.getServerCapabilities()?.resources, undefined);
 
   await client.close();
   await server.close();
