@@ -6,11 +6,12 @@ import { WORKBENCH_RESOURCE_URI, createWorkbenchResource } from "./ui/workbench-
 import { registerCompactGateways } from "./compact-gateways.js";
 import { z } from "zod";
 import {
+  MCP_COMPACT_TOOL_NAMES,
   MCP_CONTRACT_TOOL_COUNT,
   MCP_CONTRACT_VERSION,
   currentPluginUpdateManifest,
 } from "./release.js";
-export { MCP_CONTRACT_TOOL_COUNT, MCP_CONTRACT_VERSION } from "./release.js";
+export { MCP_COMPACT_TOOL_NAMES, MCP_CONTRACT_TOOL_COUNT, MCP_CONTRACT_VERSION } from "./release.js";
 
 import {
   approveAutonomousSchema,
@@ -365,28 +366,7 @@ const DELEGATED_AGENT_TOOL_NAMES = new Set([
   "cptr_get_task_review", "cptr_decide_task_review", "cptr_send_message", "cptr_cancel_task",
 ]);
 
-const COMPACT_PUBLIC_TOOLS = new Set([
-  "cptr_open_live_workbench",
-  "cptr_workbench_sessions",
-  "cptr_workspaces",
-  "cptr_workspace_inspect",
-  "cptr_fdx_intelligence",
-  "cptr_code_read",
-  "cptr_code_mutate",
-  "cptr_code_files",
-  "cptr_git",
-  "cptr_workspace_run_test_target",
-  "cptr_code_run_command",
-  "cptr_code_get_command",
-  "cptr_code_cancel_command",
-  "cptr_direct_workers",
-  "cptr_direct_worker_control",
-  "cptr_ssh",
-  "cptr_chrome_browser",
-  "cptr_plugin_update",
-  "cptr_delegate_task",
-  "cptr_delegate_monitor",
-]);
+const COMPACT_PUBLIC_TOOLS = new Set<string>(MCP_COMPACT_TOOL_NAMES);
 
 const DIRECT_GROUP_DESCRIPTION =
   "ChatGPT Direct Coding is the default. Prefer FDX for repository intelligence, then exact code reads before mutation.";
