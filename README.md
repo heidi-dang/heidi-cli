@@ -70,6 +70,20 @@ Heidi v2.1 exposes `cptr_workspace_lifecycle`, so ChatGPT can start from an empt
 
 External imported directories are register-only: they can be archived from CPTR, but the lifecycle API will not recursively delete them. Managed workspace deletion is a separate request/confirm operation and requires the `workspace:delete` scope.
 
+## Claude remote MCP
+
+Cloudflare Managed OAuth is also provisioned for Claude's Dynamic Client Registration callback. Heidi adds Claude's exact remote-MCP OAuth redirect URI to the Access application's DCR allowlist while preserving redirect URIs already configured for other MCP clients.
+
+In Claude, add the same public MCP endpoint:
+
+```text
+https://<your-mcp-domain>/mcp
+```
+
+Leave **OAuth Client ID** and **OAuth Client Secret** blank when using Dynamic Client Registration, then connect and complete the Cloudflare authorization flow. The generic Cloudflare provisioner remains provider-neutral; the Claude callback is applied only by Heidi's deployment/client-profile layer.
+
+Additional remote-MCP callbacks can still be supplied through `MCP_OAUTH_REDIRECT_URIS` or repeated `--oauth-redirect-uri` arguments to `scripts/cloudflare-provision.py`. Existing Access application redirect URIs are retained when Heidi updates the application.
+
 ## Heidi command
 
 After installation, ensure `~/.local/bin` is on your `PATH`, then use:

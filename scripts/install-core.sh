@@ -152,7 +152,9 @@ if [[ "$PUBLIC_DEPLOYMENT" == 1 ]]; then
   MCP_ALLOWED_EMAIL="${HEIDI_MCP_ALLOWED_EMAIL:-$(state_default HEIDI_MCP_ALLOWED_EMAIL '')}"; MCP_ALLOWED_EMAIL="$(read_tty 'Email allowed to authorize the ChatGPT MCP app' "$MCP_ALLOWED_EMAIL")"
   [[ "$MCP_DOMAIN" == *.* && "$MCP_ALLOWED_EMAIL" == *@* ]] || fail "valid public hostname and allowed email are required"
   CF_API_TOKEN="$(read_secret 'Cloudflare API token' "${CLOUDFLARE_API_TOKEN:-}")"; [[ -n "$CF_API_TOKEN" ]] || fail "Cloudflare API token is required"
+  CLAUDE_MCP_OAUTH_REDIRECT_URI="https://claude.ai/api/mcp/auth_callback"
   CF_ARGS=(--domain "$MCP_DOMAIN" --origin "$MCP_LOCAL_URL" --email "$MCP_ALLOWED_EMAIL")
+  CF_ARGS+=(--oauth-redirect-uri "$CLAUDE_MCP_OAUTH_REDIRECT_URI")
   if [[ "$PUBLIC_TRANSPORT" == caddy ]]; then
     ensure_caddy
     ORIGIN_IP="${HEIDI_PUBLIC_IP:-$(public_ipv4)}"; ORIGIN_IP="$(read_tty 'Public IP of this MCP server' "$ORIGIN_IP")"
