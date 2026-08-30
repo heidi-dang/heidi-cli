@@ -1,15 +1,14 @@
 {
   "schema": "heidi.compatibility.v1",
-  "heidi_version": "2.0.3",
+  "heidi_version": "2.1.0",
   "mcp": {
-    "contract_version": "2.0.3",
-    "registered_action_count": 20,
+    "contract_version": "2.1.0",
+    "registered_action_count": 21,
     "minimum_node_major": 22
   },
   "cptr": {
     "package_version": "0.9.21",
     "control_api_revision": "v1",
-    "minimum_python": "3.10",
     "state_migration": "automatic-forward-compatible"
   },
   "fdx": {
@@ -29,8 +28,10 @@
     "network_default": "deny"
   },
   "migrations": [
-    "MCP v2 consolidates the public ChatGPT action contract while retaining backend capabilities.",
+    "MCP v2.1 adds cptr_workspace_lifecycle for zero-workspace create, clone, import, refresh, archive, and confirmed managed deletion.",
+    "The standard control profile gains workspace:provision; owner-full adds command:external and workspace:delete. Legacy full is accepted as an owner-full alias.",
+    "Git workspaces warm FDX automatically after provisioning; FDX failure remains a non-fatal fallback to normal CPTR Direct Coding.",
     "Existing CPTR data under ~/.cptr is preserved; Heidi takes a pre-upgrade backup before activation.",
-    "FDX protocol 2 is required for persistent structured resident reads."
+    "FDX protocol 2 remains required for persistent structured resident reads."
   ]
 }
