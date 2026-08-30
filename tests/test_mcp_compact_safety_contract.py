@@ -71,3 +71,14 @@ def test_compact_dangerous_control_surfaces_keep_conservative_safety_annotations
         )
         pattern = rf'server\.registerTool\("{tool}", \{{.*?{re.escape(annotation)}'
         assert re.search(pattern, source, re.S), tool
+
+
+def test_chatgpt_tool_only_policy_is_persisted_for_future_maintainers():
+    policy_path = ROOT / "AGENTS.md"
+    assert policy_path.is_file(), "root AGENTS.md must preserve the ChatGPT tool-only connector invariant"
+
+    policy = policy_path.read_text(encoding="utf-8")
+    assert "NON-NEGOTIABLE CHATGPT CONNECTOR INVARIANT" in policy
+    assert "MCP `resources` capability" in policy
+    assert "`_meta.ui.resourceUri`" in policy
+    assert "explicit user instruction" in policy
