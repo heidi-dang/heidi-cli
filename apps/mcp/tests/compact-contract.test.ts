@@ -42,6 +42,14 @@ async function connectedServer(options: { legacyContract?: boolean } = {}) {
   return { server, client };
 }
 
+function assertEveryToolHasObjectOutputSchema(tools: Array<{ name: string; outputSchema?: Record<string, unknown> }>) {
+  const missing = tools.filter((tool) => !tool.outputSchema).map((tool) => tool.name).sort();
+  assert.deepEqual(missing, []);
+  for (const tool of tools) {
+    assert.equal(tool.outputSchema?.type, "object", `${tool.name} must advertise an object outputSchema`);
+  }
+}
+
 test("default MCP contract advertises exactly the 21 compact owner-control tools", async () => {
   const { server, client } = await connectedServer();
   const listed = await client.listTools();
@@ -51,6 +59,7 @@ test("default MCP contract advertises exactly the 21 compact owner-control tools
   assert.deepEqual([...MCP_COMPACT_TOOL_NAMES].sort(), COMPACT_TOOLS);
   assert.deepEqual(names, COMPACT_TOOLS);
   assert.equal(listed.tools.length, 21);
+  assertEveryToolHasObjectOutputSchema(listed.tools);
 
   const tools = new Map(listed.tools.map((tool) => [tool.name, tool]));
   assert.equal(tools.get("cptr_code_read")?.annotations?.readOnlyHint, true);
@@ -65,8 +74,9 @@ test("default MCP contract advertises exactly the 21 compact owner-control tools
     listed.tools
       .filter((tool) => (tool._meta as { ui?: { resourceUri?: string } } | undefined)?.ui?.resourceUri)
       .map((tool) => tool.name),
-    ["cptr_open_live_workbench"],
+    [],
   );
+  assert.equal(client.getServerCapabilities()?.resources, undefined);
 
   await client.close();
   await server.close();
@@ -78,6 +88,7 @@ test("legacy contract is opt-in and retains the 69-action recovery surface", asy
   assert.equal(listed.tools.length, 69);
   assert.equal(listed.tools.some((tool) => tool.name === "cptr_code_read_file"), true);
   assert.equal(listed.tools.some((tool) => tool.name === "cptr_code_read"), false);
+  assertEveryToolHasObjectOutputSchema(listed.tools);
   await client.close();
   await server.close();
 });

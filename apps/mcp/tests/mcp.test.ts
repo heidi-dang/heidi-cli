@@ -168,11 +168,12 @@ test("advertises dedicated autonomous tools with accurate annotations", async ()
   const renderedTools = [...tools.values()]
     .filter((tool) => (tool._meta as { ui?: { resourceUri?: string } } | undefined)?.ui?.resourceUri)
     .map((tool) => tool.name);
-  assert.deepEqual(renderedTools, ["cptr_open_live_workbench"]);
+  assert.deepEqual(renderedTools, []);
   const terminalMeta = tools.get("cptr_open_live_workbench")?._meta as { ui?: { resourceUri?: string } } | undefined;
-  assert.equal(terminalMeta?.ui?.resourceUri, "ui://cptr/live-workbench.html");
+  assert.equal(terminalMeta?.ui, undefined);
   const bindMeta = tools.get("cptr_render_live_terminal")?._meta as { ui?: { resourceUri?: string } } | undefined;
   assert.equal(bindMeta?.ui, undefined);
+  assert.equal(client.getServerCapabilities()?.resources, undefined);
   assert.equal(tools.get("cptr_monitor_autonomous")?.inputSchema.properties?.action, undefined);
   assert.equal(tools.get("cptr_plugin_update")?.annotations?.readOnlyHint, true);
   assert.equal(tools.get("cptr_plugin_update")?.annotations?.openWorldHint, false);

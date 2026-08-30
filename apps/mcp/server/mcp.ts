@@ -2,7 +2,6 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { ComputerApiError, ComputerClient } from "./client/computer-client.js";
 import { LiveTicketStore, type LiveTarget } from "./live-tickets.js";
 import { PromptTerminalStore } from "./prompt-terminal.js";
-import { WORKBENCH_RESOURCE_URI, createWorkbenchResource } from "./ui/workbench-resource.js";
 import { registerCompactGateways } from "./compact-gateways.js";
 import { z } from "zod";
 import {
@@ -263,12 +262,9 @@ const oauthToolMetadata = {
 
 const workbenchToolMetadata = oauthToolMetadata;
 
-// One ChatGPT prompt gets exactly one UI-producing tool call: cptr_open_live_workbench.
-// Every later CPTR tool only publishes activity/live metadata into that existing widget.
-const openWorkbenchToolMetadata = {
-  ...oauthToolMetadata,
-  ui: { resourceUri: WORKBENCH_RESOURCE_URI },
-};
+// The Workbench opener remains a data-only session bootstrap. Heidi deliberately
+// advertises no MCP Apps UI resource so hosts treat the connector as a tool-only MCP server.
+const openWorkbenchToolMetadata = oauthToolMetadata;
 
 const liveEventOutputSchema = z.object({
   version: z.number().int(),
@@ -640,29 +636,12 @@ export function createMcpServer(
       .filter((event): event is Record<string, unknown> => Boolean(event) && typeof event === "object" && !Array.isArray(event))
       .slice(-20);
   };
-  server.registerResource(
-    "cptr-live-workbench",
-    WORKBENCH_RESOURCE_URI,
-    {},
-    async () => {
-      const assets = options.widgetAssets?.() ?? {
-        bundle: options.widgetBundle ?? "document.body.textContent = 'CPTR Live Workbench';",
-        styles: options.widgetStyles ?? "",
-      };
-      return createWorkbenchResource(
-        assets.bundle,
-        options.connectDomain,
-        assets.styles,
-      );
-    },
-  );
-
   server.registerTool(
     "cptr_open_live_workbench",
     {
-      title: "Prepare CPTR Live Workbench context",
+      title: "Prepare CPTR Workbench context",
       description:
-        "Call this first whenever the user explicitly invokes CPTR. This is the sole CPTR UI-producing tool: it opens exactly one Live Terminal for the current prompt before any target exists. All later task, monitor, command, status, and render/bind calls are data-only and update this existing terminal instead of creating another widget.",
+        "Call this first whenever the user explicitly invokes CPTR. It opens the durable Workbench session context for the current prompt without advertising or mounting an MCP Apps UI resource. Later task, monitor, command, status, and bind calls remain data-only.",
       inputSchema: openWorkbenchSessionSchema,
       outputSchema: {
         session_id: z.string(),
@@ -732,7 +711,7 @@ export function createMcpServer(
       };
       const activity = publishActivity(
         "cptr_open_live_workbench",
-        "CPTR Live Terminal opened once for the current prompt.",
+        "CPTR Workbench context opened for the current prompt.",
       );
       return {
         ...result(value),

@@ -24,4 +24,7 @@ test("deployed contract verifier tracks the canonical compact v2 contract", () =
   assert.match(source, /const expectedContractVersion = packageMetadata\.version;/);
   assert.match(source, /const expectedRegisteredToolCount = expectedTools\.length;/);
   assert.match(source, /health\?\.app_version !== expectedContractVersion/);
+  assert.match(source, /initialize\.capabilities\?\.resources !== undefined/);
+  assert.match(source, /tool-only MCP contract/);
+  assert.doesNotMatch(source, /resources\/list|resources\/read|expectedResource/);
 });
