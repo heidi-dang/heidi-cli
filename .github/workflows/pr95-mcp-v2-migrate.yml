@@ -25,7 +25,6 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           replacements = {
               '@modelcontextprotocol/sdk/server/mcp.js': '@modelcontextprotocol/server',
@@ -45,20 +44,31 @@ jobs:
 
           mcp_path = root / 'server' / 'mcp.ts'
           text = mcp_path.read_text(encoding='utf-8')
-          marker = '"cptr_render_live_terminal"'
-          start = text.find(marker)
+          registration = 'server.registerTool(\n    "cptr_render_live_terminal"'
+          start = text.find(registration)
           if start < 0:
               raise SystemExit('cptr_render_live_terminal registration is missing')
-          window_end = text.find('annotations:', start)
-          if window_end < 0:
+          end = text.find('      annotations:', start)
+          if end < 0:
               raise SystemExit('cptr_render_live_terminal schema boundary is missing')
-          window = text[start:window_end]
+          window = text[start:end]
           if 'outputSchema: z.object({' not in window:
-              pattern = re.compile(r'outputSchema:\s*\{(?P<body>\s*target_type:\s*z\.enum\(\["task",\s*"monitor",\s*"command"\]\),.*?recent_events:\s*z\.array\(z\.record\(z\.string\(\),\s*z\.unknown\(\)\)\),\s*)\},', re.S)
-              migrated, count = pattern.subn(lambda m: 'outputSchema: z.object({' + m.group('body') + '}),', window, count=1)
-              if count != 1:
-                  raise SystemExit('cptr_render_live_terminal output schema shape is not recognized')
-              text = text[:start] + migrated + text[window_end:]
+              open_token = '      outputSchema: {'
+              open_at = window.find(open_token)
+              if open_at < 0:
+                  raise SystemExit('cptr_render_live_terminal output schema opening is missing')
+              close_token = '      },\n'
+              close_at = window.find(close_token, open_at)
+              if close_at < 0:
+                  raise SystemExit('cptr_render_live_terminal output schema closing is missing')
+              window = (
+                  window[:open_at]
+                  + '      outputSchema: z.object({'
+                  + window[open_at + len(open_token):close_at]
+                  + '      }),\n'
+                  + window[close_at + len(close_token):]
+              )
+              text = text[:start] + window + text[end:]
               mcp_path.write_text(text, encoding='utf-8')
           PY
       - name: Verify migrated dependency manifest
