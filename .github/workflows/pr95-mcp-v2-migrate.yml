@@ -1,0 +1,306 @@
+name: PR95 MCP v2 migration
+
+on:
+  push:
+    branches:
+      - feat/heidi-v2.1-owner-full
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.actor != 'github-actions[bot]' && contains(github.event.head_commit.message, '[run-mcp-v2-migration]')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/heidi-v2.1-owner-full
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply MCP v2 and universal OAuth migration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from __future__ import annotations
+          import json
+          from pathlib import Path
+
+          root = Path.cwd()
+          mcp = root / "apps" / "mcp"
+
+          package_path = mcp / "package.json"
+          package = json.loads(package_path.read_text(encoding="utf-8"))
+          deps = package["dependencies"]
+          deps.pop("@modelcontextprotocol/sdk", None)
+          deps["@modelcontextprotocol/server"] = "^2.0.0"
+          deps["@modelcontextprotocol/node"] = "^2.0.0"
+          deps["zod"] = "^4.2.0"
+          package["devDependencies"]["@modelcontextprotocol/client"] = "^2.0.0"
+          package_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
+
+          replacements = {
+              '@modelcontextprotocol/sdk/server/mcp.js': '@modelcontextprotocol/server',
+              '@modelcontextprotocol/sdk/client/index.js': '@modelcontextprotocol/client',
+              '@modelcontextprotocol/sdk/inMemory.js': '@modelcontextprotocol/server',
+              '@modelcontextprotocol/sdk/server/streamableHttp.js': '@modelcontextprotocol/node',
+              '@modelcontextprotocol/sdk/types.js': '@modelcontextprotocol/server',
+          }
+          for path in mcp.rglob("*.ts"):
+              text = path.read_text(encoding="utf-8")
+              updated = text
+              for old, new in replacements.items():
+                  updated = updated.replace(old, new)
+              if updated != text:
+                  path.write_text(updated, encoding="utf-8")
+
+          index_path = mcp / "server" / "index.ts"
+          text = index_path.read_text(encoding="utf-8")
+          text = text.replace(
+              'import { StreamableHTTPServerTransport } from "@modelcontextprotocol/node";\n'
+              'import { isInitializeRequest } from "@modelcontextprotocol/server";',
+              'import { NodeStreamableHTTPServerTransport, toNodeHandler, toWebRequest } from "@modelcontextprotocol/node";\n'
+              'import { createMcpHandler, isInitializeRequest, isLegacyRequest } from "@modelcontextprotocol/server";',
+          )
+          text = text.replace("StreamableHTTPServerTransport", "NodeStreamableHTTPServerTransport")
+
+          issuer_anchor = 'const oauthIssuer = process.env.CLOUDFLARE_ACCESS_ISSUER;\n'
+          auth_block = (
+              'const authMode = process.env.MCP_AUTH_MODE ??\n'
+              '  (oauthIssuer ? "cloudflare-managed-oauth" : mcpAccessToken ? "static-token" : "unconfigured");\n'
+              'const oauthAuthorizationServer = process.env.MCP_OAUTH_AUTHORIZATION_SERVER ??\n'
+              '  (authMode === "cloudflare-managed-oauth" ? publicOrigin : oauthIssuer);\n'
+          )
+          if "MCP_OAUTH_AUTHORIZATION_SERVER" not in text:
+              text = text.replace(issuer_anchor, issuer_anchor + auth_block)
+
+          modern_anchor = 'async function handleStatefulInitialize(\n'
+          modern_block = (
+              'const modernMcpHandler = createMcpHandler(() => createSessionServer(), { legacy: "reject" });\n'
+              'const modernNodeHandler = toNodeHandler(modernMcpHandler);\n\n'
+          )
+          if "const modernMcpHandler =" not in text:
+              text = text.replace(modern_anchor, modern_block + modern_anchor)
+
+          text = text.replace(
+              '"Access-Control-Allow-Headers": "Content-Type, Authorization, Accept, Mcp-Session-Id, MCP-Protocol-Version",',
+              '"Access-Control-Allow-Headers": "Content-Type, Authorization, Accept, Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Last-Event-Id",',
+          )
+          text = text.replace(
+              'res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Mcp-Session-Id, MCP-Protocol-Version");\n'
+              '  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");',
+              'res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Last-Event-Id");\n'
+              '  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id, MCP-Protocol-Version, WWW-Authenticate, Last-Event-Id");',
+          )
+
+          old_metadata = '''  if (url.pathname === "/.well-known/oauth-protected-resource" && req.method === "GET") {
+              if (!oauthIssuer) {
+                writeJson(res, 404, { error: "OAuth is not configured" });
+                return;
+              }
+              writeJson(res, 200, createProtectedResourceMetadata({
+                resource: oauthResource,
+                authorizationServer: oauthIssuer,
+                scopes: oauthScopes,
+              }));
+              return;
+            }'''
+          new_metadata = '''  if (url.pathname === "/.well-known/oauth-protected-resource" && req.method === "GET") {
+              if (!oauthAuthorizationServer) {
+                writeJson(res, 404, { error: "OAuth is not configured" });
+                return;
+              }
+              writeJson(res, 200, createProtectedResourceMetadata({
+                resource: oauthResource,
+                authorizationServer: oauthAuthorizationServer,
+                scopes: oauthScopes,
+              }));
+              return;
+            }'''
+          if old_metadata not in text:
+              raise SystemExit("protected-resource metadata block changed; refusing blind migration")
+          text = text.replace(old_metadata, new_metadata)
+
+          old_post = '''    if (req.method === "POST") {
+              const body = await readJsonBody(req);
+              if (isInitializeRequest(body)) {
+                await handleStatefulInitialize(req, res, body, identity);
+                return;
+              }
+              // Migration compatibility for a ChatGPT connection created before the
+              // current contract. After connector metadata Refresh, initialize-capable
+              // clients receive an Mcp-Session-Id and all prompt activity stays scoped.
+              res.setHeader("X-CPTR-Contract-Refresh", `required-v${CPTR_APP_VERSION}`);
+              await handleStatelessCompatibilityRequest(req, res, body);
+              return;
+            }'''
+          new_post = '''    if (req.method === "POST") {
+              const body = await readJsonBody(req);
+              const probe = await toWebRequest(req, body);
+              if (!(await isLegacyRequest(probe))) {
+                await modernNodeHandler(req, res, body);
+                return;
+              }
+              if (isInitializeRequest(body)) {
+                await handleStatefulInitialize(req, res, body, identity);
+                return;
+              }
+              // Migration compatibility for clients connected before the 2026-07-28
+              // protocol. Legacy sessionful traffic stays isolated while modern clients
+              // use request-scoped Streamable HTTP on this same /mcp endpoint.
+              res.setHeader("X-CPTR-Contract-Refresh", `required-v${CPTR_APP_VERSION}`);
+              await handleStatelessCompatibilityRequest(req, res, body);
+              return;
+            }'''
+          if old_post not in text:
+              raise SystemExit("legacy POST routing block changed; refusing blind migration")
+          text = text.replace(old_post, new_post)
+
+          text = text.replace(
+              'session_mode: "stateful-with-stateless-migration-fallback",\n        active_sessions: mcpSessions.size,',
+              'protocol_revision: "2026-07-28",\n        modern_transport: "request-scoped-streamable-http",\n        legacy_session_mode: "stateful-with-stateless-migration-fallback",\n        active_legacy_sessions: mcpSessions.size,',
+          )
+          text = text.replace(
+              '  await Promise.all([...mcpSessions.keys()].map((sessionId) => closeMcpSession(sessionId)));\n  httpServer.close();',
+              '  await Promise.all([...mcpSessions.keys()].map((sessionId) => closeMcpSession(sessionId)));\n  await modernMcpHandler.close().catch(() => undefined);\n  httpServer.close();',
+          )
+          if "@modelcontextprotocol/sdk" in text:
+              raise SystemExit("legacy MCP SDK import remains in index.ts")
+          index_path.write_text(text, encoding="utf-8")
+
+          cf_path = root / "scripts" / "cloudflare-provision.py"
+          cf = cf_path.read_text(encoding="utf-8")
+          api_anchor = 'API = os.environ.get("HEIDI_CLOUDFLARE_API_BASE", "https://api.cloudflare.com/client/v4").rstrip("/")\n'
+          default_uris = '''\nDEFAULT_MCP_OAUTH_REDIRECT_URIS = (
+              "https://chatgpt.com/connector/oauth/*",
+              "https://claude.ai/*",
+              "https://grok.com/*",
+              "https://gemini.google.com/*",
+          )
+          '''
+          if "DEFAULT_MCP_OAUTH_REDIRECT_URIS" not in cf:
+              cf = cf.replace(api_anchor, api_anchor + default_uris)
+          arg_anchor = '    parser.add_argument("--access-app-id")\n'
+          arg_line = (
+              '    parser.add_argument("--oauth-redirect-uri", action="append", default=[], '
+              'help="Additional exact or /* Cloudflare Managed OAuth DCR redirect URI; repeat as needed")\n'
+          )
+          if "--oauth-redirect-uri" not in cf:
+              cf = cf.replace(arg_anchor, arg_anchor + arg_line)
+
+          function_anchor = '\ndef provision_access(args: argparse.Namespace, account_id: str) -> tuple[str, str, str]:\n'
+          helpers = '''
+def oauth_redirect_uris(args: argparse.Namespace) -> list[str]:
+              configured = [str(value).strip() for value in (args.oauth_redirect_uri or []) if str(value).strip()]
+              return list(dict.fromkeys([*DEFAULT_MCP_OAUTH_REDIRECT_URIS, *configured]))
+
+
+def managed_oauth_configuration(args: argparse.Namespace) -> dict[str, Any]:
+              return {
+                  "enabled": True,
+                  "dynamic_client_registration": {
+                      "enabled": True,
+                      "allow_any_on_localhost": False,
+                      "allow_any_on_loopback": False,
+                      "allowed_uris": oauth_redirect_uris(args),
+                  },
+                  "grant": {"access_token_lifetime": "15m", "session_duration": "168h"},
+              }
+
+
+def access_application_body(args: argparse.Namespace, existing: dict[str, Any] | None = None) -> dict[str, Any]:
+              current = existing or {}
+              return {
+                  "name": str(current.get("name") or "Heidi CLI MCP"),
+                  "domain": args.domain,
+                  "type": "mcp",
+                  "session_duration": str(current.get("session_duration") or "24h"),
+                  "app_launcher_visible": bool(current.get("app_launcher_visible", False)),
+                  "oauth_configuration": managed_oauth_configuration(args),
+              }
+
+          '''
+          if "def managed_oauth_configuration" not in cf:
+              cf = cf.replace(function_anchor, "\n" + helpers + function_anchor.lstrip("\n"))
+
+          old_existing = '''    if access_app_id:
+              access_app = request("GET", f"/accounts/{account_id}/access/apps/{access_app_id}")
+              if str(access_app.get("domain") or "").rstrip("/") != args.domain.rstrip("/"):
+                  raise RuntimeError("configured Cloudflare Access application protects a different domain")
+              if (access_app.get("oauth_configuration") or {}).get("enabled") is not True:
+                  raise RuntimeError("configured Cloudflare Access application does not have Managed OAuth enabled")
+              audience = str(access_app.get("aud") or "")
+            else:
+              access_app = request(
+                  "POST", f"/accounts/{account_id}/access/apps",
+                  body={
+                      "name": "Heidi CLI MCP",
+                      "domain": args.domain,
+                      "type": "mcp",
+                      "session_duration": "24h",
+                      "app_launcher_visible": False,
+                      "oauth_configuration": {
+                          "enabled": True,
+                          "dynamic_client_registration": {
+                              "enabled": True,
+                              "allow_any_on_localhost": False,
+                              "allow_any_on_loopback": False,
+                              "allowed_uris": ["https://chatgpt.com/connector/oauth/*"],
+                          },
+                          "grant": {"access_token_lifetime": "15m", "session_duration": "168h"},
+                      },
+                  },
+              )'''
+          new_existing = '''    if access_app_id:
+              access_app = request("GET", f"/accounts/{account_id}/access/apps/{access_app_id}")
+              if str(access_app.get("domain") or "").rstrip("/") != args.domain.rstrip("/"):
+                  raise RuntimeError("configured Cloudflare Access application protects a different domain")
+              access_app = request(
+                  "PUT", f"/accounts/{account_id}/access/apps/{access_app_id}",
+                  body=access_application_body(args, access_app),
+              )
+              audience = str(access_app.get("aud") or "")
+            else:
+              access_app = request(
+                  "POST", f"/accounts/{account_id}/access/apps",
+                  body=access_application_body(args),
+              )'''
+          if old_existing not in cf:
+              raise SystemExit("Cloudflare access provisioning block changed; refusing blind migration")
+          cf = cf.replace(old_existing, new_existing)
+          cf_path.write_text(cf, encoding="utf-8")
+
+          env_path = mcp / ".env.example"
+          env = env_path.read_text(encoding="utf-8")
+          env = env.replace(
+              "MCP_ALLOWED_ORIGINS=https://chatgpt.com",
+              "MCP_ALLOWED_ORIGINS=https://chatgpt.com,https://claude.ai,https://grok.com,https://gemini.google.com",
+          )
+          if "MCP_AUTH_MODE=" not in env:
+              env = env.replace(
+                  "NODE_ENV=production\n",
+                  "NODE_ENV=production\nMCP_AUTH_MODE=cloudflare-managed-oauth\nMCP_OAUTH_AUTHORIZATION_SERVER=https://mcp.tnaprovider.com.au\n",
+              )
+          env_path.write_text(env, encoding="utf-8")
+
+          readme_path = mcp / "README.md"
+          readme = readme_path.read_text(encoding="utf-8")
+          if "## Universal MCP clients" not in readme:
+              readme += '''\n\n## Universal MCP clients\n\nThe public `/mcp` endpoint is host-neutral. MCP SDK v2 serves the 2026-07-28 request-scoped HTTP protocol and retains the existing sessionful 2025-era path for legacy clients on the same URL. Cloudflare Managed OAuth owns RFC 8414/9728 discovery, PKCE, token issuance, and Dynamic Client Registration at the edge; the Heidi origin validates only the resulting `Cf-Access-Jwt-Assertion`.\n\nThe Cloudflare provisioner enables first-party redirect families for ChatGPT, Claude, Grok, and Gemini and accepts repeatable `--oauth-redirect-uri` values for additional clients. Existing Access applications are updated in place so enabling a new client does not require recreating the MCP application. Keep redirect allowlists restricted to trusted first-party client domains.\n'''
+              readme_path.write_text(readme, encoding="utf-8")
+          PY
+
+          npm --prefix apps/mcp install --package-lock-only --ignore-scripts
+
+          if grep -R "@modelcontextprotocol/sdk" apps/mcp/server apps/mcp/tests --include='*.ts'; then
+            echo "legacy @modelcontextprotocol/sdk imports remain" >&2
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/mcp/package.json apps/mcp/package-lock.json apps/mcp/server apps/mcp/tests apps/mcp/.env.example apps/mcp/README.md scripts/cloudflare-provision.py
+          git commit -m "feat(mcp): migrate to SDK v2 and universal Managed OAuth"
+          git push origin HEAD:feat/heidi-v2.1-owner-full
