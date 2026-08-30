@@ -26,11 +26,12 @@ const expectedTools = [
   "cptr_plugin_update",
   "cptr_ssh",
   "cptr_workbench_sessions",
+  "cptr_workspace_lifecycle",
   "cptr_workspace_inspect",
   "cptr_workspace_run_test_target",
   "cptr_workspaces",
 ];
-const expectedRegisteredToolCount = 20;
+const expectedRegisteredToolCount = expectedTools.length;
 const expectedResource = "ui://cptr/live-workbench.html";
 
 if (!endpoint || !token) {
