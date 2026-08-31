@@ -15,6 +15,7 @@ SCRIPT = ROOT / "scripts" / "cloudflare-provision.py"
 
 class Handler(BaseHTTPRequestHandler):
     requests: list[tuple[str, str, object]] = []
+    access_app: dict[str, object] | None = None
 
     def log_message(self, *_args):
         return
@@ -42,6 +43,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send([])
         if self.path == "/client/v4/accounts/acct/access/organizations":
             return self._send({"auth_domain": "team.cloudflareaccess.test"})
+        if self.path == "/client/v4/accounts/acct/access/apps/app-1" and self.access_app is not None:
+            return self._send(self.access_app)
         self.send_error(404)
 
     def do_POST(self):
@@ -69,12 +72,17 @@ class Handler(BaseHTTPRequestHandler):
         self.requests.append(("PUT", self.path, body))
         if self.path == "/client/v4/accounts/acct/cfd_tunnel/tunnel-1/configurations":
             return self._send({})
+        if self.path == "/client/v4/accounts/acct/access/apps/app-1" and self.access_app is not None:
+            updated = {**body, "id": "app-1", "aud": "audience-1"}
+            self.access_app = updated
+            return self._send(updated)
         self.send_error(404)
 
 
 class CloudflareProvisionTests(unittest.TestCase):
     def setUp(self):
         Handler.requests = []
+        Handler.access_app = None
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -203,6 +211,70 @@ class CloudflareProvisionTests(unittest.TestCase):
                 "https://beta.example.test/callback",
                 "https://gamma.example.test/callback",
             ],
+        )
+
+    def test_existing_mcp_app_reuses_destinations_and_merges_redirect_uris(self):
+        Handler.access_app = {
+            "id": "app-1",
+            "aud": "audience-1",
+            "name": "Existing MCP",
+            "type": "mcp",
+            "session_duration": "24h",
+            "app_launcher_visible": False,
+            "destinations": [{"type": "public", "uri": "mcp.example.com"}],
+            "oauth_configuration": {
+                "enabled": True,
+                "dynamic_client_registration": {
+                    "enabled": True,
+                    "allow_any_on_localhost": False,
+                    "allow_any_on_loopback": False,
+                    "allowed_uris": ["https://existing.example.test/callback"],
+                },
+                "grant": {"access_token_lifetime": "15m", "session_duration": "168h"},
+            },
+        }
+        subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--account-id",
+                "acct",
+                "--zone-id",
+                "zone",
+                "--domain",
+                "mcp.example.com",
+                "--origin",
+                "http://127.0.0.1:8787",
+                "--email",
+                "owner@example.com",
+                "--access-app-id",
+                "app-1",
+                "--oauth-redirect-uri",
+                "https://new.example.test/callback",
+            ],
+            cwd=ROOT,
+            env=self._env(),
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        by_path = {(method, path): body for method, path, body in Handler.requests}
+        app = by_path[("PUT", "/client/v4/accounts/acct/access/apps/app-1")]
+        self.assertEqual(app["destinations"], [{"type": "public", "uri": "mcp.example.com"}])
+        self.assertNotIn("domain", app)
+        allowed = app["oauth_configuration"]["dynamic_client_registration"]["allowed_uris"]
+        self.assertEqual(
+            allowed,
+            [
+                "https://existing.example.test/callback",
+                "https://new.example.test/callback",
+            ],
+        )
+        self.assertFalse(
+            any(
+                method == "POST" and path == "/client/v4/accounts/acct/access/apps"
+                for method, path, _ in Handler.requests
+            )
         )
 
     def test_caddy_transport_discovers_zone_and_creates_proxied_origin_dns(self):

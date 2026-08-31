@@ -157,6 +157,7 @@ if [[ "$PUBLIC_DEPLOYMENT" == 1 ]]; then
   PUBLIC_TRANSPORT="$(choose 'Public transport: caddy (recommended) or cloudflare-tunnel' "$PUBLIC_TRANSPORT" 'caddy cloudflare-tunnel')"
   MCP_DOMAIN="${HEIDI_MCP_DOMAIN:-$(state_default HEIDI_MCP_DOMAIN '')}"; MCP_DOMAIN="$(read_tty 'Public MCP hostname (for example mcp.example.com)' "$MCP_DOMAIN")"
   MCP_ALLOWED_EMAIL="${HEIDI_MCP_ALLOWED_EMAIL:-$(state_default HEIDI_MCP_ALLOWED_EMAIL '')}"; MCP_ALLOWED_EMAIL="$(read_tty 'Email allowed to authorize the ChatGPT MCP app' "$MCP_ALLOWED_EMAIL")"
+  CF_ACCESS_APP_ID="${HEIDI_CF_ACCESS_APP_ID:-$(state_default HEIDI_CF_ACCESS_APP_ID '')}"
   [[ "$MCP_DOMAIN" == *.* && "$MCP_ALLOWED_EMAIL" == *@* ]] || fail "valid public hostname and allowed email are required"
   CF_API_TOKEN="$(read_secret 'Cloudflare API token' "${CLOUDFLARE_API_TOKEN:-}")"; [[ -n "$CF_API_TOKEN" ]] || fail "Cloudflare API token is required"
 
@@ -213,6 +214,7 @@ if [[ "$PUBLIC_DEPLOYMENT" == 1 ]]; then
   fi
 
   CF_ARGS=(--domain "$MCP_DOMAIN" --origin "$MCP_LOCAL_URL" --email "$MCP_ALLOWED_EMAIL")
+  [[ -z "$CF_ACCESS_APP_ID" ]] || CF_ARGS+=(--access-app-id "$CF_ACCESS_APP_ID")
   for oauth_redirect_uri in "${OAUTH_DCR_ALLOWED_REDIRECT_URIS[@]}"; do
     CF_ARGS+=(--oauth-redirect-uri "$oauth_redirect_uri")
   done

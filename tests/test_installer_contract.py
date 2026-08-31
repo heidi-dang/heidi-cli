@@ -71,6 +71,12 @@ def test_deploy_cli_supports_explicit_production_or_dev_mode_only():
     assert "update [--mode" not in source
 
 
+def test_public_redeploy_reuses_saved_cloudflare_access_app_id():
+    source = read("scripts/install-core.sh")
+    assert 'state_default HEIDI_CF_ACCESS_APP_ID' in source
+    assert 'CF_ARGS+=(--access-app-id "$CF_ACCESS_APP_ID")' in source
+
+
 def test_deploy_cli_exports_loaded_release_state_to_installer(tmp_path):
     config_dir = tmp_path / "config"
     release_dir = tmp_path / "release"

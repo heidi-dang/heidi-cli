@@ -199,16 +199,44 @@ def managed_oauth_configuration(args: argparse.Namespace, existing: dict[str, An
     }
 
 
+def application_protects_domain(application: dict[str, Any], domain: str) -> bool:
+    expected = domain.strip().rstrip("/")
+    legacy_domain = str(application.get("domain") or "").strip().rstrip("/")
+    if legacy_domain == expected:
+        return True
+
+    for destination in application.get("destinations") or []:
+        if not isinstance(destination, dict):
+            continue
+        uri = str(destination.get("uri") or "").strip().rstrip("/")
+        if uri in {expected, f"https://{expected}", f"http://{expected}"}:
+            return True
+
+    for value in application.get("self_hosted_domains") or []:
+        candidate = str(value or "").strip().rstrip("/")
+        if candidate in {expected, f"https://{expected}", f"http://{expected}"}:
+            return True
+    return False
+
+
 def access_application_body(args: argparse.Namespace, existing: dict[str, Any] | None = None) -> dict[str, Any]:
     current = existing or {}
-    return {
+    body: dict[str, Any] = {
         "name": str(current.get("name") or os.environ.get("HEIDI_CLOUDFLARE_ACCESS_APP_NAME") or args.domain),
-        "domain": args.domain,
         "type": "mcp",
         "session_duration": str(current.get("session_duration") or os.environ.get("HEIDI_CLOUDFLARE_ACCESS_SESSION_DURATION") or "24h"),
         "app_launcher_visible": bool(current.get("app_launcher_visible", False)),
         "oauth_configuration": managed_oauth_configuration(args, existing),
     }
+    destinations = current.get("destinations")
+    self_hosted_domains = current.get("self_hosted_domains")
+    if isinstance(destinations, list) and destinations:
+        body["destinations"] = destinations
+    elif isinstance(self_hosted_domains, list) and self_hosted_domains:
+        body["self_hosted_domains"] = self_hosted_domains
+    else:
+        body["domain"] = args.domain
+    return body
 
 
 def provision_access(args: argparse.Namespace, account_id: str) -> tuple[str, str, str]:
@@ -216,7 +244,9 @@ def provision_access(args: argparse.Namespace, account_id: str) -> tuple[str, st
     audience = ""
     if access_app_id:
         access_app = request("GET", f"/accounts/{account_id}/access/apps/{access_app_id}")
-        if str(access_app.get("domain") or "").rstrip("/") != args.domain.rstrip("/"):
+        if str(access_app.get("type") or "mcp") != "mcp":
+            raise RuntimeError("configured Cloudflare Access application is not an MCP application")
+        if not application_protects_domain(access_app, args.domain):
             raise RuntimeError("configured Cloudflare Access application protects a different domain")
         access_app = request(
             "PUT", f"/accounts/{account_id}/access/apps/{access_app_id}",
