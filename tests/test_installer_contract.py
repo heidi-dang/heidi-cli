@@ -181,14 +181,15 @@ def test_bootstrap_revalidates_all_signed_source_files_before_reusing_release():
     assert "target.is_symlink() or not target.is_dir()" in source
 
 
-def test_compatibility_manifest_matches_canonical_runtime_inventory_and_sandbox():
+def test_compatibility_manifest_matches_canonical_runtime_inventory_and_host_native_direct_coding():
     compatibility = json.loads(read("release/compatibility.json"))
     verifier = load_compatibility_verifier()
     result = verifier.verify(ROOT, compatibility["heidi_version"])
     assert result["mcp_tool_count"] == compatibility["mcp"]["registered_action_count"]
     assert "cptr_workspace_lifecycle" in verifier.compact_tool_names(ROOT)
     assert compatibility["deployment"]["topologies"] == ["all-in-one", "split-tailscale"]
-    assert "sandbox" in compatibility
+    assert "sandbox" not in compatibility
+    assert any("executes natively on the authorized CPTR host" in item for item in compatibility["migrations"])
 
 
 def test_installer_defaults_to_owner_full_profile():
