@@ -18,7 +18,7 @@ The wizard asks for:
 
 - development or production mode;
 - CPTR and MCP loopback ports;
-- standard or full CPTR control profile;
+- standard, developer, or owner-full CPTR control profile;
 - whether a development deployment should be made remote;
 - public MCP hostname;
 - Cloudflare Account ID;
@@ -39,6 +39,33 @@ Use a dedicated least-privilege token. The automatic production path needs the p
 
 The API token is used only by the provisioning process and is then unset. It is not stored in Heidi configuration. The resulting tunnel runtime token is stored in `~/.config/heidi-cli/cloudflare.env` with mode `0600` because cloudflared requires it to reconnect.
 
+## Managed OAuth client modes
+
+Cloudflare Access Managed OAuth remains the public authentication layer. Heidi preserves Dynamic Client Registration (DCR) and, by default, also creates or reuses one confidential OAuth `client_id` + `client_secret` registration for MCP clients that require manually configured credentials.
+
+The reusable registration is stored in:
+
+```text
+~/.config/heidi-cli/oauth-client.json
+```
+
+The file is owner-only (`0600`). `state.env` records only `HEIDI_MCP_OAUTH_CLIENT_ID` and `HEIDI_MCP_OAUTH_CLIENT_FILE`; the `client_secret` and RFC 7592 registration-management token stay only in `oauth-client.json`. They are not written to `mcp.env`.
+
+Deployment behavior is controlled by:
+
+```text
+HEIDI_MCP_OAUTH_GLOBAL_CLIENT=1          # default; create or reuse
+HEIDI_MCP_OAUTH_GLOBAL_CLIENT=0          # disable reusable pair; DCR remains enabled
+HEIDI_MCP_OAUTH_GLOBAL_CLIENT_ROTATE=1   # explicitly replace the saved registration
+MCP_OAUTH_REDIRECT_URIS=https://client.example/callback,https://other.example/callback
+```
+
+The built-in Claude remote-MCP callback is always included in Heidi's deployment allowlist. `MCP_OAUTH_REDIRECT_URIS` adds callbacks, and the same normalized allowlist is sent to both Cloudflare DCR and the reusable client registration.
+
+A normal redeploy reuses a matching saved pair. If the resource, redirect URIs, client name, or token-endpoint authentication method no longer matches, deployment fails closed and requires an explicit rotation decision. Rotation succeeds only if the stored registration contains `registration_client_uri` and `registration_access_token`, allowing Heidi to revoke the old client first. If those management values are absent, Heidi refuses rotation rather than leaving an unknown live credential behind.
+
+Remote clients that support DCR can continue leaving OAuth Client ID/Secret blank. Clients that require manual confidential credentials may use the saved `client_id` and `client_secret` only if they can protect secrets appropriately.
+
 ## Services
 
 The installer writes:
@@ -55,6 +82,7 @@ and secret/configuration files:
 ~/.config/heidi-cli/state.env
 ~/.config/heidi-cli/cptr.env
 ~/.config/heidi-cli/mcp.env
+~/.config/heidi-cli/oauth-client.json              # reusable OAuth client, when enabled
 ~/.config/heidi-cli/cloudflare.env                 # public deployments only
 ```
 
@@ -68,9 +96,10 @@ A deployment is not considered successful merely because systemd reports `active
 2. CPTR `/api/health/live`;
 3. CPTR `/api/health/ready`;
 4. MCP `/health`;
-5. the exact MCP tool/resource contract using the adapter's deployed-contract verifier;
-6. the private MCP→CPTR bearer path by listing CPTR workspaces;
-7. public Cloudflare DNS/TLS/Access reachability when enabled.
+5. reusable OAuth credential-file ownership, schema, non-empty client ID/secret, resource, client ID and Cloudflare issuer consistency when enabled, without printing the secret;
+6. the exact MCP tool/resource contract using the adapter's deployed-contract verifier;
+7. the private MCP→CPTR bearer path by listing CPTR workspaces;
+8. public Cloudflare DNS/TLS/Access reachability when enabled.
 
 The final OAuth authorization and ChatGPT `Scan Tools` step must occur inside ChatGPT because that UI and authorization session are owned by OpenAI, not by the MCP server.
 
@@ -86,7 +115,9 @@ heidi logs all
 heidi update
 ```
 
-`heidi update` fetches the current `main` bootstrap, rebuilds all three components, preserves the CPTR data directory, rotates Heidi MCP's scoped CPTR credential, restarts services, and verifies the stack again.
+`heidi update` fetches the current `main` bootstrap, rebuilds all three components, preserves the CPTR data directory, rotates Heidi MCP's scoped CPTR credential, restarts services, and verifies the stack again. A normal update does **not** rotate the reusable OAuth client; it reuses the existing matching pair.
+
+To intentionally rotate the reusable OAuth client during deployment, set `HEIDI_MCP_OAUTH_GLOBAL_CLIENT_ROTATE=1` for that deployment. Treat rotation as a credential change: update every manual client that used the old pair after the new registration is created.
 
 ## Rollback recommendation
 
