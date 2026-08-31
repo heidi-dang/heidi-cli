@@ -17,6 +17,7 @@ SYSTEMD_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 STATE_FILE="$CONFIG_DIR/state.env"
 CPTR_ENV_FILE="$CONFIG_DIR/cptr.env"
 MCP_ENV_FILE="$CONFIG_DIR/mcp.env"
+MCP_OAUTH_CLIENT_FILE="$CONFIG_DIR/oauth-client.json"
 CF_ENV_FILE="$CONFIG_DIR/cloudflare.env"
 CADDY_FILE="$CONFIG_DIR/Caddyfile"
 
@@ -142,6 +143,7 @@ fi
 
 MCP_LOCAL_URL=""; MCP_URL=""; PUBLIC_ORIGIN=""; PUBLIC_TRANSPORT=none
 MCP_DOMAIN=""; MCP_ALLOWED_EMAIL=""; CF_ACCOUNT_ID=""; CF_ZONE_ID=""; CF_TUNNEL_ID=""; CF_ACCESS_APP_ID=""; CF_ACCESS_AUDIENCE=""; CF_ACCESS_AUTH_DOMAIN=""; CF_TUNNEL_TOKEN=""
+MCP_OAUTH_CLIENT_ID=""; MCP_OAUTH_CLIENT_STATE_FILE=""
 PUBLIC_DEPLOYMENT=0
 if [[ "$INCLUDES_MCP" == 1 ]]; then
   MCP_LOCAL_URL="http://127.0.0.1:$MCP_PORT"
@@ -157,9 +159,27 @@ if [[ "$PUBLIC_DEPLOYMENT" == 1 ]]; then
   MCP_ALLOWED_EMAIL="${HEIDI_MCP_ALLOWED_EMAIL:-$(state_default HEIDI_MCP_ALLOWED_EMAIL '')}"; MCP_ALLOWED_EMAIL="$(read_tty 'Email allowed to authorize the ChatGPT MCP app' "$MCP_ALLOWED_EMAIL")"
   [[ "$MCP_DOMAIN" == *.* && "$MCP_ALLOWED_EMAIL" == *@* ]] || fail "valid public hostname and allowed email are required"
   CF_API_TOKEN="$(read_secret 'Cloudflare API token' "${CLOUDFLARE_API_TOKEN:-}")"; [[ -n "$CF_API_TOKEN" ]] || fail "Cloudflare API token is required"
+
   CLAUDE_MCP_OAUTH_REDIRECT_URI="https://claude.ai/api/mcp/auth_callback"
+  OAUTH_ALLOWED_REDIRECT_URIS=("$CLAUDE_MCP_OAUTH_REDIRECT_URI")
+  if [[ -n "${MCP_OAUTH_REDIRECT_URIS:-}" ]]; then
+    IFS=',' read -r -a oauth_configured_redirects <<<"$MCP_OAUTH_REDIRECT_URIS"
+    for oauth_redirect_uri in "${oauth_configured_redirects[@]}"; do
+      oauth_redirect_uri="${oauth_redirect_uri#"${oauth_redirect_uri%%[![:space:]]*}"}"
+      oauth_redirect_uri="${oauth_redirect_uri%"${oauth_redirect_uri##*[![:space:]]}"}"
+      [[ -n "$oauth_redirect_uri" ]] || continue
+      oauth_redirect_seen=0
+      for oauth_existing_redirect in "${OAUTH_ALLOWED_REDIRECT_URIS[@]}"; do
+        if [[ "$oauth_existing_redirect" == "$oauth_redirect_uri" ]]; then oauth_redirect_seen=1; break; fi
+      done
+      [[ "$oauth_redirect_seen" == 1 ]] || OAUTH_ALLOWED_REDIRECT_URIS+=("$oauth_redirect_uri")
+    done
+  fi
+
   CF_ARGS=(--domain "$MCP_DOMAIN" --origin "$MCP_LOCAL_URL" --email "$MCP_ALLOWED_EMAIL")
-  CF_ARGS+=(--oauth-redirect-uri "$CLAUDE_MCP_OAUTH_REDIRECT_URI")
+  for oauth_redirect_uri in "${OAUTH_ALLOWED_REDIRECT_URIS[@]}"; do
+    CF_ARGS+=(--oauth-redirect-uri "$oauth_redirect_uri")
+  done
   if [[ "$PUBLIC_TRANSPORT" == caddy ]]; then
     ensure_caddy
     ORIGIN_IP="${HEIDI_PUBLIC_IP:-$(public_ipv4)}"; ORIGIN_IP="$(read_tty 'Public IP of this MCP server' "$ORIGIN_IP")"
@@ -177,6 +197,32 @@ if [[ "$PUBLIC_DEPLOYMENT" == 1 ]]; then
   [[ -n "$CF_ACCESS_AUDIENCE" && -n "$CF_ACCESS_AUTH_DOMAIN" ]] || fail "Cloudflare Access provisioning returned incomplete OAuth data"
   [[ "$CF_ACCESS_AUTH_DOMAIN" == http*://* ]] || CF_ACCESS_AUTH_DOMAIN="https://$CF_ACCESS_AUTH_DOMAIN"
   PUBLIC_ORIGIN="https://$MCP_DOMAIN"; MCP_URL="$PUBLIC_ORIGIN/mcp"
+
+  GLOBAL_OAUTH_ENABLED="${HEIDI_MCP_OAUTH_GLOBAL_CLIENT:-1}"
+  GLOBAL_OAUTH_ROTATE="${HEIDI_MCP_OAUTH_GLOBAL_CLIENT_ROTATE:-0}"
+  [[ "$GLOBAL_OAUTH_ENABLED" == 0 || "$GLOBAL_OAUTH_ENABLED" == 1 ]] || fail "HEIDI_MCP_OAUTH_GLOBAL_CLIENT must be 0 or 1"
+  [[ "$GLOBAL_OAUTH_ROTATE" == 0 || "$GLOBAL_OAUTH_ROTATE" == 1 ]] || fail "HEIDI_MCP_OAUTH_GLOBAL_CLIENT_ROTATE must be 0 or 1"
+  [[ "$GLOBAL_OAUTH_ENABLED" == 1 || "$GLOBAL_OAUTH_ROTATE" == 0 ]] || fail "cannot rotate reusable OAuth client while HEIDI_MCP_OAUTH_GLOBAL_CLIENT=0"
+  if [[ "$GLOBAL_OAUTH_ENABLED" == 1 ]]; then
+    GLOBAL_OAUTH_METADATA_URL="${CF_ACCESS_AUTH_DOMAIN%/}/.well-known/oauth-authorization-server"
+    GLOBAL_OAUTH_ARGS=(
+      ensure
+      --metadata-url "$GLOBAL_OAUTH_METADATA_URL"
+      --resource "$MCP_URL"
+      --credentials-file "$MCP_OAUTH_CLIENT_FILE"
+      --client-name "${HEIDI_MCP_OAUTH_GLOBAL_CLIENT_NAME:-Heidi reusable MCP client}"
+      --token-endpoint-auth-method client_secret_post
+    )
+    for oauth_redirect_uri in "${OAUTH_ALLOWED_REDIRECT_URIS[@]}"; do
+      GLOBAL_OAUTH_ARGS+=(--redirect-uri "$oauth_redirect_uri")
+    done
+    [[ "$GLOBAL_OAUTH_ROTATE" == 0 ]] || GLOBAL_OAUTH_ARGS+=(--rotate)
+    GLOBAL_OAUTH_RESULT="$(python3 "$REPO_DIR/scripts/managed-oauth-client.py" "${GLOBAL_OAUTH_ARGS[@]}")" || fail "reusable Managed OAuth client provisioning failed"
+    oauth_client_value() { printf '%s' "$GLOBAL_OAUTH_RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get(sys.argv[1], ""))' "$1"; }
+    MCP_OAUTH_CLIENT_ID="$(oauth_client_value client_id)"
+    [[ -n "$MCP_OAUTH_CLIENT_ID" ]] || fail "reusable Managed OAuth client provisioning returned no client_id"
+    MCP_OAUTH_CLIENT_STATE_FILE="$MCP_OAUTH_CLIENT_FILE"
+  fi
 fi
 
 random_mcp_token
@@ -377,6 +423,8 @@ HEIDI_SERVICE_UNITS="${HEIDI_SERVICE_UNITS% }"
   env_line HEIDI_CF_ZONE_ID "$CF_ZONE_ID"
   env_line HEIDI_CF_TUNNEL_ID "$CF_TUNNEL_ID"
   env_line HEIDI_CF_ACCESS_APP_ID "$CF_ACCESS_APP_ID"
+  env_line HEIDI_MCP_OAUTH_CLIENT_ID "$MCP_OAUTH_CLIENT_ID"
+  env_line HEIDI_MCP_OAUTH_CLIENT_FILE "$MCP_OAUTH_CLIENT_STATE_FILE"
   env_line HEIDI_MCP_ENV_FILE "$MCP_ENV_FILE"
 } >"$STATE_FILE"; chmod 600 "$STATE_FILE"
 
