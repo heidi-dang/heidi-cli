@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -31,10 +32,38 @@ from cptr.routers.coding import router as coding_router
 from cptr.routers.gateway import CreateApiKeyRequest, create_api_key
 from cptr.services.api_keys import ApiKeyPrincipal
 from cptr.services.live_events import LiveEventHub, LiveEventStore, command_target_key
-from cptr.utils.tools import command_sessions, run_command, stop_command_session
+from cptr.utils.tools import (
+    _direct_coding_runtime_env,
+    command_sessions,
+    run_command,
+    stop_command_session,
+)
 
 
 class DirectCodingContractHelperTests(unittest.TestCase):
+    def test_direct_coding_runtime_env_recovers_active_heidi_node_and_python(self):
+        with tempfile.TemporaryDirectory() as temp_home:
+            home = Path(temp_home)
+            heidi_home = home / "heidi"
+            node_bin = heidi_home / "current" / "runtime" / "node" / "bin"
+            node_bin.mkdir(parents=True)
+            python_bin = home / "venv" / "bin"
+            python_bin.mkdir(parents=True)
+            python = python_bin / "python"
+            python.touch()
+
+            with (
+                patch("cptr.utils.tools.Path.home", return_value=home),
+                patch.dict("cptr.utils.tools.os.environ", {"HEIDI_HOME": str(heidi_home)}, clear=False),
+                patch("cptr.utils.tools.sys.executable", str(python)),
+            ):
+                recovered = _direct_coding_runtime_env({"PATH": "/usr/bin:/bin"})
+
+        path_entries = recovered["PATH"].split(os.pathsep)
+        self.assertEqual(path_entries[0], str(python_bin.resolve()))
+        self.assertIn(str(node_bin), path_entries)
+        self.assertEqual(path_entries.count("/usr/bin"), 1)
+
     def test_cursor_rejects_malformed_values_as_typed_bad_request(self):
         with self.assertRaises(HTTPException) as caught:
             _cursor("not-a-cursor")

@@ -107,6 +107,7 @@ ensure_base_dependencies
 ensure_node
 if [[ "$INCLUDES_BACKEND" == 1 ]]; then
   ensure_host_security_dependencies
+  ensure_managed_chrome
   ensure_rust
 fi
 if [[ "$TOPOLOGY" == split-tailscale ]]; then ensure_tailscale; fi
@@ -287,7 +288,7 @@ if [[ "$INCLUDES_BACKEND" == 1 ]]; then
     env_line CPTR_FDX_DAEMON_IDLE_TTL_SECONDS 600
     env_line CPTR_FDX_MAX_DAEMONS 8
     env_line CPTR_DIRECT_CODING_SANDBOX "$SANDBOX_PROFILE"
-    env_line PATH "$HEIDI_HOME/current/venv/bin:$HEIDI_HOME/current/runtime/node/bin:$HEIDI_HOME/current/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
+    env_line PATH "$HEIDI_HOME/current/venv/bin:$HEIDI_HOME/current/runtime/node/bin:$HEIDI_HOME/current/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin"
     env_line PYTHONUNBUFFERED 1
   } >"$CPTR_ENV_FILE"; chmod 600 "$CPTR_ENV_FILE"
 fi
@@ -310,7 +311,7 @@ if [[ "$INCLUDES_MCP" == 1 ]]; then
     env_line CPTR_COMPAT_WORKBENCH "$( [[ "$MODE" == production ]] && echo 0 || echo 1 )"
     env_line CPTR_LIVE_TERMINAL_STREAMING 0
     env_line CPTR_HOT_RELOAD "$( [[ "$MODE" == production ]] && echo 0 || echo 1 )"
-    env_line PATH "$HEIDI_HOME/current/runtime/node/bin:$HEIDI_HOME/current/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
+    env_line PATH "$HEIDI_HOME/current/runtime/node/bin:$HEIDI_HOME/current/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin"
     if [[ "$PUBLIC_DEPLOYMENT" == 1 ]]; then
       env_line CLOUDFLARE_ACCESS_ISSUER "$CF_ACCESS_AUTH_DOMAIN"
       env_line CLOUDFLARE_ACCESS_AUDIENCE "$CF_ACCESS_AUDIENCE"

@@ -28,6 +28,14 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS runtime
 LABEL org.opencontainers.image.source="https://github.com/open-webui/computer"
 LABEL org.opencontainers.image.description="Open WebUI Computer"
 
+# Direct Coding test profiles execute Node projects at runtime. Reuse the pinned
+# Node 22 toolchain from the frontend stage instead of depending on the distro's
+# older nodejs/npm packages.
+COPY --from=frontend-builder /usr/local/bin/node /usr/local/bin/node
+COPY --from=frontend-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
+    ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+
 # Runtime deps shared by default and browser images.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends gh git tini && \
@@ -68,4 +76,6 @@ USER cptr
 
 
 # ── Default image ──────────────────────────────────────────
-FROM runtime AS default
+# Managed Chrome is part of the supported CPTR control surface, so the default
+# production image must be browser-capable as well as the explicit browser tag.
+FROM browser AS default

@@ -1,8 +1,8 @@
 {
   "schema": "heidi.compatibility.v1",
-  "heidi_version": "2.1.5",
+  "heidi_version": "2.1.6",
   "mcp": {
-    "contract_version": "2.1.5",
+    "contract_version": "2.1.6",
     "registered_action_count": 26,
     "resource_count": 1,
     "ui_resource_uri": "ui://cptr/live-workbench.html",
@@ -30,6 +30,7 @@
     "network_default": "deny"
   },
   "migrations": [
+    "Heidi v2.1.6 hardens production execution prerequisites: Direct Coding reconstructs the active Heidi Python/Node runtime PATH even when service environment files are stale, production CPTR includes pytest/pytest-asyncio, host deployment provisions Managed Chrome with Ubuntu Snap support, and the default container image now includes Node/npm plus Chromium.",
     "MCP v2.1.5 restores the bounded ChatGPT Apps Workbench on top of the unchanged 26-tool compact contract: production advertises exactly one MCP resource at ui://cptr/live-workbench.html, only cptr_open_live_workbench publishes ui.resourceUri, built UI assets ship in the signed release with hot reload disabled, and the widget refreshes a sanitized CPTR overview through a short-lived Workbench ticket instead of the CPTR service token.",
     "CPTR v2.1.5 syncs audited heidi-dang/computer main commit a4a3a02251312e5f5c04b910d1e11857323b0ab5, including frontend polish, bulk model controls/search, and the extended API router surface while preserving Heidi-specific control-plane hardening.",
     "MCP v2.1.4 made production release identity exact: the signed release manifest carries the source Git commit, production propagates and verifies that commit at runtime, the normal MCP build/HTTP surface was tool-only with the compatibility Workbench disabled, the legacy 69-action surface remained test-harness-only, and update metadata reported the deployed control profile.",

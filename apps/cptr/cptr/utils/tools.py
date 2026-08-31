@@ -94,6 +94,46 @@ MAX_TASK_CONTENT_CHARS = 4000
 _TASK_TRUNCATION_MARKER = "... [truncated]"
 
 
+def _direct_coding_runtime_env(env: dict[str, str]) -> dict[str, str]:
+    """Expose Heidi-managed runtimes to non-PAM Direct Coding commands.
+
+    Production releases ship Node and the CPTR Python venv under the active Heidi
+    release.  Older/stale service environment files may omit those paths, so the
+    command runner reconstructs the bounded runtime PATH from the active release
+    instead of silently failing with ``node/npm/python: not found``.
+    """
+    heidi_home_value = os.environ.get("HEIDI_HOME", "").strip()
+    heidi_homes = []
+    if heidi_home_value:
+        heidi_homes.append(Path(heidi_home_value).expanduser())
+    default_heidi_home = Path.home() / ".local" / "share" / "heidi-cli"
+    if default_heidi_home not in heidi_homes:
+        heidi_homes.append(default_heidi_home)
+
+    # Keep the venv-facing executable directory rather than resolving its Python
+    # symlink back to /usr/bin; the venv contains the `python` entry point and
+    # production test-runner packages such as pytest.
+    candidates = [Path(sys.executable).parent]
+    for heidi_home in heidi_homes:
+        candidates.extend(
+            [
+                heidi_home / "current" / "runtime" / "node" / "bin",
+                heidi_home / "current" / "bin",
+            ]
+        )
+    candidates.extend([Path.home() / ".local" / "bin", Path("/snap/bin")])
+
+    existing = [part for part in env.get("PATH", "").split(os.pathsep) if part]
+    resolved: list[str] = []
+    seen: set[str] = set()
+    for candidate in [*(str(path) for path in candidates if path.is_dir()), *existing]:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        resolved.append(candidate)
+    return {**env, "PATH": os.pathsep.join(resolved)}
+
+
 def _compose_preexec(preexec_fn=None):
     """Add best-effort Linux parent-death signalling without changing identity setup."""
     if not sys.platform.startswith("linux"):
@@ -1728,6 +1768,8 @@ async def run_command(
         preexec = None
 
     if __context__.get("direct_coding"):
+        if not identity.is_pam:
+            env = _direct_coding_runtime_env(env)
         try:
             sandboxed = sandbox_command(
                 command=command,

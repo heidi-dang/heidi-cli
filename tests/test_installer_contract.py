@@ -167,6 +167,28 @@ def test_cptr_execution_environment_includes_bundled_runtime_path():
     source = read("scripts/install-core.sh")
     cptr_block = source.split('>"$CPTR_ENV_FILE"', 1)[0].rsplit("if [[ \"$INCLUDES_BACKEND\" == 1 ]]", 1)[-1]
     assert 'env_line PATH "$HEIDI_HOME/current/venv/bin:$HEIDI_HOME/current/runtime/node/bin:$HEIDI_HOME/current/bin:' in cptr_block
+    assert ":/snap/bin\"" in cptr_block
+
+
+def test_production_test_runner_and_managed_chrome_dependencies_are_provisioned():
+    core = read("scripts/install-core.sh")
+    lib = read("scripts/install-lib.sh")
+    pyproject = read("apps/cptr/pyproject.toml")
+    dockerfile = read("apps/cptr/Dockerfile")
+    tools = read("apps/cptr/cptr/utils/tools.py")
+
+    assert "ensure_managed_chrome" in lib
+    assert "ensure_managed_chrome" in core
+    assert "apt_install chromium-browser" in lib
+    assert "apt_install chromium" in lib
+    assert '"pytest>=8.4,<9"' in pyproject
+    assert '"pytest-asyncio>=1.4,<2"' in pyproject
+    assert "COPY --from=frontend-builder /usr/local/bin/node /usr/local/bin/node" in dockerfile
+    assert "npm-cli.js /usr/local/bin/npm" in dockerfile
+    assert "FROM browser AS default" in dockerfile
+    assert "_direct_coding_runtime_env" in tools
+    assert 'heidi_home / "current" / "runtime" / "node" / "bin"' in tools
+    assert 'Path(sys.executable).parent' in tools
 
 
 def test_verifier_generates_tailored_ai_repair_prompt_on_failure():

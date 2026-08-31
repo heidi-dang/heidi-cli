@@ -75,6 +75,28 @@ ensure_host_security_dependencies() {
   fi
 }
 
+ensure_managed_chrome() {
+  local browser distro=""
+  for browser in google-chrome google-chrome-stable chromium chromium-browser brave-browser microsoft-edge; do
+    need_cmd "$browser" && return 0
+  done
+  [[ -x /snap/bin/chromium ]] && return 0
+
+  step "Installing Chromium for CPTR Managed Chrome"
+  if [[ -r /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    source /etc/os-release
+    distro="${ID:-}"
+  fi
+  if [[ "$distro" == ubuntu ]]; then
+    apt_install chromium-browser || fail "Ubuntu Chromium installation failed"
+    [[ -x /snap/bin/chromium ]] || need_cmd chromium-browser || fail "Ubuntu Chromium was installed but no executable is available"
+    return 0
+  fi
+  apt_install chromium || fail "Chromium installation failed"
+  need_cmd chromium || fail "Chromium was installed but no executable is available"
+}
+
 manifest_runtime_field() {
   local runtime="$1" platform="$2" field="$3"
   python3 - "$RELEASE_MANIFEST" "$runtime" "$platform" "$field" <<'PY'
