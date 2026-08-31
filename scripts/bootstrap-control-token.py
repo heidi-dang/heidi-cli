@@ -28,8 +28,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--profile",
         choices=("standard", "developer", "owner-full", "full"),
-        default="developer",
-        help="developer is the Heidi default and adds approved external execution for push/deploy; standard disables external execution; owner-full also adds confirmed managed-workspace deletion (full is a legacy alias)",
+        default="owner-full",
+        help="owner-full is the Heidi default and adds approved external execution plus confirmed managed-workspace deletion; developer adds only external execution; standard disables both; full is a legacy alias for owner-full",
     )
     return parser.parse_args()
 

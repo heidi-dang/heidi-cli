@@ -69,8 +69,9 @@ esac
 if [[ -n "${HEIDI_CONTROL_PROFILE:-}" ]]; then
   CONTROL_PROFILE="$HEIDI_CONTROL_PROFILE"
 else
-  CONTROL_PROFILE="$(state_default HEIDI_CONTROL_PROFILE developer)"
-  [[ "$CONTROL_PROFILE" != standard ]] || CONTROL_PROFILE=developer
+  CONTROL_PROFILE="$(state_default HEIDI_CONTROL_PROFILE owner-full)"
+  [[ "$CONTROL_PROFILE" != standard ]] || CONTROL_PROFILE=owner-full
+  [[ "$CONTROL_PROFILE" != developer ]] || CONTROL_PROFILE=owner-full
 fi
 [[ "$CONTROL_PROFILE" != full ]] || CONTROL_PROFILE=owner-full
 case "$CONTROL_PROFILE" in
@@ -292,7 +293,7 @@ if [[ "$INCLUDES_MCP" == 1 ]]; then
     env_line MCP_ALLOWED_ORIGINS https://chatgpt.com
     env_line MCP_OAUTH_RESOURCE "$MCP_URL"
     env_line CPTR_LIVE_TERMINAL_STREAMING 0
-    env_line CPTR_HOT_RELOAD 1
+    env_line CPTR_HOT_RELOAD "$( [[ "$MODE" == production ]] && echo 0 || echo 1 )"
     env_line PATH "$HEIDI_HOME/current/runtime/node/bin:$HEIDI_HOME/current/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
     if [[ "$PUBLIC_DEPLOYMENT" == 1 ]]; then
       env_line CLOUDFLARE_ACCESS_ISSUER "$CF_ACCESS_AUTH_DOMAIN"

@@ -139,9 +139,9 @@ heidi deploy --mode dev
 - Reusable OAuth credentials, when enabled, are stored only in owner-only `oauth-client.json`; the client secret is not copied into `state.env` or `mcp.env`.
 - The production MCP origin requires authentication.
 - FDX is read-only through the ChatGPT intelligence gateway and remains local to the execution identity.
-- The default `developer` control profile includes safe workspace provisioning plus `command:external` for explicitly network-opted push/deploy operations; it does not grant managed-workspace deletion.
-- The `standard` profile remains available for locked-down installations and omits both external execution and filesystem deletion.
-- The explicit `owner-full` profile adds `workspace:delete` on top of the developer capabilities; legacy persisted `full` is accepted only as an alias and is migrated to `owner-full`.
+- The default `owner-full` control profile includes safe workspace provisioning, `command:external` for explicitly network-opted push/deploy operations, and confirmed managed-workspace deletion through `workspace:delete`.
+- The `standard` and `developer` profiles remain available only when explicitly selected; `standard` omits external execution and deletion, while `developer` allows external execution without deletion.
+- Persisted `standard`, `developer`, and legacy `full` defaults migrate to `owner-full` on deployment unless `HEIDI_CONTROL_PROFILE` is explicitly set.
 - Managed filesystem deletion remains a two-step request/confirm operation even under `owner-full`.
 - Existing `~/.cptr` state is reused by default so upgrades preserve CPTR workspaces and data.
 

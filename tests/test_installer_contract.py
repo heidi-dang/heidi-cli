@@ -136,6 +136,15 @@ def test_development_mcp_service_uses_bundled_node_hot_reload_runner():
     assert 'MCP_EXEC="$NPM_BIN --prefix $HEIDI_HOME/current/source/apps/mcp run dev"' not in source
 
 
+def test_production_mcp_disables_hot_reload_and_uses_compiled_runner():
+    source = read("scripts/install-core.sh")
+    checker = read("apps/mcp/scripts/check-deployed-contract.mjs")
+    assert 'env_line CPTR_HOT_RELOAD "$( [[ "$MODE" == production ]] && echo 0 || echo 1 )"' in source
+    assert 'MCP_EXEC="$NODE_BIN $HEIDI_HOME/current/source/apps/mcp/dist/server/index.js"' in source
+    assert '[[ "$MODE" == production ]] || MCP_EXEC="$NODE_BIN $HEIDI_HOME/current/source/apps/mcp/scripts/dev.mjs"' in source
+    assert "deployed workbench hot reload is not enabled" not in checker
+
+
 def test_cptr_execution_environment_includes_bundled_runtime_path():
     source = read("scripts/install-core.sh")
     cptr_block = source.split('>"$CPTR_ENV_FILE"', 1)[0].rsplit("if [[ \"$INCLUDES_BACKEND\" == 1 ]]", 1)[-1]
@@ -182,13 +191,14 @@ def test_compatibility_manifest_matches_canonical_runtime_inventory_and_sandbox(
     assert "sandbox" in compatibility
 
 
-def test_installer_defaults_to_developer_profile_and_keeps_owner_full_explicit():
+def test_installer_defaults_to_owner_full_profile():
     source = read("scripts/install-core.sh")
     bootstrap = read("scripts/bootstrap-control-token.py")
     assert 'if [[ -n "${HEIDI_CONTROL_PROFILE:-}" ]]; then' in source
     assert 'CONTROL_PROFILE="$HEIDI_CONTROL_PROFILE"' in source
-    assert 'state_default HEIDI_CONTROL_PROFILE developer' in source
-    assert '[[ "$CONTROL_PROFILE" != standard ]] || CONTROL_PROFILE=developer' in source
+    assert 'state_default HEIDI_CONTROL_PROFILE owner-full' in source
+    assert '[[ "$CONTROL_PROFILE" != standard ]] || CONTROL_PROFILE=owner-full' in source
+    assert '[[ "$CONTROL_PROFILE" != developer ]] || CONTROL_PROFILE=owner-full' in source
     assert '[[ "$CONTROL_PROFILE" != full ]] || CONTROL_PROFILE=owner-full' in source
     assert 'standard|developer|owner-full)' in source
     assert "HEIDI_CONTROL_PROFILE must be standard, developer, or owner-full" in source
@@ -196,7 +206,7 @@ def test_installer_defaults_to_developer_profile_and_keeps_owner_full_explicit()
     assert "confirmed managed-workspace deletion" in source
     assert "CONTROL_PROFILE=full" not in source
     assert 'choices=("standard", "developer", "owner-full", "full")' in bootstrap
-    assert 'default="developer"' in bootstrap
+    assert 'default="owner-full"' in bootstrap
 
 
 def test_runtime_lock_pins_every_downloaded_runtime_for_both_linux_architectures():

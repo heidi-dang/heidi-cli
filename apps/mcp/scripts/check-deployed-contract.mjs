@@ -77,9 +77,14 @@ if (health?.app_version !== expectedContractVersion) {
   throw new Error(`app version drift: expected ${expectedContractVersion}, got ${health?.app_version ?? "missing"}`);
 }
 if (health?.workbench?.ready !== true) throw new Error("deployed workbench is not ready");
-if (health?.workbench?.hot_reload !== true) throw new Error("deployed workbench hot reload is not enabled");
 if (typeof health?.workbench?.build_id !== "string" || health.workbench.build_id.length < 12) {
   throw new Error("deployed workbench build fingerprint is missing");
+}
+// hot_reload is optional: enabled in dev/hot-reload deployments, disabled in standard production.
+if (health?.workbench?.hot_reload === true) {
+  console.log("  workbench: hot_reload enabled (dev mode)");
+} else {
+  console.log("  workbench: hot_reload disabled (standard production)");
 }
 if (health?.mcp_contract?.version !== expectedContractVersion) {
   throw new Error(`MCP contract version drift: expected ${expectedContractVersion}, got ${health?.mcp_contract?.version ?? "missing"}`);

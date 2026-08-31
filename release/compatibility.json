@@ -32,7 +32,7 @@
     "MCP v2.1.2 splits mixed Workbench, SSH, managed Chrome, delegated task, and delegated monitor gateways into read and control surfaces so host safety annotations match capability while destructive/open-world controls remain conservative.",
     "MCP v2.1.1 disables the MCP Apps UI entrypoint: no resources capability is advertised and no tool publishes ui.resourceUri metadata; Workbench session tools remain data-only.",
     "MCP v2.1 adds cptr_workspace_lifecycle for zero-workspace create, clone, import, refresh, archive, and confirmed managed deletion.",
-    "The developer control profile is now the default and adds command:external for explicitly network-opted push/deploy operations without workspace deletion; standard remains locked down, owner-full also adds workspace:delete, and legacy full remains an owner-full alias.",
+    "The owner-full control profile is the deployment default for fresh installs and upgrades, adding command:external plus confirmed managed-workspace deletion; standard and developer remain explicit opt-down profiles, and legacy full remains an owner-full alias.",
     "Git workspaces warm FDX automatically after provisioning; FDX failure remains a non-fatal fallback to normal CPTR Direct Coding.",
     "Existing CPTR data under ~/.cptr is preserved; Heidi takes a pre-upgrade backup before activation.",
     "FDX protocol 2 remains required for persistent structured resident reads."

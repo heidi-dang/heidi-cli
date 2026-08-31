@@ -18,7 +18,7 @@ The wizard asks for:
 
 - development or production mode;
 - CPTR and MCP loopback ports;
-- standard, developer, or owner-full CPTR control profile;
+- CPTR control profile (`owner-full` by default; `developer` or `standard` only when explicitly selected);
 - whether a development deployment should be made remote;
 - public MCP hostname;
 - Cloudflare Account ID;

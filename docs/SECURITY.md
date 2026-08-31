@@ -15,11 +15,11 @@ Do not create a direct public route to CPTR.
 
 ## Credentials and control profiles
 
-The installer creates a dedicated CPTR key named `heidi-mcp`. Heidi now defaults to the `developer` profile: it contains the normal Direct Coding and safe workspace-bootstrap scopes plus `command:external`, allowing explicitly network-opted operations such as Git push and deployment commands. It does not grant `workspace:delete`.
+The installer creates a dedicated CPTR key named `heidi-mcp`. Heidi defaults to the `owner-full` profile: it contains the normal Direct Coding and safe workspace-bootstrap scopes plus `command:external` for explicitly network-opted operations such as Git push and deployment commands, and `workspace:delete` for confirmed deletion of Heidi-managed workspaces.
 
-The `standard` profile remains available for locked-down installations and omits both `command:external` and `workspace:delete`. Existing persisted `standard` deployments migrate to `developer` on upgrade unless the operator explicitly sets `HEIDI_CONTROL_PROFILE=standard`.
+The `standard` and `developer` profiles remain available as explicit locked-down selections. `standard` omits both `command:external` and `workspace:delete`; `developer` adds `command:external` but still omits `workspace:delete`. Persisted `standard` and `developer` defaults migrate to `owner-full` during deployment unless the operator explicitly sets `HEIDI_CONTROL_PROFILE`.
 
-The explicit `owner-full` profile adds `workspace:delete` on top of the developer capabilities for confirmed deletion of Heidi-managed workspaces. Legacy `full` is accepted only as a compatibility alias and is normalized to `owner-full` during deployment.
+Legacy `full` is accepted only as a compatibility alias and is normalized to `owner-full` during deployment.
 
 Neither `developer` nor `owner-full` is an authentication or safety bypass. CPTR authentication, workspace ownership, secret redaction, destructive-command classification, explicit `allow_network=true` opt-in, managed-root confinement, and purpose-built confirmation boundaries remain enforced. Managed workspace deletion requires a short-lived request/confirm exchange; imported external directories can be archived from CPTR but cannot be recursively deleted through the lifecycle API.
 
