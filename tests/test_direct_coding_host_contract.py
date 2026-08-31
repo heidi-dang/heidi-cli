@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 
@@ -17,6 +18,7 @@ FORBIDDEN_DIRECT_CODING_SANDBOX_MARKERS = (
     "HEIDI_SANDBOX_PROFILE",
     "CPTR_DIRECT_CODING_CONTAINER_IMAGE",
     "CPTR_DIRECT_CODING_VM_RUNNER",
+    "sandbox_profile",
     '"bubblewrap"',
     "bwrap",
 )
@@ -37,6 +39,11 @@ def test_direct_coding_has_no_sandbox_implementation_or_configuration_surface() 
                 offenders.append(f"{path.relative_to(ROOT)}: {marker}")
 
     assert not offenders, "active sandbox surface remains:\n" + "\n".join(offenders)
+
+
+def test_compatibility_contract_has_no_direct_coding_sandbox_profile() -> None:
+    compatibility = json.loads((ROOT / "release/compatibility.json").read_text(encoding="utf-8"))
+    assert "sandbox" not in compatibility
 
 
 def test_owner_full_remains_the_managed_default() -> None:
