@@ -41,7 +41,9 @@ Development mode installs all three components and can run the MCP server in dev
 
 ### Production
 
-Production mode builds immutable artifacts, runs CPTR and MCP as user-level systemd services, enables bounded restart policies, and can create a remotely-managed Cloudflare Tunnel. When Cloudflare Access provisioning is selected, Heidi CLI creates an Access application of type `mcp`, enables Managed OAuth / dynamic client registration, and restricts the application to the email address you provide.
+Production mode builds immutable artifacts, runs CPTR and MCP as user-level systemd services, enables bounded restart policies, and can create a remotely-managed Cloudflare Tunnel. When Cloudflare Access provisioning is selected, Heidi CLI creates an Access application of type `mcp`, enables Managed OAuth / Dynamic Client Registration (DCR), restricts the application to the email address you provide, and by default creates or reuses one confidential OAuth `client_id` + `client_secret` pair for clients that require manual OAuth credentials.
+
+The reusable pair is additive: DCR remains enabled for ChatGPT and other clients that can register themselves. Its credentials are stored only in `~/.config/heidi-cli/oauth-client.json` with mode `0600`; `state.env` contains only the non-secret client ID and credential-file path, and `mcp.env` does not contain the reusable client secret.
 
 The Cloudflare API token should be least-privilege and include only the permissions needed for the features you choose, typically:
 
@@ -60,7 +62,7 @@ After a successful public deployment, Heidi CLI prints:
 https://<your-mcp-domain>/mcp
 ```
 
-Add that endpoint when creating a custom MCP app/connector in ChatGPT. If Cloudflare Managed OAuth is enabled, complete the browser authorization flow and then scan the server tools.
+Add that endpoint when creating a custom MCP app/connector in ChatGPT. If Cloudflare Managed OAuth is enabled, complete the browser authorization flow and then scan the server tools. ChatGPT can continue using DCR; the reusable confidential client does not change Heidi's MCP tool-only contract.
 
 OpenAI controls the final app creation, OAuth consent, tool scan, and action-review UI; a server-side installer cannot press those ChatGPT UI controls for you.
 
@@ -70,9 +72,29 @@ Heidi v2.1 exposes `cptr_workspace_lifecycle`, so ChatGPT can start from an empt
 
 External imported directories are register-only: they can be archived from CPTR, but the lifecycle API will not recursively delete them. Managed workspace deletion is a separate request/confirm operation and requires the `workspace:delete` scope.
 
+## Reusable OAuth client
+
+Public deployments enable the reusable confidential client by default. The installer discovers Cloudflare Managed OAuth's authorization-server metadata, registers the client against the advertised DCR endpoint, and persists the resulting registration in:
+
+```text
+~/.config/heidi-cli/oauth-client.json
+```
+
+Use the saved `client_id` and `client_secret` only with remote MCP clients that can protect confidential OAuth credentials. Never copy the file into a repository, issue, log, chat transcript, or shared shell history.
+
+The lifecycle is intentionally conservative:
+
+- Exact redeployments reuse the same pair instead of generating another client.
+- Redirect URI, resource, client-name, or authentication-method drift fails closed and requires an explicit rotation decision.
+- `HEIDI_MCP_OAUTH_GLOBAL_CLIENT=0` disables creation/use of the reusable client while leaving DCR available.
+- `HEIDI_MCP_OAUTH_GLOBAL_CLIENT_ROTATE=1` explicitly rotates the reusable registration. Rotation is accepted only when the existing DCR response supplied RFC 7592 registration-management credentials so Heidi can revoke the old registration before creating a replacement.
+- `MCP_OAUTH_REDIRECT_URIS` adds comma-separated redirect URIs to the same allowlist used by both Cloudflare DCR and the reusable client.
+
+`heidi verify` checks that the credential file is owner-only, structurally valid, and consistent with `state.env`, the MCP resource, and Cloudflare issuer without printing `client_secret` or registration-management credentials.
+
 ## Claude remote MCP
 
-Cloudflare Managed OAuth is also provisioned for Claude's Dynamic Client Registration callback. Heidi adds Claude's exact remote-MCP OAuth redirect URI to the Access application's DCR allowlist while preserving redirect URIs already configured for other MCP clients.
+Cloudflare Managed OAuth is provisioned for Claude's Dynamic Client Registration callback. Heidi adds Claude's exact remote-MCP OAuth redirect URI to the Access application's DCR allowlist while preserving redirect URIs already configured for other MCP clients.
 
 In Claude, add the same public MCP endpoint:
 
@@ -80,7 +102,7 @@ In Claude, add the same public MCP endpoint:
 https://<your-mcp-domain>/mcp
 ```
 
-Leave **OAuth Client ID** and **OAuth Client Secret** blank when using Dynamic Client Registration, then connect and complete the Cloudflare authorization flow. The generic Cloudflare provisioner remains provider-neutral; the Claude callback is applied only by Heidi's deployment/client-profile layer.
+You can leave **OAuth Client ID** and **OAuth Client Secret** blank when using DCR, or use the reusable pair from the owner-only `oauth-client.json` when a Claude configuration explicitly requires manual confidential OAuth credentials. In either case, connect and complete the Cloudflare authorization flow. The generic Cloudflare provisioner remains provider-neutral; the Claude callback is applied only by Heidi's deployment/client-profile layer.
 
 Additional remote-MCP callbacks can still be supplied through `MCP_OAUTH_REDIRECT_URIS` or repeated `--oauth-redirect-uri` arguments to `scripts/cloudflare-provision.py`. Existing Access application redirect URIs are retained when Heidi updates the application.
 
@@ -111,6 +133,7 @@ heidi deploy --mode dev
 - MCP defaults to `127.0.0.1:8787`.
 - Cloudflare Tunnel publishes MCP only; CPTR is not directly exposed.
 - CPTR API credentials are generated locally and stored with mode `0600`.
+- Reusable OAuth credentials, when enabled, are stored only in owner-only `oauth-client.json`; the client secret is not copied into `state.env` or `mcp.env`.
 - The production MCP origin requires authentication.
 - FDX is read-only through the ChatGPT intelligence gateway and remains local to the execution identity.
 - The default `developer` control profile includes safe workspace provisioning plus `command:external` for explicitly network-opted push/deploy operations; it does not grant managed-workspace deletion.
