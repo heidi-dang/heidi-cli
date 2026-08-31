@@ -104,7 +104,7 @@ A deployment is not considered successful merely because systemd reports `active
 3. CPTR `/api/health/ready`;
 4. MCP `/health`;
 5. reusable OAuth credential-file ownership, schema, non-empty client ID/secret, resource, client ID and Cloudflare issuer consistency when enabled, without printing the secret;
-6. the exact MCP tool/resource contract using the adapter's deployed-contract verifier;
+6. the exact 26-tool MCP contract, absence of MCP resources/UI metadata, and disabled compatibility Workbench using the adapter's deployed-contract verifier;
 7. the private MCP→CPTR bearer path by listing CPTR workspaces;
 8. public Cloudflare DNS/TLS/Access reachability when enabled.
 

@@ -41,6 +41,7 @@ export type PluginUpdateManifest = {
   contract_version: string;
   tool_count: number;
   release_sha: string | null;
+  control_profile: string;
   released_at: string;
   summary: string;
   changes: string[];
@@ -61,21 +62,19 @@ export function currentPluginUpdateManifest(env: NodeJS.ProcessEnv = process.env
     contract_version: MCP_CONTRACT_VERSION,
     tool_count: MCP_CONTRACT_TOOL_COUNT,
     release_sha: env.GIT_COMMIT_SHA ?? env.RAILWAY_GIT_COMMIT_SHA ?? env.CPTR_WORKBENCH_BUILD_ID ?? null,
+    control_profile: env.HEIDI_CONTROL_PROFILE?.trim() || "unknown",
     released_at: "2026-08-31",
-    summary: "Heidi v2.1.3 makes the Workbench bootstrap explicitly optional so normal ChatGPT Direct Coding starts with the task-relevant tool instead of a host-block-prone activation call.",
+    summary: "Heidi v2.1.4 hardens production release identity and makes the tool-only MCP boundary operationally exact.",
     changes: [
-      "Makes cptr_open_live_workbench explicitly optional and removes the instruction that told ChatGPT to call it first for direct invocations.",
-      "Direct Coding now starts with the workspace, FDX, code, Git, test, SSH, or browser tool that directly matches the user's request; Workbench remains available only for explicit open/resume requests and allow:delegate authorization.",
-      "Preserves the tool-only MCP connector boundary: no resources capability and no ui.resourceUri metadata are advertised.",
-      "Adds cptr_workspace_lifecycle so ChatGPT can create, clone, import, refresh, archive, and confirmed-delete workspaces without requiring an existing workspace first.",
-      "Automatically warms FDX repository intelligence after Git workspace provisioning and falls back cleanly to normal CPTR Direct Coding when FDX is unavailable.",
-      "Defaults Heidi deployments to a developer capability profile with approved external execution for explicit push/deploy operations while reserving confirmed managed-workspace deletion for owner-full.",
-      "Centralizes the compact MCP tool inventory so runtime tool count and release metadata cannot silently drift apart.",
-      "Splits Workbench, SSH, managed Chrome, delegated task, and delegated monitor read surfaces from their control surfaces so read/status calls advertise read-only non-open-world semantics.",
-      "Preserves destructive/open-world annotations on control surfaces; the change reduces false-positive host classification without weakening CPTR authorization or execution policy.",
+      "Signs the exact source Git commit into Heidi release metadata and propagates it into deployment state and the production MCP runtime.",
+      "Makes production deployment fail closed when source commit provenance is unavailable and verifies state, runtime environment, and /health release identity agree.",
+      "Reports the actual deployed Heidi control profile in update metadata; the managed installer still defaults fresh installs and upgrades to owner-full unless explicitly opted down.",
+      "Builds the normal MCP production artifact as a tool server only; compatibility Workbench assets and HTTP/SSE endpoints require an explicit compatibility opt-in.",
+      "Removes the production environment toggle for the legacy 69-action contract; that surface remains available only through the explicit in-process regression harness.",
+      "Preserves the exact 26-tool compact contract with no MCP resources capability and no ui.resourceUri metadata.",
     ],
     refresh_required: true,
-    refresh_reason: "The cptr_open_live_workbench title and description changed, so the host must refresh its cached action contract after deployment.",
+    refresh_reason: "The cptr_plugin_update output schema now reports control_profile and the production release metadata changed, so the host must refresh its cached action contract after deployment.",
     refresh_path: ["Settings", "Apps / Plugins", "Heidi", "Manage / Action control", "Refresh"],
     verification: {
       tool: "cptr_plugin_update",

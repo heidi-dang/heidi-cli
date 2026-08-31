@@ -76,15 +76,11 @@ const health = await healthResponse.json();
 if (health?.app_version !== expectedContractVersion) {
   throw new Error(`app version drift: expected ${expectedContractVersion}, got ${health?.app_version ?? "missing"}`);
 }
-if (health?.workbench?.ready !== true) throw new Error("deployed workbench is not ready");
-if (typeof health?.workbench?.build_id !== "string" || health.workbench.build_id.length < 12) {
-  throw new Error("deployed workbench build fingerprint is missing");
+if (health?.workbench?.compatibility_enabled !== false) {
+  throw new Error("production MCP must keep the compatibility Workbench disabled");
 }
-// hot_reload is optional: enabled in dev/hot-reload deployments, disabled in standard production.
-if (health?.workbench?.hot_reload === true) {
-  console.log("  workbench: hot_reload enabled (dev mode)");
-} else {
-  console.log("  workbench: hot_reload disabled (standard production)");
+if (health?.workbench?.ready !== false || health?.workbench?.hot_reload !== false || health?.workbench?.build_id !== null) {
+  throw new Error("tool-only production health must not depend on Workbench assets");
 }
 if (health?.mcp_contract?.version !== expectedContractVersion) {
   throw new Error(`MCP contract version drift: expected ${expectedContractVersion}, got ${health?.mcp_contract?.version ?? "missing"}`);
@@ -112,4 +108,4 @@ const uiTools = (tools.tools ?? [])
 if (uiTools.length !== 0) {
   throw new Error(`MCP UI metadata drift: expected no UI-producing tools, got [${uiTools.join(", ")}]`);
 }
-console.log(`CPTR deployed tool-only MCP contract verified: ${expectedRegisteredToolCount} registered compact tools and no UI resource entrypoint`);
+console.log(`CPTR deployed tool-only MCP contract verified: ${expectedRegisteredToolCount} registered compact tools, compatibility Workbench disabled, and no UI resource entrypoint`);

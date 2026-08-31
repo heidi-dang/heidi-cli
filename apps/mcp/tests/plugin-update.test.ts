@@ -15,7 +15,7 @@ const serverSource = readFileSync(new URL("../server/index.ts", import.meta.url)
 const widgetSource = readFileSync(new URL("../web/src/plugin-update.tsx", import.meta.url), "utf8");
 
 test("publishes a bounded CPTR update manifest for the current MCP contract", () => {
-  const manifest = currentPluginUpdateManifest({ GIT_COMMIT_SHA: "abc123" });
+  const manifest = currentPluginUpdateManifest({ GIT_COMMIT_SHA: "abc123", HEIDI_CONTROL_PROFILE: "owner-full" });
   assert.match(packageMetadata.version ?? "", /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/);
   assert.equal(CPTR_APP_VERSION, packageMetadata.version);
   assert.equal(CPTR_PLUGIN_VERSION, CPTR_APP_VERSION);
@@ -25,6 +25,8 @@ test("publishes a bounded CPTR update manifest for the current MCP contract", ()
   assert.equal(manifest.contract_version, MCP_CONTRACT_VERSION);
   assert.equal(manifest.tool_count, MCP_CONTRACT_TOOL_COUNT);
   assert.equal(manifest.release_sha, "abc123");
+  assert.equal(manifest.control_profile, "owner-full");
+  assert.ok(manifest.changes.every((change) => !change.includes("developer capability profile")));
   assert.equal(manifest.refresh_required, true);
   assert.equal(manifest.verification.tool, "cptr_plugin_update");
   assert.deepEqual(manifest.verification.arguments, { action: "status" });

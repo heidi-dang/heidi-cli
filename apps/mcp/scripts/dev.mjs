@@ -34,6 +34,7 @@ function startServer(reason) {
       env: {
         ...process.env,
         NODE_ENV: "development",
+        CPTR_COMPAT_WORKBENCH: "1",
         CPTR_HOT_RELOAD: "1",
         CPTR_DEV_BUILD_ID: buildId,
       },

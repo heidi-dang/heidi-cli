@@ -101,6 +101,7 @@ jobs:
             --channel "$CHANNEL" \
             --source-archive "dist/heidi-cli-${VERSION}.tar.gz" \
             --source-url "$SOURCE_URL" \
+            --git-sha "$GITHUB_SHA" \
             --compatibility release/compatibility.json \
             --runtime-lock release/runtime-lock.json \
             --output dist/heidi-release.json \

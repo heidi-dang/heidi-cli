@@ -139,10 +139,25 @@ def test_development_mcp_service_uses_bundled_node_hot_reload_runner():
 def test_production_mcp_disables_hot_reload_and_uses_compiled_runner():
     source = read("scripts/install-core.sh")
     checker = read("apps/mcp/scripts/check-deployed-contract.mjs")
+    assert 'env_line CPTR_COMPAT_WORKBENCH "$( [[ "$MODE" == production ]] && echo 0 || echo 1 )"' in source
     assert 'env_line CPTR_HOT_RELOAD "$( [[ "$MODE" == production ]] && echo 0 || echo 1 )"' in source
     assert 'MCP_EXEC="$NODE_BIN $HEIDI_HOME/current/source/apps/mcp/dist/server/index.js"' in source
     assert '[[ "$MODE" == production ]] || MCP_EXEC="$NODE_BIN $HEIDI_HOME/current/source/apps/mcp/scripts/dev.mjs"' in source
     assert "deployed workbench hot reload is not enabled" not in checker
+
+
+def test_production_mcp_requires_and_verifies_signed_git_provenance():
+    bootstrap = read("install.sh")
+    core = read("scripts/install-core.sh")
+    verifier = read("scripts/verify-stack.sh")
+    assert "source.git_sha" in bootstrap
+    assert 'export HEIDI_SOURCE_GIT_SHA="$SOURCE_GIT_SHA"' in bootstrap
+    assert "production MCP deployment requires signed source Git commit provenance" in core
+    assert 'env_line GIT_COMMIT_SHA "$SOURCE_GIT_SHA"' in core
+    assert 'env_line HEIDI_SOURCE_GIT_SHA "$SOURCE_GIT_SHA"' in core
+    assert 'env_line HEIDI_CONTROL_PROFILE "$CONTROL_PROFILE"' in core
+    assert "Production MCP release SHA matches signed source provenance" in verifier
+    assert 'data.get("release") == expected' in verifier
 
 
 def test_cptr_execution_environment_includes_bundled_runtime_path():
@@ -235,6 +250,7 @@ def test_release_workflow_builds_signs_and_publishes_channel_assets():
     assert "options: [stable, beta, edge]" in source
     assert 'CHANNEL_TAG="channel-${CHANNEL}"' in source
     assert "scripts/verify-compatibility.py" in source
+    assert '--git-sha "$GITHUB_SHA"' in source
 
 
 def test_versioned_release_assets_are_never_clobbered():

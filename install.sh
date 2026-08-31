@@ -84,10 +84,12 @@ SIGNED_VERSION="$(manifest_value version)" || fail "signed manifest is missing v
 SIGNED_CHANNEL="$(manifest_value channel)" || fail "signed manifest is missing channel"
 SOURCE_URL="$(manifest_value source.url)" || fail "signed manifest is missing source URL"
 SOURCE_SHA="$(manifest_value source.sha256)" || fail "signed manifest is missing source SHA-256"
+SOURCE_GIT_SHA="$(manifest_value source.git_sha)" || fail "signed manifest is missing source Git commit SHA"
 COMPAT_SHA="$(manifest_value compatibility_sha256)" || fail "signed manifest is missing compatibility SHA-256"
 [ "$SIGNED_CHANNEL" = "$CHANNEL" ] || { [ -n "$VERSION" ] || fail "release channel mismatch: requested $CHANNEL, signed $SIGNED_CHANNEL"; }
 [ -z "$VERSION" ] || [ "$SIGNED_VERSION" = "$VERSION" ] || fail "release version mismatch: requested $VERSION, signed $SIGNED_VERSION"
 printf '%s' "$SOURCE_SHA" | grep -Eq '^[0-9a-f]{64}$' || fail "invalid signed source SHA-256"
+printf '%s' "$SOURCE_GIT_SHA" | grep -Eq '^([0-9a-f]{40}|[0-9a-f]{64})$' || fail "invalid signed source Git commit SHA"
 printf '%s' "$COMPAT_SHA" | grep -Eq '^[0-9a-f]{64}$' || fail "invalid signed compatibility SHA-256"
 
 ARCHIVE="$TMP_DIR/heidi-source.tar.gz"
@@ -169,6 +171,7 @@ export HEIDI_RELEASE_DIR="$RELEASE_DIR"
 export HEIDI_REPO_DIR="$RELEASE_DIR/source"
 export HEIDI_VERSION="$SIGNED_VERSION"
 export HEIDI_CHANNEL="$SIGNED_CHANNEL"
+export HEIDI_SOURCE_GIT_SHA="$SOURCE_GIT_SHA"
 export HEIDI_TTY="$TTY_DEVICE"
 trap - EXIT INT TERM
 exec bash "$RELEASE_DIR/source/scripts/install-core.sh" "$@"

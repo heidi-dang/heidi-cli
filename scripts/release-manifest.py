@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+GIT_SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 CHANNELS = {"stable", "beta", "edge"}
 PLATFORMS = {"linux-x64", "linux-arm64"}
 FORMATS = {"binary", "tar.xz", "tar.gz"}
@@ -91,6 +92,9 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError(f"invalid Heidi version: {args.version}")
     if not args.source_url.startswith("https://"):
         raise ValueError("source URL must use HTTPS")
+    git_sha = args.git_sha.strip().lower()
+    if not GIT_SHA_RE.fullmatch(git_sha):
+        raise ValueError("git SHA must be a full 40- or 64-character lowercase hexadecimal commit ID")
     compatibility_payload = load_json(compatibility)
     compatibility_version = compatibility_payload.get("heidi_version")
     if compatibility_version not in (None, args.version):
@@ -105,6 +109,7 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
         "source": {
             "url": args.source_url,
             "sha256": sha256_file(source),
+            "git_sha": git_sha,
         },
         "compatibility_sha256": sha256_file(compatibility),
         "runtime_lock_sha256": sha256_file(runtime_lock),
@@ -139,6 +144,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--channel", required=True, choices=sorted(CHANNELS))
     parser.add_argument("--source-archive", required=True)
     parser.add_argument("--source-url", required=True)
+    parser.add_argument("--git-sha", required=True)
     parser.add_argument("--compatibility", required=True)
     parser.add_argument("--runtime-lock", required=True)
     parser.add_argument("--output", required=True)

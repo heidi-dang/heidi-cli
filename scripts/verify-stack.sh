@@ -143,6 +143,21 @@ check_mcp() {
   fi
   if curl -fsS --max-time 10 "$HEIDI_MCP_LOCAL_URL/health" >/dev/null 2>&1; then pass "MCP local health"; else fail_check mcp_health "MCP local health" "$HEIDI_MCP_LOCAL_URL/health is unavailable"; return; fi
 
+  if [[ "${HEIDI_MODE:-}" == production ]]; then
+    local expected_git_sha runtime_git_sha
+    expected_git_sha="${HEIDI_SOURCE_GIT_SHA:-}"
+    runtime_git_sha="$(read_env_value "$MCP_ENV_FILE" GIT_COMMIT_SHA 2>/dev/null || true)"
+    if [[ ! "$expected_git_sha" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then
+      fail_check release_traceability "Production source provenance" "HEIDI_SOURCE_GIT_SHA is missing or invalid"
+    elif [[ "$runtime_git_sha" != "$expected_git_sha" ]]; then
+      fail_check release_traceability "MCP source provenance" "runtime GIT_COMMIT_SHA does not match signed deployment state"
+    elif curl -fsS --max-time 10 "$HEIDI_MCP_LOCAL_URL/health" | python3 -c 'import json,sys; expected=sys.argv[1]; data=json.load(sys.stdin); raise SystemExit(0 if data.get("release") == expected else 1)' "$expected_git_sha"; then
+      pass "Production MCP release SHA matches signed source provenance"
+    else
+      fail_check release_traceability "MCP release SHA" "health metadata does not match signed source provenance"
+    fi
+  fi
+
   check_reusable_oauth_client
 
   local smoke_token node_binary
@@ -160,9 +175,9 @@ check_mcp() {
        CPTR_DEPLOYED_MCP_TOKEN="$smoke_token" \
        CPTR_DEPLOYED_PUBLIC_ORIGIN="${HEIDI_PUBLIC_ORIGIN:-$HEIDI_MCP_LOCAL_URL}" \
        "$node_binary" "$REPO_DIR/apps/mcp/scripts/check-deployed-contract.mjs" >/dev/null 2>&1; then
-      pass "MCP exact signed tool/resource contract"
+      pass "MCP exact signed tool-only contract"
     else
-      fail_check mcp_contract "MCP exact contract" "registered tools/resources differ from the signed Heidi release"
+      fail_check mcp_contract "MCP exact contract" "registered tools or tool-only capability boundaries differ from the signed Heidi release"
     fi
   else
     fail_check mcp_contract "MCP contract verifier" "check-deployed-contract.mjs is missing"

@@ -61,7 +61,8 @@ const oauthConfig: McpAuthConfig = {
 };
 
 const client = clientFromEnvironment();
-const liveTerminalStreamingEnabled = resolveLiveTerminalStreaming();
+const compatibilityWorkbenchEnabled = process.env.CPTR_COMPAT_WORKBENCH === "1";
+const liveTerminalStreamingEnabled = compatibilityWorkbenchEnabled && resolveLiveTerminalStreaming();
 const liveTickets = new LiveTicketStore({
   streamUrl: `${publicOrigin}/live/stream`,
   snapshotUrl: `${publicOrigin}/live/snapshot`,
@@ -83,13 +84,15 @@ function currentWorkbenchHotReload() {
   return resolveWorkbenchHotReload(currentWorkbenchAssets());
 }
 
-const initialAssets = currentWorkbenchAssets();
-const initialHotReload = resolveWorkbenchHotReload(initialAssets);
-if (initialHotReload.enabled) allowedBrowserOrigins.add(publicOrigin);
-if (!initialAssets.ready) {
-  console.error(`CPTR Live Workbench bundle is unavailable; searched: ${initialAssets.searchedDirectories.join(", ")}`);
-} else {
-  console.log(`CPTR Live Workbench bundle loaded from ${initialAssets.directory}`);
+if (compatibilityWorkbenchEnabled) {
+  const initialAssets = currentWorkbenchAssets();
+  const initialHotReload = resolveWorkbenchHotReload(initialAssets);
+  if (initialHotReload.enabled) allowedBrowserOrigins.add(publicOrigin);
+  if (!initialAssets.ready) {
+    console.error(`CPTR compatibility Workbench is enabled but its bundle is unavailable; searched: ${initialAssets.searchedDirectories.join(", ")}`);
+  } else {
+    console.log(`CPTR compatibility Workbench bundle loaded from ${initialAssets.directory}`);
+  }
 }
 
 function writeJson(res: ServerResponse, status: number, value: unknown, headers: Record<string, string> = {}) {
@@ -264,6 +267,10 @@ const httpServer = createServer(async (req, res) => {
     url.pathname === "/live/prompt/stream" ||
     url.pathname === "/live/prompt/snapshot" ||
     url.pathname.startsWith("/__cptr/dev/");
+  if (workbenchBrowserRequest && !compatibilityWorkbenchEnabled) {
+    res.writeHead(404, { "cache-control": "no-store" }).end("Not Found");
+    return;
+  }
   const browserOriginAllowed = workbenchBrowserRequest
     ? isAllowedWorkbenchBrowserOrigin(requestOrigin, allowedBrowserOrigins)
     : isAllowedBrowserOrigin(requestOrigin, allowedBrowserOrigins);
@@ -277,8 +284,8 @@ const httpServer = createServer(async (req, res) => {
     : corsHeaders(requestOrigin, allowedBrowserOrigins);
   for (const [header, value] of Object.entries(originHeaders)) res.setHeader(header, value);
 
-  const hotReload = currentWorkbenchHotReload();
-  if (hotReload.enabled && req.method === "GET" && url.pathname === "/__cptr/dev/workbench.js") {
+  const hotReload = compatibilityWorkbenchEnabled ? currentWorkbenchHotReload() : null;
+  if (hotReload?.enabled && req.method === "GET" && url.pathname === "/__cptr/dev/workbench.js") {
     const assets = currentWorkbenchAssets();
     res.writeHead(assets.ready ? 200 : 503, {
       ...originHeaders,
@@ -287,7 +294,7 @@ const httpServer = createServer(async (req, res) => {
     }).end(assets.bundle);
     return;
   }
-  if (hotReload.enabled && req.method === "GET" && url.pathname === "/__cptr/dev/workbench.css") {
+  if (hotReload?.enabled && req.method === "GET" && url.pathname === "/__cptr/dev/workbench.css") {
     const assets = currentWorkbenchAssets();
     res.writeHead(assets.ready ? 200 : 503, {
       ...originHeaders,
@@ -296,7 +303,7 @@ const httpServer = createServer(async (req, res) => {
     }).end(assets.styles);
     return;
   }
-  if (hotReload.enabled && req.method === "GET" && url.pathname === "/__cptr/dev/reload") {
+  if (hotReload?.enabled && req.method === "GET" && url.pathname === "/__cptr/dev/reload") {
     if (hotReloadClients >= maxHotReloadClients) {
       writeJson(res, 429, { error: "workbench reload stream capacity reached" });
       return;
@@ -350,17 +357,19 @@ const httpServer = createServer(async (req, res) => {
   }
 
   if (url.pathname === "/health") {
-    const assets = currentWorkbenchAssets();
-    const reload = resolveWorkbenchHotReload(assets);
-    const status = assets.ready ? 200 : 503;
+    const assets = compatibilityWorkbenchEnabled ? currentWorkbenchAssets() : null;
+    const reload = assets ? resolveWorkbenchHotReload(assets) : null;
+    const compatibilityHealthy = !compatibilityWorkbenchEnabled || assets?.ready === true;
+    const status = compatibilityHealthy ? 200 : 503;
     res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify({
-      status: assets.ready ? "ok" : "degraded",
+      status: compatibilityHealthy ? "ok" : "degraded",
       app_version: CPTR_APP_VERSION,
       workbench: {
-        ready: assets.ready,
-        asset_directory: assets.directory,
-        hot_reload: reload.enabled,
-        build_id: reload.buildId,
+        compatibility_enabled: compatibilityWorkbenchEnabled,
+        ready: assets?.ready ?? false,
+        asset_directory: assets?.directory ?? null,
+        hot_reload: reload?.enabled ?? false,
+        build_id: reload?.buildId ?? null,
       },
       mcp_contract: {
         version: MCP_CONTRACT_VERSION,

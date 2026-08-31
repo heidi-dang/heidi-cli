@@ -36,6 +36,13 @@ state_default() {
 
 HEIDI_VERSION="${HEIDI_VERSION:-$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["heidi_version"])' "$REPO_DIR/release/compatibility.json")}"
 HEIDI_CHANNEL="${HEIDI_CHANNEL:-$(state_default HEIDI_CHANNEL stable)}"
+SOURCE_GIT_SHA="${HEIDI_SOURCE_GIT_SHA:-}"
+if [[ -z "$SOURCE_GIT_SHA" ]] && command -v git >/dev/null 2>&1 && git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  SOURCE_GIT_SHA="$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)"
+fi
+if [[ -n "$SOURCE_GIT_SHA" ]]; then
+  [[ "$SOURCE_GIT_SHA" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || fail "HEIDI_SOURCE_GIT_SHA must be a full 40- or 64-character lowercase hexadecimal commit ID"
+fi
 
 step "Deployment mode and topology"
 MODE="${HEIDI_MODE:-$(state_default HEIDI_MODE production)}"
@@ -65,6 +72,9 @@ case "$TOPOLOGY:$ROLE" in
   split-tailscale:mcp) INCLUDES_MCP=1 ;;
   *) fail "unsupported topology/role combination: $TOPOLOGY/$ROLE" ;;
 esac
+if [[ "$MODE" == production && "$INCLUDES_MCP" == 1 && -z "$SOURCE_GIT_SHA" ]]; then
+  fail "production MCP deployment requires signed source Git commit provenance (HEIDI_SOURCE_GIT_SHA)"
+fi
 
 if [[ -n "${HEIDI_CONTROL_PROFILE:-}" ]]; then
   CONTROL_PROFILE="$HEIDI_CONTROL_PROFILE"
@@ -284,6 +294,8 @@ fi
 if [[ "$INCLUDES_MCP" == 1 ]]; then
   {
     env_line NODE_ENV "$( [[ "$MODE" == production ]] && echo production || echo development )"
+    env_line GIT_COMMIT_SHA "$SOURCE_GIT_SHA"
+    env_line HEIDI_CONTROL_PROFILE "$CONTROL_PROFILE"
     env_line HOST 127.0.0.1
     env_line PORT "$MCP_PORT"
     env_line CPTR_BASE_URL "$CPTR_URL"
@@ -292,6 +304,7 @@ if [[ "$INCLUDES_MCP" == 1 ]]; then
     env_line PUBLIC_ORIGIN "$PUBLIC_ORIGIN"
     env_line MCP_ALLOWED_ORIGINS https://chatgpt.com
     env_line MCP_OAUTH_RESOURCE "$MCP_URL"
+    env_line CPTR_COMPAT_WORKBENCH "$( [[ "$MODE" == production ]] && echo 0 || echo 1 )"
     env_line CPTR_LIVE_TERMINAL_STREAMING 0
     env_line CPTR_HOT_RELOAD "$( [[ "$MODE" == production ]] && echo 0 || echo 1 )"
     env_line PATH "$HEIDI_HOME/current/runtime/node/bin:$HEIDI_HOME/current/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
@@ -435,6 +448,7 @@ HEIDI_SERVICE_UNITS="${HEIDI_SERVICE_UNITS% }"
 {
   env_line HEIDI_VERSION "$HEIDI_VERSION"
   env_line HEIDI_CHANNEL "$HEIDI_CHANNEL"
+  env_line HEIDI_SOURCE_GIT_SHA "$SOURCE_GIT_SHA"
   env_line HEIDI_MODE "$MODE"
   env_line HEIDI_TOPOLOGY "$TOPOLOGY"
   env_line HEIDI_SPLIT_ROLE "$ROLE"

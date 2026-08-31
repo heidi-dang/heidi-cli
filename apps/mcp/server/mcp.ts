@@ -356,7 +356,7 @@ const DELEGATED_AGENT_TOOL_NAMES = new Set([
   "cptr_delegate_task_control",
   "cptr_delegate_monitor_read",
   "cptr_delegate_monitor_control",
-  // Legacy names remain gated when CPTR_MCP_LEGACY_CONTRACT=1.
+  // Legacy names are reachable only through the explicit in-process compatibility harness used by tests; the production server has no environment toggle that can expose them.
   "cptr_list_models", "cptr_list_tasks", "cptr_list_autonomous", "cptr_get_task_events",
   "cptr_start_task", "cptr_execute_task", "cptr_monitor_autonomous", "cptr_get_autonomous",
   "cptr_get_autonomous_events", "cptr_get_autonomous_evidence", "cptr_steer_autonomous",
@@ -404,11 +404,12 @@ export function createMcpServer(
     widgetStyles?: string;
     widgetAssets?: () => { bundle: string; styles: string };
     connectDomain?: string;
+    /** Internal compatibility-test harness only. The production HTTP server never enables this. */
     legacyContract?: boolean;
   } = {},
 ): McpServer {
   const server = new McpServer({ name: "chatgpt-computer-plugin", version: MCP_CONTRACT_VERSION });
-  const legacyContract = options.legacyContract ?? process.env.CPTR_MCP_LEGACY_CONTRACT === "1";
+  const legacyContract = options.legacyContract === true;
   const tickets = options.tickets ?? new LiveTicketStore();
   const promptSessions = options.promptSessions ?? new PromptTerminalStore();
   const liveTerminalStreamingEnabled = options.liveTerminalStreamingEnabled ?? true;
@@ -797,6 +798,7 @@ export function createMcpServer(
         contract_version: z.string(),
         tool_count: z.number().int(),
         release_sha: z.string().nullable(),
+        control_profile: z.string(),
         released_at: z.string(),
         summary: z.string(),
         changes: z.array(z.string()),

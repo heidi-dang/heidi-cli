@@ -29,8 +29,8 @@ apps/cptr (loopback :8000)
 
 Transport and presentation only. It owns:
 
-- MCP Streamable HTTP and schemas;
-- Apps SDK Workbench resource;
+- MCP Streamable HTTP and the exact 26-tool production schema;
+- optional compatibility/development Workbench assets and endpoints, disabled in the production contract;
 - OAuth / Cloudflare Access assertion validation;
 - CPTR HTTP client;
 - public health and deployed-contract verification.

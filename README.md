@@ -2,7 +2,7 @@
 
 Heidi CLI is the canonical monorepo for the CPTR Computer stack:
 
-- `apps/mcp` — ChatGPT-facing MCP / Apps SDK adapter and Live Workbench.
+- `apps/mcp` — ChatGPT-facing 26-tool MCP adapter; production is tool-only, with the Workbench retained only as an explicit compatibility/development surface.
 - `apps/cptr` — CPTR backend, control plane, execution runtime, browser/SSH/direct-coding services, persistence, and verification.
 - `crates/fdx` — native FDX repository-intelligence CLI and persistent daemon.
 - `install.sh` + `bin/heidi` — installation, configuration, deployment, verification, update, status, logs, and URL discovery.
@@ -22,13 +22,13 @@ It will:
 1. clone/update this repository under `~/.local/share/heidi-cli`;
 2. validate/install required local runtimes;
 3. build the CPTR frontend and Python environment;
-4. build the MCP server and Workbench;
+4. build the production tool-only MCP server (the compatibility Workbench is development/opt-in only);
 5. compile the native FDX binary;
 6. create/rotate a scoped CPTR control token for the current OS user;
 7. prompt for **development** or **production** deployment;
 8. configure loopback CPTR + MCP services;
 9. optionally provision a Cloudflare remotely-managed tunnel, DNS CNAME, and Cloudflare Access MCP application using an API token;
-10. verify FDX, CPTR health/readiness, MCP health, MCP tool/resource contract, and CPTR↔MCP connectivity;
+10. verify FDX, CPTR health/readiness, MCP health, the exact tool-only MCP contract, and CPTR↔MCP connectivity;
 11. print the final ChatGPT MCP URL.
 
 Secrets are written only under `~/.config/heidi-cli` with owner-only permissions. They are never written into the Git checkout.
@@ -173,6 +173,8 @@ cargo build --release -p fdx
 This repository intentionally avoids Git submodules and nested Git repositories. The three runtime components are versioned together so a release can guarantee a compatible MCP schema, CPTR control API, and FDX protocol.
 
 Generated output, local databases, `.env` files, node modules, Python environments, Rust `target`, CPTR data, FDX indexes, and deployment secrets are excluded from Git.
+
+Repository ownership and split-upstream synchronization rules are defined in `docs/REPOSITORY_GOVERNANCE.md`.
 
 ## Licensing
 

@@ -120,7 +120,24 @@ test("default MCP contract advertises split read/control safety surfaces", async
   await server.close();
 });
 
-test("legacy contract is opt-in and retains the 69-action recovery surface", async () => {
+test("legacy contract cannot be enabled through a production environment toggle", async () => {
+  const previous = process.env.CPTR_MCP_LEGACY_CONTRACT;
+  process.env.CPTR_MCP_LEGACY_CONTRACT = "1";
+  try {
+    const { server, client } = await connectedServer();
+    const listed = await client.listTools();
+    assert.equal(listed.tools.length, 26);
+    assert.equal(listed.tools.some((tool) => tool.name === "cptr_code_read_file"), false);
+    assert.equal(listed.tools.some((tool) => tool.name === "cptr_code_read"), true);
+    await client.close();
+    await server.close();
+  } finally {
+    if (previous === undefined) delete process.env.CPTR_MCP_LEGACY_CONTRACT;
+    else process.env.CPTR_MCP_LEGACY_CONTRACT = previous;
+  }
+});
+
+test("internal compatibility harness retains the legacy 69-action fixture for regression tests only", async () => {
   const { server, client } = await connectedServer({ legacyContract: true });
   const listed = await client.listTools();
   assert.equal(listed.tools.length, 69);

@@ -78,6 +78,8 @@ def test_release_manifest_is_deterministic_and_ed25519_verifiable(tmp_path: Path
         str(source),
         "--source-url",
         "https://github.com/heidi-dang/heidi-cli/releases/download/v2.0.0/heidi-cli-2.0.0.tar.gz",
+        "--git-sha",
+        "a" * 40,
         "--compatibility",
         str(compatibility),
         "--runtime-lock",
@@ -98,6 +100,7 @@ def test_release_manifest_is_deterministic_and_ed25519_verifiable(tmp_path: Path
     assert payload["version"] == "2.0.0"
     assert payload["channel"] == "stable"
     assert payload["source"]["sha256"] == sha(source)
+    assert payload["source"]["git_sha"] == "a" * 40
     assert payload["compatibility_sha256"] == sha(compatibility)
     assert payload["runtimes"]["node"]["linux-x64"]["sha256"] == "a" * 64
     subprocess.run(
@@ -153,6 +156,8 @@ def test_release_manifest_rejects_unpinned_runtime(tmp_path: Path):
             str(source),
             "--source-url",
             "https://example.invalid/source.tar.gz",
+            "--git-sha",
+            "b" * 40,
             "--compatibility",
             str(compatibility),
             "--runtime-lock",
