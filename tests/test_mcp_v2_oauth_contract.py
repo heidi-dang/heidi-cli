@@ -55,7 +55,8 @@ def test_public_installer_enables_claude_dcr_callback_without_polluting_generic_
     callback = "https://claude.ai/api/mcp/auth_callback"
 
     assert f'CLAUDE_MCP_OAUTH_REDIRECT_URI="{callback}"' in installer
-    assert 'CF_ARGS+=(--oauth-redirect-uri "$CLAUDE_MCP_OAUTH_REDIRECT_URI")' in installer
+    assert 'OAUTH_ALLOWED_REDIRECT_URIS=("$CLAUDE_MCP_OAUTH_REDIRECT_URI")' in installer
+    assert 'CF_ARGS+=(--oauth-redirect-uri "$oauth_redirect_uri")' in installer
     assert callback not in provisioner
 
 
