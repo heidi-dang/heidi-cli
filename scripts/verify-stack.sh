@@ -188,27 +188,12 @@ check_mcp() {
   fi
 }
 
-check_sandbox() {
-  [[ "$ROLE" == mcp ]] && return 0
-  local profile="${HEIDI_SANDBOX_PROFILE:-bubblewrap}"
-  case "$profile" in
-    bubblewrap)
-      if command -v bwrap >/dev/null 2>&1 && bwrap --version >/dev/null 2>&1; then pass "Direct Coding bubblewrap sandbox available"; else fail_check dependency "Direct Coding sandbox" "bubblewrap is selected but bwrap is unavailable"; fi
-      ;;
-    host) pass "Direct Coding sandbox profile: host (explicit reduced isolation)" ;;
-    systemd) command -v systemd-run >/dev/null 2>&1 && pass "Direct Coding systemd-run sandbox available" || fail_check dependency "Direct Coding sandbox" "systemd-run unavailable" ;;
-    container) command -v podman >/dev/null 2>&1 && pass "Direct Coding Podman sandbox available" || fail_check dependency "Direct Coding sandbox" "podman unavailable" ;;
-    vm) [[ -n "${CPTR_DIRECT_CODING_VM_RUNNER:-}" ]] && pass "Direct Coding VM runner configured" || fail_check dependency "Direct Coding sandbox" "VM runner is not configured" ;;
-    *) fail_check compatibility "Direct Coding sandbox" "unsupported profile $profile" ;;
-  esac
-}
-
 check_tailscale
 check_compatibility
 case "$TOPOLOGY:$ROLE" in
-  split-tailscale:backend) check_backend; check_sandbox ;;
+  split-tailscale:backend) check_backend ;;
   split-tailscale:mcp) check_mcp ;;
-  *) check_backend; check_sandbox; check_mcp ;;
+  *) check_backend; check_mcp ;;
 esac
 
 if ((${#FAIL_LABELS[@]})); then

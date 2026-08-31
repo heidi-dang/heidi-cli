@@ -17,15 +17,20 @@
     "state_migration": "automatic-forward-compatible"
   },
   "deployment": {
-    "topologies": ["all-in-one", "split-tailscale"],
-    "split_roles": ["backend", "mcp"],
+    "topologies": [
+      "all-in-one",
+      "split-tailscale"
+    ],
+    "split_roles": [
+      "backend",
+      "mcp"
+    ],
     "linux_systemd": true,
-    "supervisors": ["systemd", "foreground", "podman-quadlet"]
-  },
-  "sandbox": {
-    "default_managed_profile": "bubblewrap",
-    "supported_profiles": ["host", "auto", "bubblewrap", "systemd", "container", "vm"],
-    "network_default": "deny"
+    "supervisors": [
+      "systemd",
+      "foreground",
+      "podman-quadlet"
+    ]
   },
   "migrations": [
     "MCP v2.1.3 makes cptr_open_live_workbench explicitly optional so normal ChatGPT Direct Coding starts with the task-relevant tool instead of a Workbench activation prerequisite.",
@@ -35,6 +40,7 @@
     "The owner-full control profile is the deployment default for fresh installs and upgrades, adding command:external plus confirmed managed-workspace deletion; standard and developer remain explicit opt-down profiles, and legacy full remains an owner-full alias.",
     "Git workspaces warm FDX automatically after provisioning; FDX failure remains a non-fatal fallback to normal CPTR Direct Coding.",
     "Existing CPTR data under ~/.cptr is preserved; Heidi takes a pre-upgrade backup before activation.",
-    "FDX protocol 2 remains required for persistent structured resident reads."
+    "FDX protocol 2 remains required for persistent structured resident reads.",
+    "Direct Coding executes natively on the authorized CPTR host under the selected control profile; the Bubblewrap/systemd/container/VM sandbox execution profiles and their configuration surface were removed."
   ]
 }

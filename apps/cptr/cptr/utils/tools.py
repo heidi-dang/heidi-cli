@@ -52,7 +52,6 @@ from cptr.utils.identity import (
     preexec_for,
 )
 from cptr.services.execution_manager import command_session_registry
-from cptr.services.command_sandbox import SandboxUnavailable, sandbox_command
 from cptr.utils.runtime import Runtime, FileError
 
 try:
@@ -1726,23 +1725,6 @@ async def run_command(
     else:
         env = {**os.environ, "PAGER": "cat", "GIT_PAGER": "cat"}
         preexec = None
-
-    if __context__.get("direct_coding"):
-        try:
-            sandboxed = sandbox_command(
-                command=command,
-                argv=__argv,
-                workspace=workspace,
-                work_dir=work_dir,
-                allow_network=bool(__context__.get("allow_network")),
-                profile=__context__.get("sandbox_profile"),
-            )
-        except SandboxUnavailable as e:
-            return f"Error: direct coding sandbox unavailable: {e}"
-        __argv = sandboxed.argv
-        if sandboxed.shell_command is not None:
-            command = sandboxed.shell_command
-        __use_pty = False
 
     master_fd = None
 

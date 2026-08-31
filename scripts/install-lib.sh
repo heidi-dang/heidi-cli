@@ -67,11 +67,11 @@ PY
 }
 
 ensure_host_security_dependencies() {
-  local packages=(bubblewrap age)
+  local packages=(age)
   need_cmd setcap || packages+=(libcap2-bin)
-  if ! need_cmd bwrap || ! need_cmd age || ! need_cmd age-keygen || ! need_cmd setcap; then
-    step "Installing sandbox, encryption, and capability dependencies"
-    apt_install "${packages[@]}" || fail "bubblewrap, age, and libcap are required for the managed production profile"
+  if ! need_cmd age || ! need_cmd age-keygen || ! need_cmd setcap; then
+    step "Installing encryption and capability dependencies"
+    apt_install "${packages[@]}" || fail "age and libcap are required for the managed production profile"
   fi
 }
 
