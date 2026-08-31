@@ -19,6 +19,8 @@ FORBIDDEN_DIRECT_CODING_SANDBOX_MARKERS = (
     "CPTR_DIRECT_CODING_CONTAINER_IMAGE",
     "CPTR_DIRECT_CODING_VM_RUNNER",
     "sandbox_profile",
+    "check_sandbox()",
+    "default_managed_profile",
     '"bubblewrap"',
     "bwrap",
 )
