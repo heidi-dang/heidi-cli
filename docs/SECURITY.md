@@ -27,6 +27,14 @@ The raw CPTR token exists only in `~/.config/heidi-cli/mcp.env`. CPTR stores onl
 
 A separate MCP static token is generated for trusted loopback contract verification. Cloudflare Managed OAuth is the ChatGPT-facing production authentication mechanism.
 
+Public Managed OAuth deployments also create or reuse one confidential OAuth `client_id` + `client_secret` pair by default for remote clients that require manual credentials. This is additive to Dynamic Client Registration (DCR); DCR remains enabled for ChatGPT and other compatible clients. The reusable registration is stored only in `~/.config/heidi-cli/oauth-client.json` with mode `0600`. `state.env` stores only the non-secret client ID and credential-file path, and `mcp.env` does not receive the reusable client secret.
+
+Treat both `client_secret` and any RFC 7592 `registration_access_token` in `oauth-client.json` as owner credentials. Do not print them, commit them, paste them into issue trackers or chat logs, or distribute them to clients that cannot protect confidential OAuth credentials. Heidi's installer and verifier deliberately return only redacted lifecycle metadata.
+
+Dynamic Client Registration remains enabled independently. Cloudflare's DCR callback policy may contain supported wildcard paths for hosts such as Gemini Spark, while the reusable client's redirect list must contain exact absolute URIs only. `scripts/managed-oauth-client.py` rejects wildcard reusable-client callbacks so DCR flexibility does not weaken the static confidential-client contract.
+
+Exact redeployments reuse the saved client pair. Configuration drift fails closed. Rotation requires `HEIDI_MCP_OAUTH_GLOBAL_CLIENT_ROTATE=1` and is allowed only when the existing registration contains management credentials that let Heidi revoke the old client before replacement; otherwise rotation refuses rather than silently orphaning a valid credential. Set `HEIDI_MCP_OAUTH_GLOBAL_CLIENT=0` to disable the reusable client while retaining DCR.
+
 Cloudflare API tokens are read without terminal echo and are not persisted. Tunnel runtime tokens are credentials and remain in an owner-only service environment file.
 
 ## Workspace provisioning boundary
@@ -39,9 +47,9 @@ FDX warm-up is an intelligence optimization, not an authorization boundary. A fa
 
 ## File permissions
 
-Configuration and secret files are created with umask `077` and explicitly set to mode `0600`. The configuration directory is owner-only.
+Configuration and secret files are created with umask `077` and explicitly set to mode `0600`. The configuration directory is owner-only. This includes `mcp.env`, `cloudflare.env`, and reusable `oauth-client.json` when present.
 
-`heidi doctor` verifies these permissions and performs a tracked-source secret-pattern scan.
+`heidi doctor` verifies these permissions and performs a tracked-source secret-pattern scan. `heidi verify` also checks that reusable OAuth credentials are owner-only, structurally valid, and consistent with deployment state without emitting `client_secret`.
 
 ## Cloudflare token permissions
 

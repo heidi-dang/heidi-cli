@@ -73,12 +73,77 @@ read_env_value() {
   awk -F= -v key="$key" '$1==key {sub(/^[^=]*=/, ""); gsub(/^"|"$/, ""); print; exit}' "$file"
 }
 
+check_reusable_oauth_client() {
+  local credentials_file="${HEIDI_MCP_OAUTH_CLIENT_FILE:-}"
+  local expected_client_id="${HEIDI_MCP_OAUTH_CLIENT_ID:-}"
+  local expected_resource="${HEIDI_PUBLIC_ORIGIN:-}"
+  local expected_issuer allowed_email
+
+  # Empty state means the reusable client is disabled or this is not a public MCP role.
+  if [[ -z "$credentials_file" && -z "$expected_client_id" ]]; then
+    return 0
+  fi
+  if [[ -z "$credentials_file" || -z "$expected_client_id" ]]; then
+    fail_check cloudflare "Reusable OAuth client" "state.env must contain both HEIDI_MCP_OAUTH_CLIENT_FILE and HEIDI_MCP_OAUTH_CLIENT_ID"
+    return
+  fi
+
+  expected_issuer="$(read_env_value "$MCP_ENV_FILE" CLOUDFLARE_ACCESS_ISSUER 2>/dev/null || true)"
+  allowed_email="$(read_env_value "$MCP_ENV_FILE" MCP_OAUTH_ALLOWED_EMAIL 2>/dev/null || true)"
+  if [[ -z "$expected_issuer" || -z "$allowed_email" ]]; then
+    fail_check cloudflare "Reusable OAuth client" "Managed OAuth runtime configuration is incomplete (CLOUDFLARE_ACCESS_ISSUER / MCP_OAUTH_ALLOWED_EMAIL)"
+    return
+  fi
+
+  # Parse and validate in Python without ever emitting client_secret or the RFC 7592
+  # registration access token. Any failure is deliberately reported generically.
+  if python3 - "$credentials_file" "$expected_client_id" "$expected_resource" "$expected_issuer" >/dev/null 2>&1 <<'PY'
+import json
+import os
+import stat
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+expected_client_id = sys.argv[2]
+expected_resource = sys.argv[3]
+expected_issuer = sys.argv[4].rstrip("/")
+
+if path.is_symlink() or not path.is_file():
+    raise SystemExit(1)
+mode = stat.S_IMODE(os.stat(path, follow_symlinks=False).st_mode)
+if mode & 0o077:
+    raise SystemExit(1)
+with path.open("r", encoding="utf-8") as handle:
+    data = json.load(handle)
+if not isinstance(data, dict) or data.get("schema") != "heidi.managed-oauth-client.v1":
+    raise SystemExit(1)
+client_id = str(data.get("client_id") or "").strip()
+client_secret = str(data.get("client_secret") or "").strip()
+if not client_id or not client_secret:
+    raise SystemExit(1)
+if client_id != expected_client_id:
+    raise SystemExit(1)
+if str(data.get("resource") or "") != expected_resource:
+    raise SystemExit(1)
+if str(data.get("issuer") or "").rstrip("/") != expected_issuer:
+    raise SystemExit(1)
+PY
+  then
+    pass "Reusable OAuth client credentials are owner-only and internally consistent"
+  else
+    fail_check cloudflare "Reusable OAuth client" "owner-only credential file is missing, unsafe, malformed, or inconsistent with state/runtime OAuth configuration"
+  fi
+}
+
 check_mcp() {
   if [[ -z "${HEIDI_MCP_LOCAL_URL:-}" ]]; then
     fail_check mcp_health "MCP local URL" "HEIDI_MCP_LOCAL_URL is missing"
     return
   fi
   if curl -fsS --max-time 10 "$HEIDI_MCP_LOCAL_URL/health" >/dev/null 2>&1; then pass "MCP local health"; else fail_check mcp_health "MCP local health" "$HEIDI_MCP_LOCAL_URL/health is unavailable"; return; fi
+
+  check_reusable_oauth_client
 
   local smoke_token node_binary
   smoke_token="$(read_env_value "$MCP_ENV_FILE" MCP_ACCESS_TOKEN 2>/dev/null || true)"
