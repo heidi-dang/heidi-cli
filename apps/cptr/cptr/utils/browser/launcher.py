@@ -50,6 +50,16 @@ _managed_base_url: str | None = None
 _managed_lock = asyncio.Lock()
 
 
+def _managed_no_sandbox_requested() -> bool:
+    """Return whether managed Chrome was explicitly allowed to run without its Linux sandbox."""
+    return os.environ.get("CPTR_MANAGED_CHROME_NO_SANDBOX", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def find_browser() -> str | None:
     """Find a compatible Chrome-family browser without launching it."""
     import platform
@@ -224,7 +234,9 @@ async def ensure_managed_browser() -> str:
             f"--user-data-dir={_managed_user_data_dir}",
             "about:blank",
         ]
-        if Path("/.dockerenv").exists():
+        if Path("/.dockerenv").exists() or _managed_no_sandbox_requested():
+            if _managed_no_sandbox_requested() and not Path("/.dockerenv").exists():
+                logger.warning("Managed Chrome Linux sandbox disabled by CPTR_MANAGED_CHROME_NO_SANDBOX")
             args.insert(-1, "--no-sandbox")
 
         _managed_process = await asyncio.create_subprocess_exec(

@@ -1,6 +1,7 @@
+import os
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -12,8 +13,21 @@ from cptr.routers.coding import (
     _validate_browser_url,
     router as coding_router,
 )
+from cptr.utils.browser import launcher
 from cptr.utils.browser.cdp import CDPClient
 from cptr.utils.browser.session import BrowserSessionManager
+
+
+class ManagedBrowserLauncherPolicyTests(unittest.TestCase):
+    def test_no_sandbox_override_is_explicit_and_disabled_by_default(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(launcher._managed_no_sandbox_requested())
+            os.environ["CPTR_MANAGED_CHROME_NO_SANDBOX"] = "1"
+            self.assertTrue(launcher._managed_no_sandbox_requested())
+            os.environ["CPTR_MANAGED_CHROME_NO_SANDBOX"] = "true"
+            self.assertTrue(launcher._managed_no_sandbox_requested())
+            os.environ["CPTR_MANAGED_CHROME_NO_SANDBOX"] = "0"
+            self.assertFalse(launcher._managed_no_sandbox_requested())
 
 
 class BrowserControlValidationTests(unittest.TestCase):
