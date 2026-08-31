@@ -164,6 +164,7 @@ class TestManagedOAuthClient:
             "grant_types": ["authorization_code", "refresh_token"],
             "response_types": ["code"],
             "token_endpoint_auth_method": "client_secret_post",
+            "resource": "https://mcp.example.com/mcp",
         }
 
     def test_matching_registration_is_reused_without_network_reregistration(self, tmp_path):
