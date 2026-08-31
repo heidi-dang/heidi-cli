@@ -208,7 +208,7 @@ if [[ "$PUBLIC_DEPLOYMENT" == 1 ]]; then
     GLOBAL_OAUTH_ARGS=(
       ensure
       --metadata-url "$GLOBAL_OAUTH_METADATA_URL"
-      --resource "$MCP_URL"
+      --resource "$PUBLIC_ORIGIN"
       --credentials-file "$MCP_OAUTH_CLIENT_FILE"
       --client-name "${HEIDI_MCP_OAUTH_GLOBAL_CLIENT_NAME:-Heidi reusable MCP client}"
       --token-endpoint-auth-method client_secret_post
