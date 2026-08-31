@@ -80,6 +80,10 @@ def normalize_redirect_uris(values: list[str]) -> list[str]:
             raise RuntimeError(f"OAuth redirect URI must be absolute: {value!r}")
         if parsed.fragment:
             raise RuntimeError(f"OAuth redirect URI must not contain a fragment: {value!r}")
+        if "*" in value:
+            raise RuntimeError(
+                f"OAuth reusable-client redirect URI must be exact; wildcard patterns are not allowed: {value!r}"
+            )
         if value not in result:
             result.append(value)
     if not result:

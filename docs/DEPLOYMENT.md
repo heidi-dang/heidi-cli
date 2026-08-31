@@ -57,10 +57,11 @@ Deployment behavior is controlled by:
 HEIDI_MCP_OAUTH_GLOBAL_CLIENT=1          # default; create or reuse
 HEIDI_MCP_OAUTH_GLOBAL_CLIENT=0          # disable reusable pair; DCR remains enabled
 HEIDI_MCP_OAUTH_GLOBAL_CLIENT_ROTATE=1   # explicitly replace the saved registration
-MCP_OAUTH_REDIRECT_URIS=https://client.example/callback,https://other.example/callback
+MCP_OAUTH_DCR_REDIRECT_URIS=https://client.example/callback,https://oauth.example/r/*
+MCP_OAUTH_GLOBAL_CLIENT_REDIRECT_URIS=https://client.example/callback
 ```
 
-The built-in Claude remote-MCP callback is always included in Heidi's deployment allowlist. `MCP_OAUTH_REDIRECT_URIS` adds callbacks, and the same normalized allowlist is sent to both Cloudflare DCR and the reusable client registration.
+The default Cloudflare DCR allowlist includes Claude's exact callback, Grok's callback, and Gemini Spark's Google OAuth proxy path. `MCP_OAUTH_DCR_REDIRECT_URIS` adds exact or Cloudflare-supported wildcard callbacks; legacy `MCP_OAUTH_REDIRECT_URIS` remains accepted for DCR. The reusable confidential client has a separate exact-only redirect list: `MCP_OAUTH_GLOBAL_CLIENT_REDIRECT_URIS` adds exact callbacks to that registration and to the DCR allowlist, while wildcard reusable-client callbacks are rejected.
 
 A normal redeploy reuses a matching saved pair. If the resource, redirect URIs, client name, or token-endpoint authentication method no longer matches, deployment fails closed and requires an explicit rotation decision. Rotation succeeds only if the stored registration contains `registration_client_uri` and `registration_access_token`, allowing Heidi to revoke the old client first. If those management values are absent, Heidi refuses rotation rather than leaving an unknown live credential behind.
 
@@ -82,9 +83,15 @@ and secret/configuration files:
 ~/.config/heidi-cli/state.env
 ~/.config/heidi-cli/cptr.env
 ~/.config/heidi-cli/mcp.env
-~/.config/heidi-cli/oauth-client.json              # reusable OAuth client, when enabled
 ~/.config/heidi-cli/cloudflare.env                 # public deployments only
+~/.config/heidi-cli/oauth-client.json              # reusable Managed OAuth client, when enabled
 ```
+
+`oauth-client.json` is mode `0600` and is the only Heidi configuration file that stores the reusable OAuth `client_secret`. `state.env` stores only `HEIDI_MCP_OAUTH_CLIENT_ID` and `HEIDI_MCP_OAUTH_CLIENT_FILE`; `mcp.env` does not need the reusable client secret.
+
+The reusable client is additive to Dynamic Client Registration (DCR). Set `HEIDI_MCP_OAUTH_GLOBAL_CLIENT=0` to disable it or `HEIDI_MCP_OAUTH_GLOBAL_CLIENT_ROTATE=1` for an explicit managed rotation. Additional DCR callback patterns can be supplied with `MCP_OAUTH_DCR_REDIRECT_URIS` (legacy `MCP_OAUTH_REDIRECT_URIS` remains accepted). Additional reusable-client callbacks must be exact URIs supplied through `MCP_OAUTH_GLOBAL_CLIENT_REDIRECT_URIS`.
+
+The default DCR policy covers Claude, the Grok callback, and Gemini Spark's Google OAuth proxy path. The Spark proxy uses a wildcard path only in Cloudflare's DCR allowlist; the reusable client itself rejects wildcard redirect URIs.
 
 The CPTR data directory defaults to `~/.cptr` and is deliberately outside the install-managed source directory.
 

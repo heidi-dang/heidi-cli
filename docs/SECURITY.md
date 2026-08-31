@@ -31,6 +31,8 @@ Public Managed OAuth deployments also create or reuse one confidential OAuth `cl
 
 Treat both `client_secret` and any RFC 7592 `registration_access_token` in `oauth-client.json` as owner credentials. Do not print them, commit them, paste them into issue trackers or chat logs, or distribute them to clients that cannot protect confidential OAuth credentials. Heidi's installer and verifier deliberately return only redacted lifecycle metadata.
 
+Dynamic Client Registration remains enabled independently. Cloudflare's DCR callback policy may contain supported wildcard paths for hosts such as Gemini Spark, while the reusable client's redirect list must contain exact absolute URIs only. `scripts/managed-oauth-client.py` rejects wildcard reusable-client callbacks so DCR flexibility does not weaken the static confidential-client contract.
+
 Exact redeployments reuse the saved client pair. Configuration drift fails closed. Rotation requires `HEIDI_MCP_OAUTH_GLOBAL_CLIENT_ROTATE=1` and is allowed only when the existing registration contains management credentials that let Heidi revoke the old client before replacement; otherwise rotation refuses rather than silently orphaning a valid credential. Set `HEIDI_MCP_OAUTH_GLOBAL_CLIENT=0` to disable the reusable client while retaining DCR.
 
 Cloudflare API tokens are read without terminal echo and are not persisted. Tunnel runtime tokens are credentials and remain in an owner-only service environment file.

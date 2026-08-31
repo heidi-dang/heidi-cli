@@ -161,23 +161,59 @@ if [[ "$PUBLIC_DEPLOYMENT" == 1 ]]; then
   CF_API_TOKEN="$(read_secret 'Cloudflare API token' "${CLOUDFLARE_API_TOKEN:-}")"; [[ -n "$CF_API_TOKEN" ]] || fail "Cloudflare API token is required"
 
   CLAUDE_MCP_OAUTH_REDIRECT_URI="https://claude.ai/api/mcp/auth_callback"
-  OAUTH_ALLOWED_REDIRECT_URIS=("$CLAUDE_MCP_OAUTH_REDIRECT_URI")
-  if [[ -n "${MCP_OAUTH_REDIRECT_URIS:-}" ]]; then
-    IFS=',' read -r -a oauth_configured_redirects <<<"$MCP_OAUTH_REDIRECT_URIS"
+  GROK_MCP_OAUTH_REDIRECT_URI="https://grok.com/connectors-oauth-exchange-code/"
+  GEMINI_SPARK_MCP_OAUTH_REDIRECT_URI_PATTERN="https://oauth-redirect.googleusercontent.com/r/*"
+
+  # Cloudflare's DCR policy accepts exact HTTPS callbacks and path wildcards. The
+  # reusable RFC 7591 client must keep exact redirect URIs, so the two lists are
+  # intentionally separate.
+  OAUTH_DCR_ALLOWED_REDIRECT_URIS=(
+    "$CLAUDE_MCP_OAUTH_REDIRECT_URI"
+    "$GROK_MCP_OAUTH_REDIRECT_URI"
+    "$GEMINI_SPARK_MCP_OAUTH_REDIRECT_URI_PATTERN"
+  )
+  OAUTH_GLOBAL_CLIENT_REDIRECT_URIS=(
+    "$CLAUDE_MCP_OAUTH_REDIRECT_URI"
+    "$GROK_MCP_OAUTH_REDIRECT_URI"
+  )
+
+  for oauth_redirect_source in "${MCP_OAUTH_REDIRECT_URIS:-}" "${MCP_OAUTH_DCR_REDIRECT_URIS:-}"; do
+    [[ -n "$oauth_redirect_source" ]] || continue
+    IFS=',' read -r -a oauth_configured_redirects <<<"$oauth_redirect_source"
     for oauth_redirect_uri in "${oauth_configured_redirects[@]}"; do
       oauth_redirect_uri="${oauth_redirect_uri#"${oauth_redirect_uri%%[![:space:]]*}"}"
       oauth_redirect_uri="${oauth_redirect_uri%"${oauth_redirect_uri##*[![:space:]]}"}"
       [[ -n "$oauth_redirect_uri" ]] || continue
       oauth_redirect_seen=0
-      for oauth_existing_redirect in "${OAUTH_ALLOWED_REDIRECT_URIS[@]}"; do
+      for oauth_existing_redirect in "${OAUTH_DCR_ALLOWED_REDIRECT_URIS[@]}"; do
         if [[ "$oauth_existing_redirect" == "$oauth_redirect_uri" ]]; then oauth_redirect_seen=1; break; fi
       done
-      [[ "$oauth_redirect_seen" == 1 ]] || OAUTH_ALLOWED_REDIRECT_URIS+=("$oauth_redirect_uri")
+      [[ "$oauth_redirect_seen" == 1 ]] || OAUTH_DCR_ALLOWED_REDIRECT_URIS+=("$oauth_redirect_uri")
+    done
+  done
+
+  if [[ -n "${MCP_OAUTH_GLOBAL_CLIENT_REDIRECT_URIS:-}" ]]; then
+    IFS=',' read -r -a oauth_global_redirects <<<"$MCP_OAUTH_GLOBAL_CLIENT_REDIRECT_URIS"
+    for oauth_redirect_uri in "${oauth_global_redirects[@]}"; do
+      oauth_redirect_uri="${oauth_redirect_uri#"${oauth_redirect_uri%%[![:space:]]*}"}"
+      oauth_redirect_uri="${oauth_redirect_uri%"${oauth_redirect_uri##*[![:space:]]}"}"
+      [[ -n "$oauth_redirect_uri" ]] || continue
+      [[ "$oauth_redirect_uri" != *'*'* ]] || fail "MCP_OAUTH_GLOBAL_CLIENT_REDIRECT_URIS must contain exact redirect URIs, not wildcard patterns"
+      oauth_redirect_seen=0
+      for oauth_existing_redirect in "${OAUTH_GLOBAL_CLIENT_REDIRECT_URIS[@]}"; do
+        if [[ "$oauth_existing_redirect" == "$oauth_redirect_uri" ]]; then oauth_redirect_seen=1; break; fi
+      done
+      [[ "$oauth_redirect_seen" == 1 ]] || OAUTH_GLOBAL_CLIENT_REDIRECT_URIS+=("$oauth_redirect_uri")
+      oauth_redirect_seen=0
+      for oauth_existing_redirect in "${OAUTH_DCR_ALLOWED_REDIRECT_URIS[@]}"; do
+        if [[ "$oauth_existing_redirect" == "$oauth_redirect_uri" ]]; then oauth_redirect_seen=1; break; fi
+      done
+      [[ "$oauth_redirect_seen" == 1 ]] || OAUTH_DCR_ALLOWED_REDIRECT_URIS+=("$oauth_redirect_uri")
     done
   fi
 
   CF_ARGS=(--domain "$MCP_DOMAIN" --origin "$MCP_LOCAL_URL" --email "$MCP_ALLOWED_EMAIL")
-  for oauth_redirect_uri in "${OAUTH_ALLOWED_REDIRECT_URIS[@]}"; do
+  for oauth_redirect_uri in "${OAUTH_DCR_ALLOWED_REDIRECT_URIS[@]}"; do
     CF_ARGS+=(--oauth-redirect-uri "$oauth_redirect_uri")
   done
   if [[ "$PUBLIC_TRANSPORT" == caddy ]]; then
@@ -213,7 +249,7 @@ if [[ "$PUBLIC_DEPLOYMENT" == 1 ]]; then
       --client-name "${HEIDI_MCP_OAUTH_GLOBAL_CLIENT_NAME:-Heidi reusable MCP client}"
       --token-endpoint-auth-method client_secret_post
     )
-    for oauth_redirect_uri in "${OAUTH_ALLOWED_REDIRECT_URIS[@]}"; do
+    for oauth_redirect_uri in "${OAUTH_GLOBAL_CLIENT_REDIRECT_URIS[@]}"; do
       GLOBAL_OAUTH_ARGS+=(--redirect-uri "$oauth_redirect_uri")
     done
     [[ "$GLOBAL_OAUTH_ROTATE" == 0 ]] || GLOBAL_OAUTH_ARGS+=(--rotate)

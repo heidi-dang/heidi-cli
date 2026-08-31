@@ -88,9 +88,12 @@ The lifecycle is intentionally conservative:
 - Redirect URI, resource, client-name, or authentication-method drift fails closed and requires an explicit rotation decision.
 - `HEIDI_MCP_OAUTH_GLOBAL_CLIENT=0` disables creation/use of the reusable client while leaving DCR available.
 - `HEIDI_MCP_OAUTH_GLOBAL_CLIENT_ROTATE=1` explicitly rotates the reusable registration. Rotation is accepted only when the existing DCR response supplied RFC 7592 registration-management credentials so Heidi can revoke the old registration before creating a replacement.
-- `MCP_OAUTH_REDIRECT_URIS` adds comma-separated redirect URIs to the same allowlist used by both Cloudflare DCR and the reusable client.
+- `MCP_OAUTH_DCR_REDIRECT_URIS` adds comma-separated exact or Cloudflare-supported wildcard callbacks to the DCR policy. Legacy `MCP_OAUTH_REDIRECT_URIS` remains accepted as DCR-list input.
+- `MCP_OAUTH_GLOBAL_CLIENT_REDIRECT_URIS` adds comma-separated **exact** callbacks to the reusable client and its DCR allowlist. Wildcard entries are rejected.
 
-`heidi verify` checks that the credential file is owner-only, structurally valid, and consistent with `state.env`, the MCP resource, and Cloudflare issuer without printing `client_secret` or registration-management credentials.
+The default DCR policy covers Claude's exact callback, Grok's callback, and Gemini Spark's Google OAuth proxy path. Gemini Spark uses `https://oauth-redirect.googleusercontent.com/r/*` only in Cloudflare's DCR allowlist; the reusable RFC 7591 client keeps exact redirect URIs and therefore does not store that wildcard.
+
+`heidi verify` checks that the credential file is owner-only, structurally valid, and consistent with `state.env`, the protected origin resource, and Cloudflare issuer without printing `client_secret` or registration-management credentials.
 
 ## Claude remote MCP
 

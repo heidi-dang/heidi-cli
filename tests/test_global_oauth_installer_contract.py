@@ -25,13 +25,25 @@ def test_public_installer_wires_reusable_managed_oauth_client_as_additive_to_dcr
     assert "MCP_OAUTH_REDIRECT_URIS" in source
 
 
-def test_global_client_and_cloudflare_dcr_use_the_same_normalized_redirect_allowlist():
+def test_cloudflare_dcr_and_reusable_client_keep_redirect_policies_separate():
     source = read("scripts/install-core.sh")
 
-    assert "OAUTH_ALLOWED_REDIRECT_URIS" in source
-    assert 'for oauth_redirect_uri in "${OAUTH_ALLOWED_REDIRECT_URIS[@]}"' in source
+    assert "OAUTH_DCR_ALLOWED_REDIRECT_URIS" in source
+    assert "OAUTH_GLOBAL_CLIENT_REDIRECT_URIS" in source
+    assert 'for oauth_redirect_uri in "${OAUTH_DCR_ALLOWED_REDIRECT_URIS[@]}"' in source
     assert 'CF_ARGS+=(--oauth-redirect-uri "$oauth_redirect_uri")' in source
+    assert 'for oauth_redirect_uri in "${OAUTH_GLOBAL_CLIENT_REDIRECT_URIS[@]}"' in source
     assert 'GLOBAL_OAUTH_ARGS+=(--redirect-uri "$oauth_redirect_uri")' in source
+
+
+def test_default_dcr_allowlist_covers_claude_grok_and_gemini_spark():
+    source = read("scripts/install-core.sh")
+
+    assert 'CLAUDE_MCP_OAUTH_REDIRECT_URI="https://claude.ai/api/mcp/auth_callback"' in source
+    assert 'GROK_MCP_OAUTH_REDIRECT_URI="https://grok.com/connectors-oauth-exchange-code/"' in source
+    assert 'GEMINI_SPARK_MCP_OAUTH_REDIRECT_URI_PATTERN="https://oauth-redirect.googleusercontent.com/r/*"' in source
+    assert 'MCP_OAUTH_DCR_REDIRECT_URIS' in source
+    assert 'MCP_OAUTH_GLOBAL_CLIENT_REDIRECT_URIS' in source
 
 
 def test_oauth_client_secret_is_not_written_to_state_or_mcp_runtime_environment():

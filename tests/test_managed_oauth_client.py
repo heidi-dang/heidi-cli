@@ -227,6 +227,19 @@ class TestManagedOAuthClient:
         assert OAuthHandler.registrations == 1
         assert json.loads(credentials.read_text(encoding="utf-8"))["client_secret"] == "secret-1"
 
+    def test_reusable_client_rejects_wildcard_redirect_uris(self, tmp_path):
+        credentials = tmp_path / "oauth-client.json"
+        result = self.run_helper(
+            credentials,
+            "--redirect-uri",
+            "https://oauth-redirect.googleusercontent.com/r/*",
+        )
+
+        assert result.returncode != 0
+        assert "wildcard" in result.stderr.lower()
+        assert OAuthHandler.registrations == 0
+        assert not credentials.exists()
+
     def test_existing_credentials_must_remain_owner_only(self, tmp_path):
         credentials = tmp_path / "oauth-client.json"
         first = self.run_helper(credentials)
