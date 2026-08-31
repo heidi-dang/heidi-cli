@@ -48,10 +48,11 @@ def test_oauth_client_secret_is_not_written_to_state_or_mcp_runtime_environment(
     assert 'env_line HEIDI_MCP_OAUTH_CLIENT_FILE "$MCP_OAUTH_CLIENT_STATE_FILE"' in state_block
 
 
-def test_reusable_global_client_uses_cloudflare_authorization_server_metadata_not_origin_startup():
+def test_reusable_global_client_uses_cloudflare_authorization_server_and_origin_resource():
     source = read("scripts/install-core.sh")
 
     assert 'GLOBAL_OAUTH_METADATA_URL="${CF_ACCESS_AUTH_DOMAIN%/}/.well-known/oauth-authorization-server"' in source
     assert '--metadata-url "$GLOBAL_OAUTH_METADATA_URL"' in source
-    assert '--resource "$MCP_URL"' in source
+    assert '--resource "$PUBLIC_ORIGIN"' in source
+    assert '--resource "$MCP_URL"' not in source
     assert '--token-endpoint-auth-method client_secret_post' in source
