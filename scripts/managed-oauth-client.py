@@ -241,6 +241,7 @@ def register_client(args: argparse.Namespace, redirect_uris: list[str]) -> dict[
         "grant_types": GRANT_TYPES,
         "response_types": RESPONSE_TYPES,
         "token_endpoint_auth_method": args.token_endpoint_auth_method,
+        "resource": args.resource,
     }
     registered = request_json(
         "POST",
