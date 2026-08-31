@@ -40,7 +40,7 @@ The production ChatGPT-facing contract is intentionally **tool-only**. It uses t
 
 ## CPTR Live Workbench
 
-`cptr_open_live_workbench` remains the activation tool for a direct ChatGPT invocation such as `@cptr computer`, but it is now data-only. It opens the durable Workbench/prompt-session context before a CPTR task exists and returns hidden prompt/activity/session metadata without advertising or mounting an MCP Apps resource. All later workspace, task, monitor, command, SSH, browser, status, and bind calls remain data-only.
+`cptr_open_live_workbench` is an optional, data-only Workbench session bootstrap. Ordinary ChatGPT Direct Coding must not call it as an activation step or prerequisite: ChatGPT should begin with the workspace, FDX, code, Git, test, SSH, or browser tool that directly matches the user's request. The Workbench tool is reserved for explicit open/resume requests and the explicit `allow:delegate` authorization path; it never advertises or mounts an MCP Apps resource.
 
 Live terminal UI streaming is **disabled by default** to prevent continuous SSE traffic, transcript re-renders, reconnect loops, ticket renewals, and host sizing churn from degrading the main ChatGPT conversation. The complete streaming implementation and endpoints remain available; operators can explicitly opt in by setting `CPTR_LIVE_TERMINAL_STREAMING=1` and restarting the plugin service. When streaming is disabled, prompt authorization still works normally, but the adapter does not retain prompt-terminal UI events or issue target live-stream tickets.
 

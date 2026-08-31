@@ -641,9 +641,9 @@ export function createMcpServer(
   server.registerTool(
     "cptr_open_live_workbench",
     {
-      title: "Prepare CPTR Workbench context",
+      title: "Open optional CPTR Workbench context",
       description:
-        "Call this first whenever the user explicitly invokes CPTR. It opens the durable Workbench session context for the current prompt without advertising or mounting an MCP Apps UI resource. Later task, monitor, command, status, and bind calls remain data-only.",
+        "Optional Workbench session bootstrap. Use this only when the user explicitly asks to open or resume a Workbench session, or when the prompt explicitly authorizes delegation with allow:delegate. Ordinary Direct Coding does not require this tool; start with the workspace, FDX, code, Git, test, SSH, or browser tool that matches the user's request. This tool remains data-only and does not advertise or mount an MCP Apps UI resource.",
       inputSchema: openWorkbenchSessionSchema,
       outputSchema: {
         session_id: z.string(),

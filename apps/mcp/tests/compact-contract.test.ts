@@ -70,9 +70,14 @@ test("default MCP contract advertises split read/control safety surfaces", async
   for (const tool of listed.tools) {
     assert.ok(tool.outputSchema, `${tool.name} must advertise outputSchema`);
   }
-  assert.equal(tools.get("cptr_open_live_workbench")?.annotations?.readOnlyHint, false);
-  assert.equal(tools.get("cptr_open_live_workbench")?.annotations?.destructiveHint, false);
-  assert.equal(tools.get("cptr_open_live_workbench")?.annotations?.openWorldHint, false);
+  const openWorkbenchTool = tools.get("cptr_open_live_workbench");
+  assert.equal(openWorkbenchTool?.annotations?.readOnlyHint, false);
+  assert.equal(openWorkbenchTool?.annotations?.destructiveHint, false);
+  assert.equal(openWorkbenchTool?.annotations?.openWorldHint, false);
+  assert.match(openWorkbenchTool?.title ?? "", /optional/i);
+  assert.match(openWorkbenchTool?.description ?? "", /optional/i);
+  assert.match(openWorkbenchTool?.description ?? "", /ordinary direct coding does not require/i);
+  assert.doesNotMatch(openWorkbenchTool?.description ?? "", /call this first|activation tool|before (?:a |the )?cptr/i);
   assert.equal(tools.get("cptr_code_read")?.annotations?.readOnlyHint, true);
   assert.equal(tools.get("cptr_code_mutate")?.annotations?.destructiveHint, true);
   assert.equal(tools.get("cptr_workspace_lifecycle")?.annotations?.destructiveHint, true);
