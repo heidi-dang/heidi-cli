@@ -76,7 +76,7 @@ read_env_value() {
 check_reusable_oauth_client() {
   local credentials_file="${HEIDI_MCP_OAUTH_CLIENT_FILE:-}"
   local expected_client_id="${HEIDI_MCP_OAUTH_CLIENT_ID:-}"
-  local expected_resource="${HEIDI_MCP_URL:-}"
+  local expected_resource="${HEIDI_PUBLIC_ORIGIN:-}"
   local expected_issuer allowed_email
 
   # Empty state means the reusable client is disabled or this is not a public MCP role.
