@@ -128,4 +128,13 @@ To intentionally rotate the reusable OAuth client during deployment, set `HEIDI_
 
 ## Rollback recommendation
 
-Before production use, add signed release tags and keep one previous installed source tree under an immutable release directory. `heidi rollback <version>` can then switch service paths atomically without database deletion. This is recommended as the next lifecycle feature rather than using `git reset --hard` against a live installation.
+Prefer signed release tags and keep one previous installed source tree under an immutable release directory. A future `heidi rollback <version>` command should switch service unit paths atomically without touching `~/.cptr`.
+
+Until that lands, operators can mitigate risk by:
+
+1. Recording the current `HEIDI_REPO_DIR` and `release/compatibility.json` `heidi_version` before `heidi update`.
+2. Keeping the previous checkout path read-only (do not `git reset --hard` a live tree).
+3. Pointing systemd unit `WorkingDirectory` / binary paths back to the prior tree and running `heidi verify`.
+4. Confirming CPTR data under `~/.cptr` was not migrated destructively (Heidi preserves it by default).
+
+Never use `git reset --hard` against an active production checkout as the primary rollback path.

@@ -149,6 +149,17 @@ See `docs/SECURITY.md` before exposing a deployment to anyone other than the mac
 
 ## Development from the monorepo
 
+This is a polyglot monorepo. Toolchains stay separate by component:
+
+| Component | Language | Build / test entry |
+|-----------|----------|--------------------|
+| `apps/mcp` | TypeScript (Node ≥22) | `npm --prefix apps/mcp …` |
+| `apps/cptr` | Python | `python -m pytest apps/cptr/tests` |
+| `crates/fdx` | Rust | `cargo test -p fdx` |
+| Root scripts | Python / Bash | `scripts/verify-*.py`, `scripts/verify-stack.sh` |
+
+Root `package.json` only orchestrates convenience scripts; it does not unify the three runtimes into one package manager.
+
 ```bash
 npm --prefix apps/mcp ci
 npm --prefix apps/mcp run build
@@ -167,6 +178,8 @@ FDX can be built directly with:
 cargo build --release -p fdx
 ./target/release/fdx --version
 ```
+
+Cross-component compatibility is enforced by `release/compatibility.json` and `python3 scripts/verify-compatibility.py`.
 
 ## Repository policy
 
