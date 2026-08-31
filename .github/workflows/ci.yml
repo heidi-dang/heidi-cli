@@ -22,14 +22,14 @@ jobs:
       - name: Shell syntax
         run: bash -n install.sh scripts/install-core.sh scripts/install-lib.sh scripts/install-split-backend.sh scripts/install-split-mcp.sh scripts/verify-stack.sh bin/heidi
       - name: Python syntax
-        run: python3 -m py_compile scripts/bootstrap-control-token.py scripts/control_token_profiles.py scripts/verify-compatibility.py scripts/cloudflare-provision.py scripts/lifecycle.py scripts/release-manifest.py scripts/remediation.py scripts/split-handoff.py
+        run: python3 -m py_compile scripts/bootstrap-control-token.py scripts/control_token_profiles.py scripts/verify-compatibility.py scripts/cloudflare-provision.py scripts/managed-oauth-client.py scripts/lifecycle.py scripts/release-manifest.py scripts/remediation.py scripts/split-handoff.py
       - name: Installer, lifecycle, release, profile, and Cloudflare contracts
         run: python3 -m pytest -q tests
       - name: Cross-component compatibility contract
         run: python3 scripts/verify-compatibility.py
       - name: Executable contracts
         run: |
-          for file in install.sh bin/heidi scripts/install-core.sh scripts/install-lib.sh scripts/install-split-backend.sh scripts/install-split-mcp.sh scripts/verify-stack.sh scripts/bootstrap-control-token.py scripts/cloudflare-provision.py scripts/lifecycle.py scripts/release-manifest.py scripts/remediation.py scripts/split-handoff.py; do
+          for file in install.sh bin/heidi scripts/install-core.sh scripts/install-lib.sh scripts/install-split-backend.sh scripts/install-split-mcp.sh scripts/verify-stack.sh scripts/bootstrap-control-token.py scripts/cloudflare-provision.py scripts/managed-oauth-client.py scripts/lifecycle.py scripts/release-manifest.py scripts/remediation.py scripts/split-handoff.py; do
             test -x "$file"
           done
       - name: Repository hygiene
