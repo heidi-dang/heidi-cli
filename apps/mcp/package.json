@@ -1,16 +1,18 @@
 {
   "name": "chatgpt-computer-plugin",
   "private": true,
-  "version": "2.1.4",
+  "version": "2.1.5",
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "start": "tsx server/index.ts",
+    "build:server": "tsc -p tsconfig.json",
     "build:web": "node scripts/build-web.mjs && node scripts/check-workbench-bundle.mjs",
     "copy:web": "node scripts/copy-workbench-assets.mjs",
-    "build:compat-ui": "npm run build:web && npm run copy:web",
+    "build:ui": "npm run build:web && npm run copy:web",
+    "build:compat-ui": "npm run build:ui",
     "check:deployed-contract": "node scripts/check-deployed-contract.mjs",
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run build:server && npm run build:ui",
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p web/tsconfig.json"
   },

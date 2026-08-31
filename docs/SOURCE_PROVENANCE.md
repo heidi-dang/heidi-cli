@@ -16,9 +16,10 @@ Tracked working-tree changes present at consolidation time were intentionally in
 - Source repository: `heidi-dang/computer`
 - Baseline branch: `main`
 - Baseline commit: `db9377e38dc33c5efa47030d41f0cc27eba583d9`
+- Latest audited sync commit: `a4a3a02251312e5f5c04b910d1e11857323b0ab5` (`main`, 2026-08-31)
 - Imported path: `apps/cptr`
 
-The import intentionally includes the verified direct-coding performance changes that were still in the tracked working tree at consolidation time: bounded single/batch runtime file reads, non-PTY Direct Coding command execution, resident FDX read routing, and their regression/performance tests.
+The import intentionally includes the verified direct-coding performance changes that were still in the tracked working tree at consolidation time: bounded single/batch runtime file reads, non-PTY Direct Coding command execution, resident FDX read routing, and their regression/performance tests. The 2026-08-31 audited sync imports the upstream CPTR UI polish, bulk model controls/search, and the 55-endpoint extended API surface while preserving Heidi-specific lifecycle, execution-policy, FDX, and control-plane additions.
 
 ## FDX
 

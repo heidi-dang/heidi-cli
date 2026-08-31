@@ -249,6 +249,10 @@ export class ComputerClient {
     this.modelCache = { expiresAt: now + 60_000, value };
     return value;
   }
+
+  async getUiOverview(): Promise<Record<string, unknown>> {
+    return this.request("/ui/overview");
+  }
   async listTasks(input: { workspace_id?: string; status?: string; limit?: number }): Promise<Record<string, unknown>> {
     const query = new URLSearchParams();
     if (input.workspace_id) query.set("workspace_id", input.workspace_id);

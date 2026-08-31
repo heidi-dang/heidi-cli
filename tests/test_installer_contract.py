@@ -136,14 +136,17 @@ def test_development_mcp_service_uses_bundled_node_hot_reload_runner():
     assert 'MCP_EXEC="$NPM_BIN --prefix $HEIDI_HOME/current/source/apps/mcp run dev"' not in source
 
 
-def test_production_mcp_disables_hot_reload_and_uses_compiled_runner():
+def test_production_mcp_enables_bounded_workbench_disables_hot_reload_and_uses_compiled_runner():
     source = read("scripts/install-core.sh")
     checker = read("apps/mcp/scripts/check-deployed-contract.mjs")
+    assert "env_line CPTR_WORKBENCH_UI 1" in source
     assert 'env_line CPTR_COMPAT_WORKBENCH "$( [[ "$MODE" == production ]] && echo 0 || echo 1 )"' in source
     assert 'env_line CPTR_HOT_RELOAD "$( [[ "$MODE" == production ]] && echo 0 || echo 1 )"' in source
     assert 'MCP_EXEC="$NODE_BIN $HEIDI_HOME/current/source/apps/mcp/dist/server/index.js"' in source
     assert '[[ "$MODE" == production ]] || MCP_EXEC="$NODE_BIN $HEIDI_HOME/current/source/apps/mcp/scripts/dev.mjs"' in source
-    assert "deployed workbench hot reload is not enabled" not in checker
+    assert "production MCP must expose the CPTR Workbench UI" in checker
+    assert "production Workbench hot reload must remain disabled" in checker
+    assert 'const expectedResource = "ui://cptr/live-workbench.html"' in checker
 
 
 def test_production_mcp_requires_and_verifies_signed_git_provenance():

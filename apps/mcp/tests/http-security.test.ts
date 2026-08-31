@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   corsHeaders,
@@ -49,6 +50,16 @@ test("allows the ChatGPT Apps SDK sandbox only for Workbench browser traffic", (
     "Access-Control-Allow-Origin": widgetOrigin,
     Vary: "Origin",
   });
+});
+
+test("Workbench UI overview proxy remains same-origin, GET-only, and prompt-ticket authenticated", () => {
+  const source = readFileSync(new URL("../server/index.ts", import.meta.url), "utf8");
+  assert.match(source, /url\.pathname === "\/ui\/overview"/);
+  assert.match(source, /workbenchBrowserRequest && !workbenchUiEnabled/);
+  assert.match(source, /req\.method !== "GET"/);
+  assert.match(source, /promptSessions\.replay\(ticket, 0\) === null/);
+  assert.match(source, /await client\.getUiOverview\(\)/);
+  assert.match(source, /writeJson\(res, 401, \{ error: "Workbench UI ticket is invalid or expired" \}/);
 });
 
 test("permits a localhost public origin only outside production", () => {

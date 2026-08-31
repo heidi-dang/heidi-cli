@@ -19,6 +19,8 @@ import { requestHostDisplayMode, type DisplayModeBridge } from "./display-mode.j
 import { DirectWorkersView, type DirectWorkerTab } from "./direct-workers-view.js";
 import { TerminalView } from "./terminal-view.js";
 import { PluginUpdateCenter } from "./plugin-update.js";
+import { OverviewView } from "./overview-view.js";
+import { findUiOverviewMetadata, normalizeUiOverview, uiOverviewUrl, type UiOverviewDisplay } from "./overview-model.js";
 import { CPTR_APP_VERSION } from "./version.js";
 import "./workbench.css";
 
@@ -535,7 +537,15 @@ function OwnedWorkbench() {
   const [workerChanges, setWorkerChanges] = useState("");
   const [workerTerminal, setWorkerTerminal] = useState("");
   const callTool = useMcpBridge();
-  const promptMetadata = findPromptMetadata(hostBridge()?.toolResponseMetadata);
+  const toolResponseMetadata = hostBridge()?.toolResponseMetadata;
+  const promptMetadata = findPromptMetadata(toolResponseMetadata);
+  const initialOverviewMetadata = findUiOverviewMetadata(toolResponseMetadata);
+  const [overview, setOverview] = useState<UiOverviewDisplay | null>(() =>
+    initialOverviewMetadata ? normalizeUiOverview(initialOverviewMetadata) : null,
+  );
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState("");
+  const [overviewRefreshedAt, setOverviewRefreshedAt] = useState("");
   const liveStreamingEnabled = promptMetadata?.streamingEnabled === true;
   const updateManifestUrl = promptMetadata?.streamUrl
     ? new URL("/plugin/update", promptMetadata.streamUrl).toString()
@@ -553,6 +563,42 @@ function OwnedWorkbench() {
   const displayStatus = meta?.targetType && meta.targetId
     ? state.status
     : state.transcript.length ? "ACTIVE" : "READY";
+
+  const refreshOverview = useCallback(async () => {
+    const endpoint = uiOverviewUrl(promptMetadata?.streamUrl);
+    if (!endpoint || !promptMetadata?.ticket) {
+      setOverviewError("Workbench UI ticket is unavailable; reopen the Workbench to refresh runtime data.");
+      return;
+    }
+    setOverviewLoading(true);
+    setOverviewError("");
+    try {
+      const response = await fetch(endpoint, {
+        headers: {
+          Authorization: `Bearer ${promptMetadata.ticket}`,
+          Accept: "application/json",
+        },
+      });
+      if (!response.ok) {
+        throw new Error(response.status === 401
+          ? "Workbench UI ticket expired; reopen the Workbench to refresh runtime data."
+          : `CPTR overview unavailable (${response.status})`);
+      }
+      setOverview(normalizeUiOverview(await response.json()));
+      setOverviewRefreshedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    } catch (error) {
+      setOverviewError(error instanceof Error ? error.message : "CPTR overview unavailable");
+    } finally {
+      setOverviewLoading(false);
+    }
+  }, [promptMetadata?.streamUrl, promptMetadata?.ticket]);
+
+  useEffect(() => {
+    if (!promptMetadata?.ticket || !uiOverviewUrl(promptMetadata.streamUrl)) return;
+    void refreshOverview();
+    const timer = window.setInterval(() => void refreshOverview(), 30_000);
+    return () => window.clearInterval(timer);
+  }, [promptMetadata?.streamUrl, promptMetadata?.ticket, refreshOverview]);
 
   useEffect(() => {
     if (!state.workerOrder.length) return;
@@ -584,8 +630,8 @@ function OwnedWorkbench() {
   }, [liveStreamingEnabled]);
 
   useEffect(() => {
-    hostBridge()?.notifyIntrinsicHeight?.(Math.min(760, Math.max(280, document.body.scrollHeight)));
-  }, [state.status, state.transcript.length, state.workerOrder.length, selectedWorkerTab, connection, actionStatus]);
+    hostBridge()?.notifyIntrinsicHeight?.(Math.min(860, Math.max(320, document.body.scrollHeight)));
+  }, [state.status, state.transcript.length, state.workerOrder.length, selectedWorkerTab, connection, actionStatus, overview, overviewLoading, overviewError]);
 
   const stop = async () => {
     if (!meta?.targetType || !meta.targetId) return;
@@ -697,6 +743,13 @@ function OwnedWorkbench() {
   const updateCenter = <PluginUpdateCenter callTool={callTool} manifestUrl={updateManifestUrl} onStatus={setActionStatus} />;
 
   return <main className="terminal-workbench" aria-label="CPTR live workbench">
+    <OverviewView
+      overview={overview}
+      loading={overviewLoading}
+      error={overviewError}
+      refreshedAt={overviewRefreshedAt}
+      onRefresh={() => void refreshOverview()}
+    />
     {hasWorkers ? <DirectWorkersView
       workers={state.workers}
       workerOrder={state.workerOrder}

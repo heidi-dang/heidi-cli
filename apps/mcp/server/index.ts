@@ -61,8 +61,8 @@ const oauthConfig: McpAuthConfig = {
 };
 
 const client = clientFromEnvironment();
-const compatibilityWorkbenchEnabled = process.env.CPTR_COMPAT_WORKBENCH === "1";
-const liveTerminalStreamingEnabled = compatibilityWorkbenchEnabled && resolveLiveTerminalStreaming();
+const workbenchUiEnabled = process.env.CPTR_WORKBENCH_UI === "1" || process.env.CPTR_COMPAT_WORKBENCH === "1";
+const liveTerminalStreamingEnabled = workbenchUiEnabled && resolveLiveTerminalStreaming();
 const liveTickets = new LiveTicketStore({
   streamUrl: `${publicOrigin}/live/stream`,
   snapshotUrl: `${publicOrigin}/live/snapshot`,
@@ -84,7 +84,7 @@ function currentWorkbenchHotReload() {
   return resolveWorkbenchHotReload(currentWorkbenchAssets());
 }
 
-if (compatibilityWorkbenchEnabled) {
+if (workbenchUiEnabled) {
   const initialAssets = currentWorkbenchAssets();
   const initialHotReload = resolveWorkbenchHotReload(initialAssets);
   if (initialHotReload.enabled) allowedBrowserOrigins.add(publicOrigin);
@@ -173,6 +173,7 @@ function createSessionServer() {
       return { bundle: assets.bundle, styles: assets.styles };
     },
     connectDomain: publicOrigin,
+    workbenchUiEnabled,
   });
 }
 
@@ -266,8 +267,9 @@ const httpServer = createServer(async (req, res) => {
     url.pathname === "/live/renew" ||
     url.pathname === "/live/prompt/stream" ||
     url.pathname === "/live/prompt/snapshot" ||
+    url.pathname === "/ui/overview" ||
     url.pathname.startsWith("/__cptr/dev/");
-  if (workbenchBrowserRequest && !compatibilityWorkbenchEnabled) {
+  if (workbenchBrowserRequest && !workbenchUiEnabled) {
     res.writeHead(404, { "cache-control": "no-store" }).end("Not Found");
     return;
   }
@@ -284,7 +286,7 @@ const httpServer = createServer(async (req, res) => {
     : corsHeaders(requestOrigin, allowedBrowserOrigins);
   for (const [header, value] of Object.entries(originHeaders)) res.setHeader(header, value);
 
-  const hotReload = compatibilityWorkbenchEnabled ? currentWorkbenchHotReload() : null;
+  const hotReload = workbenchUiEnabled ? currentWorkbenchHotReload() : null;
   if (hotReload?.enabled && req.method === "GET" && url.pathname === "/__cptr/dev/workbench.js") {
     const assets = currentWorkbenchAssets();
     res.writeHead(assets.ready ? 200 : 503, {
@@ -356,16 +358,47 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === "/ui/overview") {
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        ...originHeaders,
+        "access-control-allow-headers": "Authorization, Accept, Content-Type",
+        "access-control-allow-methods": "GET, OPTIONS",
+        "cache-control": "no-store",
+      }).end();
+      return;
+    }
+    if (req.method !== "GET") {
+      res.writeHead(405, { "cache-control": "no-store" }).end();
+      return;
+    }
+    const authorization = typeof req.headers.authorization === "string" ? req.headers.authorization : "";
+    const ticket = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+    if (!ticket || promptSessions.replay(ticket, 0) === null) {
+      writeJson(res, 401, { error: "Workbench UI ticket is invalid or expired" }, originHeaders);
+      return;
+    }
+    try {
+      writeJson(res, 200, await client.getUiOverview(), originHeaders);
+    } catch (error) {
+      console.error("CPTR Workbench UI overview proxy failed", error);
+      writeJson(res, 502, { error: "CPTR UI overview is unavailable" }, originHeaders);
+    }
+    return;
+  }
+
   if (url.pathname === "/health") {
-    const assets = compatibilityWorkbenchEnabled ? currentWorkbenchAssets() : null;
+    const assets = workbenchUiEnabled ? currentWorkbenchAssets() : null;
     const reload = assets ? resolveWorkbenchHotReload(assets) : null;
-    const compatibilityHealthy = !compatibilityWorkbenchEnabled || assets?.ready === true;
-    const status = compatibilityHealthy ? 200 : 503;
+    const workbenchHealthy = !workbenchUiEnabled || assets?.ready === true;
+    const status = workbenchHealthy ? 200 : 503;
     res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify({
-      status: compatibilityHealthy ? "ok" : "degraded",
+      status: workbenchHealthy ? "ok" : "degraded",
       app_version: CPTR_APP_VERSION,
       workbench: {
-        compatibility_enabled: compatibilityWorkbenchEnabled,
+        enabled: workbenchUiEnabled,
+        compatibility_enabled: workbenchUiEnabled,
+        resource_uri: workbenchUiEnabled ? "ui://cptr/live-workbench.html" : null,
         ready: assets?.ready ?? false,
         asset_directory: assets?.directory ?? null,
         hot_reload: reload?.enabled ?? false,

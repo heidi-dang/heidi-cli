@@ -15,6 +15,7 @@ TOOL_LIST_RE = re.compile(
 )
 QUOTED_RE = re.compile(r'"([^"\\]*(?:\\.[^"\\]*)*)"')
 VERSION_RE = re.compile(r'(?m)^version\s*=\s*"([^"]+)"')
+WORKBENCH_URI_RE = re.compile(r'export\s+const\s+WORKBENCH_RESOURCE_URI\s*=\s*"([^"]+)"')
 
 
 def _json(path: Path) -> dict:
@@ -75,12 +76,30 @@ def verify(root: Path, expected_version: str | None = None) -> dict[str, object]
         )
     if "cptr_workspace_lifecycle" not in tools:
         raise ValueError("v2.1 canonical MCP inventory is missing cptr_workspace_lifecycle")
+
+    workbench_source = (root / "apps/mcp/server/ui/workbench-resource.ts").read_text(encoding="utf-8")
+    workbench_match = WORKBENCH_URI_RE.search(workbench_source)
+    if workbench_match is None:
+        raise ValueError("canonical Workbench resource URI is missing")
+    workbench_uri = workbench_match.group(1)
+    resource_count = int(compatibility["mcp"].get("resource_count", 0))
+    compatibility_uri = str(compatibility["mcp"].get("ui_resource_uri", ""))
+    if resource_count != 1:
+        raise ValueError(f"MCP compatibility resource count {resource_count} != 1")
+    if compatibility_uri != workbench_uri:
+        raise ValueError(f"MCP compatibility resource URI {compatibility_uri!r} != canonical {workbench_uri!r}")
+    mcp_source = (root / "apps/mcp/server/mcp.ts").read_text(encoding="utf-8")
+    if "server.registerResource(" not in mcp_source or "resourceUri: WORKBENCH_RESOURCE_URI" not in mcp_source:
+        raise ValueError("production MCP source does not register the canonical Workbench Apps resource")
+
     if int(compatibility["fdx"]["protocol_version"]) != 2:
         raise ValueError("FDX protocol compatibility must remain 2")
 
     return {
         "heidi_version": heidi_version,
         "mcp_tool_count": len(tools),
+        "mcp_resource_count": resource_count,
+        "mcp_ui_resource_uri": workbench_uri,
         "cptr_version": cptr_version,
         "fdx_version": fdx_version,
     }
@@ -95,6 +114,7 @@ def main() -> None:
     print(
         "compatibility-contract=PASS "
         f"heidi={result['heidi_version']} mcp_tools={result['mcp_tool_count']} "
+        f"mcp_resources={result['mcp_resource_count']} mcp_ui={result['mcp_ui_resource_uri']} "
         f"cptr={result['cptr_version']} fdx={result['fdx_version']}"
     )
 

@@ -25,6 +25,13 @@ def test_default_branch_tracks_only_canonical_persistent_workflows():
     assert tracked == {"ci.yml", "release.yml"}
 
 
+def test_fdx_ci_declares_node_runtime_for_npm_backed_policy_verification():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    fdx_job = workflow.split("\n  fdx:\n", 1)[1]
+    assert "actions/setup-node@v4" in fdx_job
+    assert "node-version: 22" in fdx_job or "node-version: '22'" in fdx_job
+
+
 def test_monorepo_does_not_use_nested_repository_indirection():
     assert not (ROOT / ".gitmodules").exists()
     governance = (ROOT / "docs" / "REPOSITORY_GOVERNANCE.md").read_text(encoding="utf-8")

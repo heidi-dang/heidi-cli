@@ -2,7 +2,7 @@
 
 Heidi CLI is the canonical monorepo for the CPTR Computer stack:
 
-- `apps/mcp` — ChatGPT-facing 26-tool MCP adapter; production is tool-only, with the Workbench retained only as an explicit compatibility/development surface.
+- `apps/mcp` — ChatGPT-facing 26-tool MCP adapter plus one bounded MCP Apps Workbench resource at `ui://cptr/live-workbench.html`.
 - `apps/cptr` — CPTR backend, control plane, execution runtime, browser/SSH/direct-coding services, persistence, and verification.
 - `crates/fdx` — native FDX repository-intelligence CLI and persistent daemon.
 - `install.sh` + `bin/heidi` — installation, configuration, deployment, verification, update, status, logs, and URL discovery.
@@ -22,13 +22,13 @@ It will:
 1. clone/update this repository under `~/.local/share/heidi-cli`;
 2. validate/install required local runtimes;
 3. build the CPTR frontend and Python environment;
-4. build the production tool-only MCP server (the compatibility Workbench is development/opt-in only);
+4. build the production MCP server and signed Workbench UI assets; production exposes exactly one Apps resource and keeps hot reload disabled;
 5. compile the native FDX binary;
 6. create/rotate a scoped CPTR control token for the current OS user;
 7. prompt for **development** or **production** deployment;
 8. configure loopback CPTR + MCP services;
 9. optionally provision a Cloudflare remotely-managed tunnel, DNS CNAME, and Cloudflare Access MCP application using an API token;
-10. verify FDX, CPTR health/readiness, MCP health, the exact tool-only MCP contract, and CPTR↔MCP connectivity;
+10. verify FDX, CPTR health/readiness, MCP health, the exact 26-tool + one-resource Apps contract, and CPTR↔MCP connectivity;
 11. print the final ChatGPT MCP URL.
 
 Secrets are written only under `~/.config/heidi-cli` with owner-only permissions. They are never written into the Git checkout.
@@ -62,7 +62,7 @@ After a successful public deployment, Heidi CLI prints:
 https://<your-mcp-domain>/mcp
 ```
 
-Add that endpoint when creating a custom MCP app/connector in ChatGPT. If Cloudflare Managed OAuth is enabled, complete the browser authorization flow and then scan the server tools. ChatGPT can continue using DCR; the reusable confidential client does not change Heidi's MCP tool-only contract.
+Add that endpoint when creating a custom MCP app/connector in ChatGPT. If Cloudflare Managed OAuth is enabled, complete the browser authorization flow and then scan the server tools/resources. ChatGPT can continue using DCR; the reusable confidential client does not alter Heidi's bounded Apps contract: 26 compact tools plus exactly one Workbench resource, with only `cptr_open_live_workbench` publishing `ui.resourceUri`.
 
 OpenAI controls the final app creation, OAuth consent, tool scan, and action-review UI; a server-side installer cannot press those ChatGPT UI controls for you.
 

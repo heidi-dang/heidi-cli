@@ -31,6 +31,8 @@ def test_repository_release_compatibility_matches_canonical_mcp_inventory():
     names = verifier.compact_tool_names(ROOT)
     assert result["mcp_tool_count"] == len(names)
     assert result["mcp_tool_count"] == compatibility["mcp"]["registered_action_count"]
+    assert result["mcp_resource_count"] == compatibility["mcp"]["resource_count"] == 1
+    assert result["mcp_ui_resource_uri"] == compatibility["mcp"]["ui_resource_uri"] == "ui://cptr/live-workbench.html"
     assert names.count("cptr_workspace_lifecycle") == 1
 
 

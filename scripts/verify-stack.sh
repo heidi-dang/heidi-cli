@@ -175,9 +175,9 @@ check_mcp() {
        CPTR_DEPLOYED_MCP_TOKEN="$smoke_token" \
        CPTR_DEPLOYED_PUBLIC_ORIGIN="${HEIDI_PUBLIC_ORIGIN:-$HEIDI_MCP_LOCAL_URL}" \
        "$node_binary" "$REPO_DIR/apps/mcp/scripts/check-deployed-contract.mjs" >/dev/null 2>&1; then
-      pass "MCP exact signed tool-only contract"
+      pass "MCP exact signed 26-tool + Workbench resource contract"
     else
-      fail_check mcp_contract "MCP exact contract" "registered tools or tool-only capability boundaries differ from the signed Heidi release"
+      fail_check mcp_contract "MCP exact contract" "registered tools, Apps resource/UI ownership, CSP, or release identity differ from the signed Heidi release"
     fi
   else
     fail_check mcp_contract "MCP contract verifier" "check-deployed-contract.mjs is missing"

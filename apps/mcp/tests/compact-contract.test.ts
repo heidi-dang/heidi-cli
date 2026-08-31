@@ -39,7 +39,13 @@ function fixtureClient(fetchImpl: typeof fetch = async () => new Response(JSON.s
   return new ComputerClient({ baseUrl: "http://cptr.test", token: "test-token", fetchImpl });
 }
 
-async function connectedServer(options: { legacyContract?: boolean } = {}) {
+async function connectedServer(options: {
+  legacyContract?: boolean;
+  workbenchUiEnabled?: boolean;
+  connectDomain?: string;
+  widgetBundle?: string;
+  widgetStyles?: string;
+} = {}) {
   const server = createMcpServer(fixtureClient(), options);
   const client = new Client({ name: "compact-contract-test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -118,6 +124,48 @@ test("default MCP contract advertises split read/control safety surfaces", async
 
   await client.close();
   await server.close();
+});
+
+test("production Workbench UI adds one Apps resource without changing the 26-tool compact contract", async () => {
+  const previousHotReload = process.env.CPTR_HOT_RELOAD;
+  process.env.CPTR_HOT_RELOAD = "0";
+  try {
+    const { server, client } = await connectedServer({
+      workbenchUiEnabled: true,
+      connectDomain: "https://mcp.example.test",
+      widgetBundle: "document.body.textContent = 'CPTR Workbench';",
+      widgetStyles: "body { color: white; }",
+    });
+    const listed = await client.listTools();
+    assert.equal(listed.tools.length, 26);
+    assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), COMPACT_TOOLS);
+    assert.notEqual(client.getServerCapabilities()?.resources, undefined);
+
+    const uiTools = listed.tools
+      .filter((tool) => (tool._meta as { ui?: { resourceUri?: string } } | undefined)?.ui?.resourceUri)
+      .map((tool) => ({
+        name: tool.name,
+        resourceUri: (tool._meta as { ui?: { resourceUri?: string } }).ui?.resourceUri,
+      }));
+    assert.deepEqual(uiTools, [{ name: "cptr_open_live_workbench", resourceUri: "ui://cptr/live-workbench.html" }]);
+
+    const resources = await client.listResources();
+    assert.deepEqual(resources.resources.map((resource) => resource.uri), ["ui://cptr/live-workbench.html"]);
+    const resource = await client.readResource({ uri: "ui://cptr/live-workbench.html" });
+    assert.equal(resource.contents.length, 1);
+    const content = resource.contents[0];
+    assert.equal(content?.mimeType, "text/html;profile=mcp-app");
+    assert.match(content && "text" in content ? String(content.text) : "", /CPTR Workbench/);
+    const ui = content?._meta?.ui as { csp?: { resourceDomains?: string[]; connectDomains?: string[] } } | undefined;
+    assert.deepEqual(ui?.csp?.connectDomains, ["https://mcp.example.test"]);
+    assert.deepEqual(ui?.csp?.resourceDomains, []);
+
+    await client.close();
+    await server.close();
+  } finally {
+    if (previousHotReload === undefined) delete process.env.CPTR_HOT_RELOAD;
+    else process.env.CPTR_HOT_RELOAD = previousHotReload;
+  }
 });
 
 test("legacy contract cannot be enabled through a production environment toggle", async () => {

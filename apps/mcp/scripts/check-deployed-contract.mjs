@@ -37,6 +37,7 @@ const expectedTools = [
   "cptr_workspaces",
 ];
 const expectedRegisteredToolCount = expectedTools.length;
+const expectedResource = "ui://cptr/live-workbench.html";
 
 if (!endpoint || !token) {
   throw new Error("Set CPTR_DEPLOYED_MCP_URL and CPTR_DEPLOYED_MCP_TOKEN before running the deployed contract check.");
@@ -76,11 +77,16 @@ const health = await healthResponse.json();
 if (health?.app_version !== expectedContractVersion) {
   throw new Error(`app version drift: expected ${expectedContractVersion}, got ${health?.app_version ?? "missing"}`);
 }
-if (health?.workbench?.compatibility_enabled !== false) {
-  throw new Error("production MCP must keep the compatibility Workbench disabled");
+if (health?.workbench?.enabled !== true) {
+  throw new Error("production MCP must expose the CPTR Workbench UI");
 }
-if (health?.workbench?.ready !== false || health?.workbench?.hot_reload !== false || health?.workbench?.build_id !== null) {
-  throw new Error("tool-only production health must not depend on Workbench assets");
+if (health?.workbench?.resource_uri !== expectedResource) {
+  throw new Error(`Workbench resource URI drift: expected ${expectedResource}, got ${health?.workbench?.resource_uri ?? "missing"}`);
+}
+if (health?.workbench?.ready !== true) throw new Error("deployed Workbench is not ready");
+if (health?.workbench?.hot_reload !== false) throw new Error("production Workbench hot reload must remain disabled");
+if (typeof health?.workbench?.build_id !== "string" || health.workbench.build_id.length < 12) {
+  throw new Error("deployed Workbench build fingerprint is missing");
 }
 if (health?.mcp_contract?.version !== expectedContractVersion) {
   throw new Error(`MCP contract version drift: expected ${expectedContractVersion}, got ${health?.mcp_contract?.version ?? "missing"}`);
@@ -94,8 +100,8 @@ const initialize = await rpc("initialize", {
   capabilities: {},
   clientInfo: { name: "cptr-deployed-contract-check", version: expectedContractVersion },
 });
-if (initialize.capabilities?.resources !== undefined) {
-  throw new Error("MCP resource capability drift: expected a tool-only MCP contract with no resources capability");
+if (initialize.capabilities?.resources === undefined) {
+  throw new Error("MCP resource capability drift: CPTR Workbench resource capability is missing");
 }
 const tools = await rpc("tools/list", {});
 exactSet((tools.tools ?? []).map((tool) => tool.name), expectedTools, "tool contract");
@@ -104,8 +110,35 @@ if ((tools.tools ?? []).length !== expectedRegisteredToolCount) {
 }
 const uiTools = (tools.tools ?? [])
   .filter((tool) => tool?._meta?.ui?.resourceUri)
-  .map((tool) => tool.name);
-if (uiTools.length !== 0) {
-  throw new Error(`MCP UI metadata drift: expected no UI-producing tools, got [${uiTools.join(", ")}]`);
+  .map((tool) => ({ name: tool.name, resourceUri: tool._meta.ui.resourceUri }));
+if (
+  uiTools.length !== 1 ||
+  uiTools[0]?.name !== "cptr_open_live_workbench" ||
+  uiTools[0]?.resourceUri !== expectedResource
+) {
+  throw new Error(`MCP UI ownership drift: expected only cptr_open_live_workbench -> ${expectedResource}, got ${JSON.stringify(uiTools)}`);
 }
-console.log(`CPTR deployed tool-only MCP contract verified: ${expectedRegisteredToolCount} registered compact tools, compatibility Workbench disabled, and no UI resource entrypoint`);
+
+const resources = await rpc("resources/list", {});
+exactSet((resources.resources ?? []).map((resource) => resource.uri), [expectedResource], "resource contract");
+const resourceResult = await rpc("resources/read", { uri: expectedResource });
+const resource = (resourceResult.contents ?? []).find((content) => content.uri === expectedResource);
+if (!resource) throw new Error(`resource contract drift: ${expectedResource} has no readable content`);
+if (resource.mimeType !== "text/html;profile=mcp-app") {
+  throw new Error(`resource MIME drift: expected text/html;profile=mcp-app, got ${resource.mimeType ?? "missing"}`);
+}
+const ui = resource._meta?.ui;
+const expectedWidgetDomain = process.env.CPTR_DEPLOYED_PUBLIC_ORIGIN?.trim() || new URL(endpoint).origin;
+if (ui?.domain !== expectedWidgetDomain) {
+  throw new Error(`resource widget domain drift: expected ${expectedWidgetDomain}, got ${ui?.domain ?? "missing"}`);
+}
+if (ui?.prefersBorder !== true) throw new Error("resource UI metadata must request the bounded host border");
+const connectDomains = ui?.csp?.connectDomains;
+if (!Array.isArray(connectDomains) || JSON.stringify(connectDomains) !== JSON.stringify([expectedWidgetDomain])) {
+  throw new Error(`resource connect-domain drift: expected [${expectedWidgetDomain}]`);
+}
+const resourceDomains = ui?.csp?.resourceDomains;
+if (!Array.isArray(resourceDomains) || resourceDomains.length !== 0) {
+  throw new Error("production Workbench must inline its built assets and require no external resource domains");
+}
+console.log(`CPTR deployed Apps UI contract verified: ${expectedRegisteredToolCount} registered compact tools, one Workbench resource, one UI-producing tool, and widget domain ${expectedWidgetDomain}`);

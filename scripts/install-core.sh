@@ -304,6 +304,9 @@ if [[ "$INCLUDES_MCP" == 1 ]]; then
     env_line PUBLIC_ORIGIN "$PUBLIC_ORIGIN"
     env_line MCP_ALLOWED_ORIGINS https://chatgpt.com
     env_line MCP_OAUTH_RESOURCE "$MCP_URL"
+    env_line CPTR_WORKBENCH_UI 1
+    # Keep the legacy compatibility flag disabled in production so rollback to
+    # pre-2.1.5 releases remains tool-only; 2.1.5+ uses CPTR_WORKBENCH_UI.
     env_line CPTR_COMPAT_WORKBENCH "$( [[ "$MODE" == production ]] && echo 0 || echo 1 )"
     env_line CPTR_LIVE_TERMINAL_STREAMING 0
     env_line CPTR_HOT_RELOAD "$( [[ "$MODE" == production ]] && echo 0 || echo 1 )"

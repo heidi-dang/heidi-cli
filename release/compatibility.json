@@ -1,9 +1,11 @@
 {
   "schema": "heidi.compatibility.v1",
-  "heidi_version": "2.1.4",
+  "heidi_version": "2.1.5",
   "mcp": {
-    "contract_version": "2.1.4",
+    "contract_version": "2.1.5",
     "registered_action_count": 26,
+    "resource_count": 1,
+    "ui_resource_uri": "ui://cptr/live-workbench.html",
     "minimum_node_major": 22
   },
   "cptr": {
@@ -28,7 +30,9 @@
     "network_default": "deny"
   },
   "migrations": [
-    "MCP v2.1.4 makes production release identity exact: the signed release manifest carries the source Git commit, production propagates and verifies that commit at runtime, the normal MCP build/HTTP surface is strictly tool-only with the compatibility Workbench disabled, the legacy 69-action surface is test-harness-only, and update metadata reports the deployed control profile.",
+    "MCP v2.1.5 restores the bounded ChatGPT Apps Workbench on top of the unchanged 26-tool compact contract: production advertises exactly one MCP resource at ui://cptr/live-workbench.html, only cptr_open_live_workbench publishes ui.resourceUri, built UI assets ship in the signed release with hot reload disabled, and the widget refreshes a sanitized CPTR overview through a short-lived Workbench ticket instead of the CPTR service token.",
+    "CPTR v2.1.5 syncs audited heidi-dang/computer main commit a4a3a02251312e5f5c04b910d1e11857323b0ab5, including frontend polish, bulk model controls/search, and the extended API router surface while preserving Heidi-specific control-plane hardening.",
+    "MCP v2.1.4 made production release identity exact: the signed release manifest carries the source Git commit, production propagates and verifies that commit at runtime, the normal MCP build/HTTP surface was tool-only with the compatibility Workbench disabled, the legacy 69-action surface remained test-harness-only, and update metadata reported the deployed control profile.",
     "MCP v2.1.3 makes cptr_open_live_workbench explicitly optional so normal ChatGPT Direct Coding starts with the task-relevant tool instead of a Workbench activation prerequisite.",
     "MCP v2.1.2 splits mixed Workbench, SSH, managed Chrome, delegated task, and delegated monitor gateways into read and control surfaces so host safety annotations match capability while destructive/open-world controls remain conservative.",
     "MCP v2.1.1 disables the MCP Apps UI entrypoint: no resources capability is advertised and no tool publishes ui.resourceUri metadata; Workbench session tools remain data-only.",

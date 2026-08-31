@@ -48,7 +48,7 @@ A production Heidi release is accepted only when:
 - the signed release manifest identifies the exact Git commit and source archive checksum;
 - `release/compatibility.json` matches the MCP/CPTR/FDX runtime contract;
 - the production MCP reports the same source commit in `/health` and update metadata;
-- the tool-only MCP contract advertises no resources capability and no `ui.resourceUri`;
+- the production MCP contract advertises exactly 26 compact tools plus exactly one Apps resource at `ui://cptr/live-workbench.html`, with `cptr_open_live_workbench` as the only UI-producing tool and the legacy 69-action surface remaining test-only;
 - the canonical CI gates pass on the release commit.
 
 This policy prevents the split-repository drift that the Heidi monorepo was created to eliminate.

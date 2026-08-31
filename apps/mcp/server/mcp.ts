@@ -3,6 +3,7 @@ import { ComputerApiError, ComputerClient } from "./client/computer-client.js";
 import { LiveTicketStore, type LiveTarget } from "./live-tickets.js";
 import { PromptTerminalStore } from "./prompt-terminal.js";
 import { registerCompactGateways } from "./compact-gateways.js";
+import { WORKBENCH_RESOURCE_URI, createWorkbenchResource } from "./ui/workbench-resource.js";
 import { z } from "zod";
 import {
   MCP_COMPACT_TOOL_NAMES,
@@ -262,9 +263,11 @@ const oauthToolMetadata = {
 
 const workbenchToolMetadata = oauthToolMetadata;
 
-// The Workbench opener remains a data-only session bootstrap. Heidi deliberately
-// advertises no MCP Apps UI resource so hosts treat the connector as a tool-only MCP server.
-const openWorkbenchToolMetadata = oauthToolMetadata;
+function openWorkbenchToolMetadata(uiEnabled: boolean) {
+  return uiEnabled
+    ? { ...oauthToolMetadata, ui: { resourceUri: WORKBENCH_RESOURCE_URI } }
+    : oauthToolMetadata;
+}
 
 const liveEventOutputSchema = z.object({
   version: z.number().int(),
@@ -404,12 +407,14 @@ export function createMcpServer(
     widgetStyles?: string;
     widgetAssets?: () => { bundle: string; styles: string };
     connectDomain?: string;
+    workbenchUiEnabled?: boolean;
     /** Internal compatibility-test harness only. The production HTTP server never enables this. */
     legacyContract?: boolean;
   } = {},
 ): McpServer {
   const server = new McpServer({ name: "chatgpt-computer-plugin", version: MCP_CONTRACT_VERSION });
   const legacyContract = options.legacyContract === true;
+  const workbenchUiEnabled = options.workbenchUiEnabled === true;
   const tickets = options.tickets ?? new LiveTicketStore();
   const promptSessions = options.promptSessions ?? new PromptTerminalStore();
   const liveTerminalStreamingEnabled = options.liveTerminalStreamingEnabled ?? true;
@@ -639,12 +644,31 @@ export function createMcpServer(
       .filter((event): event is Record<string, unknown> => Boolean(event) && typeof event === "object" && !Array.isArray(event))
       .slice(-20);
   };
+  if (workbenchUiEnabled) {
+    server.registerResource(
+      "cptr-live-workbench",
+      WORKBENCH_RESOURCE_URI,
+      {},
+      async () => {
+        const assets = options.widgetAssets?.() ?? {
+          bundle: options.widgetBundle ?? "document.body.textContent = 'CPTR Workbench';",
+          styles: options.widgetStyles ?? "",
+        };
+        return createWorkbenchResource(
+          assets.bundle,
+          options.connectDomain,
+          assets.styles,
+        );
+      },
+    );
+  }
+
   server.registerTool(
     "cptr_open_live_workbench",
     {
-      title: "Open optional CPTR Workbench context",
+      title: "Open optional CPTR Workbench",
       description:
-        "Optional Workbench session bootstrap. Use this only when the user explicitly asks to open or resume a Workbench session, or when the prompt explicitly authorizes delegation with allow:delegate. Ordinary Direct Coding does not require this tool; start with the workspace, FDX, code, Git, test, SSH, or browser tool that matches the user's request. This tool remains data-only and does not advertise or mount an MCP Apps UI resource.",
+        "Optional Apps SDK Workbench for an explicitly invoked Heidi/CPTR workflow. Ordinary Direct Coding does not require this tool; use it once when a visible plugin UI is useful, when the user asks to open or resume the Workbench, or when the prompt authorizes delegation with allow:delegate. The UI is backed by the compact 26-tool contract and scoped CPTR APIs; it does not enable the legacy 69-action surface.",
       inputSchema: openWorkbenchSessionSchema,
       outputSchema: {
         session_id: z.string(),
@@ -654,9 +678,10 @@ export function createMcpServer(
         title: z.string(),
         initial_summary: z.string(),
         delegation_allowed: z.boolean(),
+        ui_enabled: z.boolean(),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-      _meta: openWorkbenchToolMetadata,
+      _meta: openWorkbenchToolMetadata(workbenchUiEnabled),
     },
     async (input) => {
       const delegationAllowed = input.delegation_authorization === "allow:delegate";
@@ -666,6 +691,9 @@ export function createMcpServer(
         .catch(() => []);
       const prompt = promptSessions.open({ allowDelegate: delegationAllowed });
       activePromptTicket = prompt.ticket;
+      const preloadedOverview = workbenchUiEnabled
+        ? await client.getUiOverview().catch(() => null)
+        : null;
       const session = input.resume_session_id
         ? await client.getWorkbenchSession(input.resume_session_id)
         : await client.createWorkbenchSession({
@@ -711,6 +739,7 @@ export function createMcpServer(
           ? `Workbench Session ${session.session_id} is ready. ChatGPT Direct Coding remains available and the user explicitly enabled Delegated Agent tools for this prompt.`
           : `Workbench Session ${session.session_id} is ready. ChatGPT Direct Coding is enabled; Delegated Agent tools are blocked unless the user prompt includes allow:delegate.`,
         delegation_allowed: delegationAllowed,
+        ui_enabled: workbenchUiEnabled,
       };
       const activity = publishActivity(
         "cptr_open_live_workbench",
@@ -722,6 +751,7 @@ export function createMcpServer(
           "cptr/prompt": prompt,
           "cptr/activity": activity,
           "cptr/workspaces": preloadedWorkspaces,
+          ...(preloadedOverview ? { "cptr/ui": preloadedOverview } : {}),
         },
       };
     },
