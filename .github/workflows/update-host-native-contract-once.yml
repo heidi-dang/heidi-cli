@@ -1,0 +1,39 @@
+name: Update host-native installer contract once
+
+on:
+  push:
+    branches: [remove-direct-coding-sandbox]
+    paths:
+      - .github/workflows/update-host-native-contract-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: remove-direct-coding-sandbox
+          fetch-depth: 0
+      - name: Replace stale sandbox compatibility assertion
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_installer_contract.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''def test_compatibility_manifest_matches_canonical_runtime_inventory_and_sandbox():\n    compatibility = json.loads(read("release/compatibility.json"))\n    verifier = load_compatibility_verifier()\n    result = verifier.verify(ROOT, compatibility["heidi_version"])\n    assert result["mcp_tool_count"] == compatibility["mcp"]["registered_action_count"]\n    assert "cptr_workspace_lifecycle" in verifier.compact_tool_names(ROOT)\n    assert compatibility["deployment"]["topologies"] == ["all-in-one", "split-tailscale"]\n    assert "sandbox" in compatibility\n'''
+          new = '''def test_compatibility_manifest_matches_canonical_runtime_inventory_and_host_native_direct_coding():\n    compatibility = json.loads(read("release/compatibility.json"))\n    verifier = load_compatibility_verifier()\n    result = verifier.verify(ROOT, compatibility["heidi_version"])\n    assert result["mcp_tool_count"] == compatibility["mcp"]["registered_action_count"]\n    assert "cptr_workspace_lifecycle" in verifier.compact_tool_names(ROOT)\n    assert compatibility["deployment"]["topologies"] == ["all-in-one", "split-tailscale"]\n    assert "sandbox" not in compatibility\n    assert any("executes natively on the authorized CPTR host" in item for item in compatibility["migrations"])\n'''
+          if text.count(old) != 1:
+              raise SystemExit("stale installer compatibility contract did not match exactly")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+          git rm .github/workflows/update-host-native-contract-once.yml
+          git add tests/test_installer_contract.py
+          git diff --cached --check
+          git config user.name "heidi-maintenance-bot"
+          git config user.email "heidi-maintenance-bot@users.noreply.github.com"
+          git commit -m "test: expect host-native direct coding compatibility"
+          git push origin HEAD:remove-direct-coding-sandbox
