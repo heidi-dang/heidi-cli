@@ -1,13 +1,47 @@
 # Heidi CLI
 
-Heidi CLI is the canonical monorepo for the CPTR Computer stack:
+**A single production release for the full CPTR Computer stack — ChatGPT MCP, Live Workbench, CPTR execution, and native FDX repository intelligence.**
 
-- `apps/mcp` — ChatGPT-facing 30-tool MCP adapter plus one bounded MCP Apps Workbench resource at `ui://cptr/live-workbench.html`.
-- `apps/cptr` — CPTR backend, control plane, execution runtime, browser/SSH/direct-coding services, persistence, and verification.
-- `crates/fdx` — native FDX repository-intelligence CLI and persistent daemon.
-- `install.sh` + `bin/heidi` — installation, configuration, deployment, verification, update, status, logs, and URL discovery.
+Heidi CLI is the canonical monorepo and release authority for the stack. It keeps the ChatGPT-facing contract, backend runtime, repository intelligence, installer, migrations, and deployment verification versioned together instead of shipping them as loosely coupled services.
 
-The stack is intentionally deployed as one trust boundary on a single machine: CPTR and MCP bind to loopback by default; only the MCP endpoint is published through Cloudflare Tunnel in production. FDX stays local and is invoked by CPTR.
+![Heidi CPTR Live Workbench showing terminal diagnostics and release verification](docs/assets/heidi-live-workbench.png)
+
+*Heidi 2.1.11 Live Workbench — rendered from the production Workbench bundle through the same snapshot/SSE terminal path with sanitized verification output. The terminal surface is bounded, redacted, and responsive on desktop and iPhone.*
+
+## What Heidi includes
+
+| Component | Role |
+| --- | --- |
+| `apps/mcp` | ChatGPT-facing **30-tool compact MCP contract** plus exactly one bounded Apps Workbench resource at `ui://cptr/live-workbench.html`. |
+| `apps/cptr` | CPTR backend, control plane, terminal/LSP runtime, managed Chrome, SSH, Direct Coding, persistence, analytics, benchmarks, and verification. |
+| `crates/fdx` | Native repository-intelligence CLI and persistent daemon used for fast source navigation, impact analysis, and verification planning. |
+| `install.sh` + `bin/heidi` | Signed installation, immutable release activation, configuration, updates, diagnostics, verification, logs, and deployment lifecycle. |
+
+### Key capabilities
+
+- **Native ChatGPT Workbench.** One bounded Apps surface shows lifecycle state, FDX intelligence, verification evidence, model-usage analytics, benchmark results, and explicit terminal diagnostics without spawning a new widget for every action.
+- **ChatGPT Direct Coding by default.** ChatGPT remains the reasoning/orchestration layer and operates through scoped workspace, Git, test, terminal, LSP, SSH, and browser primitives; model-backed delegation stays explicit and gated.
+- **Compact production contract.** Heidi exposes 30 reviewed MCP tools rather than mirroring the much larger internal/legacy action surface, while preserving functional parity with the official CPTR backend and ChatGPT adapter.
+- **Restart-safe engineering telemetry.** Database-backed MCP-visible usage, weekly/monthly aggregates, simulated API-equivalent cost, observed real-work reliability, and standardized anti-tamper coding benchmarks survive backend restarts.
+- **Production-first deployment.** CPTR and MCP bind to loopback, the public MCP edge can sit behind Cloudflare Access/OAuth, secrets remain owner-only, and signed releases are staged before atomic activation and strict end-to-end verification.
+- **Local native intelligence.** FDX stays on the execution host and provides repository intelligence without expanding the public MCP trust boundary.
+
+### Architecture
+
+```text
+ChatGPT
+   │  Streamable HTTP + OAuth
+   ▼
+Heidi MCP  ─────── 30 compact tools + 1 Apps Workbench
+   │
+   ▼
+CPTR backend ───── workspace / terminal / LSP / SSH / browser / analytics
+   │
+   ├────────────── FDX native repository intelligence
+   └────────────── local workspace + persistent CPTR state
+```
+
+In the recommended all-in-one production topology, CPTR and MCP bind to loopback and only the MCP endpoint is published. FDX remains local and is invoked by CPTR.
 
 ## One-line install
 
@@ -62,7 +96,7 @@ After a successful public deployment, Heidi CLI prints:
 https://<your-mcp-domain>/mcp
 ```
 
-Add that endpoint when creating a custom MCP app/connector in ChatGPT. If Cloudflare Managed OAuth is enabled, complete the browser authorization flow and then scan the server tools/resources. ChatGPT can continue using DCR; the reusable confidential client does not alter Heidi's bounded Apps contract: 26 compact tools plus exactly one Workbench resource, with only `cptr_open_live_workbench` publishing `ui.resourceUri`.
+Add that endpoint when creating a custom MCP app/connector in ChatGPT. If Cloudflare Managed OAuth is enabled, complete the browser authorization flow and then scan the server tools/resources. ChatGPT can continue using DCR; the reusable confidential client does not alter Heidi's bounded Apps contract: **30 compact tools plus exactly one Workbench resource**, with only `cptr_open_live_workbench` publishing `ui.resourceUri`.
 
 OpenAI controls the final app creation, OAuth consent, tool scan, and action-review UI; a server-side installer cannot press those ChatGPT UI controls for you.
 
