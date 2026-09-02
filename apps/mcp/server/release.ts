@@ -70,6 +70,7 @@ export function currentPluginUpdateManifest(env: NodeJS.ProcessEnv = process.env
     released_at: "2026-09-02",
     summary: "Heidi v2.1.7 adds restart-safe weekly/monthly MCP usage analytics, an anti-tamper standardized coding benchmark, and compact terminal/LSP parity in the versioned 30-tool MCP Apps contract.",
     changes: [
+      "Converges the audited official sources heidi-dang/computer@ae2996a672ad4b595617384b7c5ee8cced3e304d and heidi-dang/chatgpt-computer-plugin@70c3962e74a75bde2fd3beb1bfaea7ac0a73b517 into Heidi's compact authorization and release boundaries.",
       "Adds migration 0018 with immutable, owner-scoped MCP usage events keyed by unique event ID plus durable engineering-session and standardized benchmark records.",
       "Persists current-week, current-month, rolling 7/30-day, and all-time MCP-visible token estimates and API-equivalent simulated cost so analytics survive backend restarts.",
       "Adds bounded client_model attribution to every compact MCP action, consumes it at the adapter boundary, and never forwards that model metadata into CPTR business handlers or treats it as authorization.",
