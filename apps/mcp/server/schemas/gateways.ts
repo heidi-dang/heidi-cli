@@ -106,10 +106,46 @@ export const gitGatewaySchema = {
   max_bytes: z.number().int().min(1).max(2_000_000).default(100_000),
 };
 
+export const terminalControlGatewaySchema = {
+  action: z.enum(["send_input", "resize", "signal"]),
+  workspace_id: workspaceId,
+  worker_id: workerId,
+  command_id: z.string().min(1).max(200),
+  data: z.string().max(65_536).optional(),
+  rows: z.number().int().min(5).max(300).optional(),
+  cols: z.number().int().min(20).max(500).optional(),
+  signal: z.enum(["interrupt", "terminate", "kill"]).optional(),
+};
+
+export const lspReadGatewaySchema = {
+  action: z.enum(["discover", "request"]),
+  workspace_id: workspaceId,
+  worker_id: workerId,
+  lsp_id: z.string().min(1).max(80).optional(),
+  method: z.string().min(1).max(256).optional(),
+  params: z.unknown().optional(),
+  timeout_seconds: z.number().min(0.1).max(60).default(15),
+};
+
+export const lspControlGatewaySchema = {
+  action: z.enum(["start", "stop"]),
+  workspace_id: workspaceId,
+  worker_id: workerId,
+  server_id: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/).optional(),
+  root: z.string().min(1).max(1_000).default("."),
+  lsp_id: z.string().min(1).max(80).optional(),
+};
+
 export const directWorkersGatewaySchema = {
   action: z.enum(["overview", "get"]),
   workspace_id: workspaceId,
   worker_id: z.string().min(1).max(200).optional(),
+};
+
+export const benchmarkGatewaySchema = {
+  action: z.enum(["start", "get", "submit", "leaderboard"]),
+  suite_id: z.string().min(1).max(80).default("cptr-python-core"),
+  run_id: z.string().regex(/^bench_[A-Za-z0-9_-]{8,80}$/).optional(),
 };
 
 export const directWorkerControlGatewaySchema = {

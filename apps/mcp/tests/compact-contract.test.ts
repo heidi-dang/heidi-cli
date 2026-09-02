@@ -22,8 +22,12 @@ const COMPACT_TOOLS = [
   "cptr_code_run_command",
   "cptr_code_get_command",
   "cptr_code_cancel_command",
+  "cptr_terminal_control",
+  "cptr_lsp_read",
+  "cptr_lsp_control",
   "cptr_direct_workers",
   "cptr_direct_worker_control",
+  "cptr_benchmark",
   "cptr_ssh_read",
   "cptr_ssh_control",
   "cptr_chrome_read",
@@ -66,11 +70,14 @@ test("default MCP contract advertises split read/control safety surfaces", async
   const listed = await client.listTools();
   const names = listed.tools.map((tool) => tool.name).sort();
 
-  assert.equal(MCP_CONTRACT_TOOL_COUNT, 26);
+  assert.equal(MCP_CONTRACT_TOOL_COUNT, 30);
   assert.deepEqual([...MCP_COMPACT_TOOL_NAMES].sort(), COMPACT_TOOLS);
   assert.deepEqual(names, COMPACT_TOOLS);
-  assert.equal(listed.tools.length, 26);
+  assert.equal(listed.tools.length, 30);
   assertEveryToolHasObjectOutputSchema(listed.tools);
+  for (const tool of listed.tools) {
+    assert.notEqual(tool.inputSchema.properties?.client_model, undefined, `${tool.name} must accept client_model attribution`);
+  }
 
   const tools = new Map(listed.tools.map((tool) => [tool.name, tool]));
   for (const tool of listed.tools) {
@@ -89,6 +96,21 @@ test("default MCP contract advertises split read/control safety surfaces", async
   assert.equal(tools.get("cptr_workspace_lifecycle")?.annotations?.destructiveHint, true);
   assert.equal(tools.get("cptr_workspace_lifecycle")?.annotations?.openWorldHint, true);
   assert.equal(tools.get("cptr_git")?.annotations?.readOnlyHint, true);
+  assert.deepEqual(tools.get("cptr_terminal_control")?.annotations, {
+    readOnlyHint: false,
+    destructiveHint: true,
+    openWorldHint: false,
+  });
+  assert.deepEqual(tools.get("cptr_lsp_read")?.annotations, {
+    readOnlyHint: true,
+    destructiveHint: false,
+    openWorldHint: false,
+  });
+  assert.deepEqual(tools.get("cptr_lsp_control")?.annotations, {
+    readOnlyHint: false,
+    destructiveHint: true,
+    openWorldHint: false,
+  });
   for (const name of [
     "cptr_workbench_sessions_read",
     "cptr_ssh_read",
@@ -126,7 +148,7 @@ test("default MCP contract advertises split read/control safety surfaces", async
   await server.close();
 });
 
-test("production Workbench UI adds one Apps resource without changing the 26-tool compact contract", async () => {
+test("production Workbench UI adds one Apps resource without changing the 30-tool compact contract", async () => {
   const previousHotReload = process.env.CPTR_HOT_RELOAD;
   process.env.CPTR_HOT_RELOAD = "0";
   try {
@@ -137,7 +159,7 @@ test("production Workbench UI adds one Apps resource without changing the 26-too
       widgetStyles: "body { color: white; }",
     });
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 26);
+    assert.equal(listed.tools.length, 30);
     assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), COMPACT_TOOLS);
     assert.notEqual(client.getServerCapabilities()?.resources, undefined);
 
@@ -174,7 +196,7 @@ test("legacy contract cannot be enabled through a production environment toggle"
   try {
     const { server, client } = await connectedServer();
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 26);
+    assert.equal(listed.tools.length, 30);
     assert.equal(listed.tools.some((tool) => tool.name === "cptr_code_read_file"), false);
     assert.equal(listed.tools.some((tool) => tool.name === "cptr_code_read"), true);
     await client.close();

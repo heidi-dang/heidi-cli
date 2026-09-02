@@ -909,7 +909,7 @@ export function createMcpServer(
     {
       title: "Open optional CPTR Workbench",
       description:
-        "Optional Apps SDK Workbench for an explicitly invoked Heidi/CPTR workflow. Ordinary Direct Coding does not require this tool; use it once when a visible plugin UI is useful, when the user asks to open or resume the Workbench, or when the prompt authorizes delegation with allow:delegate. The UI is backed by the compact 27-tool contract and scoped CPTR APIs; it does not enable the legacy 69-action surface.",
+        "Optional Apps SDK Workbench for an explicitly invoked Heidi/CPTR workflow. Ordinary Direct Coding does not require this tool; use it once when a visible plugin UI is useful, when the user asks to open or resume the Workbench, or when the prompt authorizes delegation with allow:delegate. The UI is backed by the compact 30-tool contract and scoped CPTR APIs; it does not enable the legacy 69-action surface.",
       inputSchema: openWorkbenchSessionSchema,
       outputSchema: {
         session_id: z.string(),

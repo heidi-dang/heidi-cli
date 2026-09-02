@@ -936,6 +936,86 @@ export class ComputerClient {
     );
   }
 
+  async controlCodingCommand(input: {
+    workspace_id: string;
+    worker_id?: string;
+    command_id: string;
+    action: "send_input" | "resize" | "signal";
+    data?: string;
+    rows?: number;
+    cols?: number;
+    signal?: "interrupt" | "terminate" | "kill";
+  }): Promise<DirectCommand> {
+    const body = {
+      ...(input.worker_id ? { worker_id: input.worker_id } : {}),
+      ...(input.action === "send_input" ? { data: input.data ?? "" } : {}),
+      ...(input.action === "resize" ? { rows: input.rows, cols: input.cols } : {}),
+      ...(input.action === "signal" ? { signal: input.signal } : {}),
+    };
+    const endpoint = input.action === "send_input" ? "input" : input.action;
+    return this.request(
+      `/workspaces/${encodeURIComponent(input.workspace_id)}/coding/commands/${encodeURIComponent(input.command_id)}/${endpoint}`,
+      { method: "POST", body },
+    );
+  }
+
+  async discoverLsp(input: { workspace_id: string; worker_id?: string }): Promise<Record<string, unknown>> {
+    return this.request(`/workspaces/${encodeURIComponent(input.workspace_id)}/coding/lsp/discover`, {
+      method: "POST",
+      body: input.worker_id ? { worker_id: input.worker_id } : {},
+    });
+  }
+
+  async startLsp(input: {
+    workspace_id: string;
+    worker_id?: string;
+    server_id: string;
+    root?: string;
+  }): Promise<Record<string, unknown>> {
+    return this.request(`/workspaces/${encodeURIComponent(input.workspace_id)}/coding/lsp/start`, {
+      method: "POST",
+      body: {
+        ...(input.worker_id ? { worker_id: input.worker_id } : {}),
+        server_id: input.server_id,
+        root: input.root ?? ".",
+      },
+    });
+  }
+
+  async requestLsp(input: {
+    workspace_id: string;
+    worker_id?: string;
+    lsp_id: string;
+    method: string;
+    params?: unknown;
+    timeout_seconds?: number;
+  }): Promise<Record<string, unknown>> {
+    return this.request(`/workspaces/${encodeURIComponent(input.workspace_id)}/coding/lsp/request`, {
+      method: "POST",
+      body: {
+        ...(input.worker_id ? { worker_id: input.worker_id } : {}),
+        lsp_id: input.lsp_id,
+        method: input.method,
+        ...(input.params !== undefined ? { params: input.params } : {}),
+        timeout_seconds: input.timeout_seconds ?? 15,
+      },
+    });
+  }
+
+  async stopLsp(input: {
+    workspace_id: string;
+    worker_id?: string;
+    lsp_id: string;
+  }): Promise<Record<string, unknown>> {
+    return this.request(`/workspaces/${encodeURIComponent(input.workspace_id)}/coding/lsp/stop`, {
+      method: "POST",
+      body: {
+        ...(input.worker_id ? { worker_id: input.worker_id } : {}),
+        lsp_id: input.lsp_id,
+      },
+    });
+  }
+
   async listSshHosts(input: { workspace_id: string }): Promise<{ workspace_id: string; aliases: string[] }> {
     return this.request(`/workspaces/${encodeURIComponent(input.workspace_id)}/ssh/hosts`);
   }

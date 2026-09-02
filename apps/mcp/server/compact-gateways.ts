@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import type { ComputerClient } from "./client/computer-client.js";
 import type { LiveTarget } from "./live-tickets.js";
 import {
+  benchmarkGatewaySchema,
   chromeControlGatewaySchema,
   chromeReadGatewaySchema,
   codeFilesGatewaySchema,
@@ -14,8 +15,11 @@ import {
   directWorkerControlGatewaySchema,
   directWorkersGatewaySchema,
   gitGatewaySchema,
+  lspControlGatewaySchema,
+  lspReadGatewaySchema,
   sshControlGatewaySchema,
   sshReadGatewaySchema,
+  terminalControlGatewaySchema,
   workbenchSessionsControlGatewaySchema,
   workbenchSessionsReadGatewaySchema,
   workspaceInspectGatewaySchema,
@@ -61,9 +65,11 @@ export function registerCompactGateways(
   client: ComputerClient,
   options: {
     emitLive?: (target: LiveTarget) => void;
+    currentClientModel?: () => string | null;
   } = {},
 ): void {
   const emitLive = options.emitLive ?? (() => undefined);
+  const currentClientModel = options.currentClientModel ?? (() => null);
   const rawRegisterTool = server.registerTool.bind(server);
   (server as unknown as { registerTool: typeof server.registerTool }).registerTool = ((
     name: string,
@@ -292,6 +298,88 @@ export function registerCompactGateways(
         max_bytes: input.max_bytes,
       })));
 
+  server.registerTool("cptr_terminal_control", {
+    title: "Interactive terminal control",
+    description: "Send bounded stdin, resize a PTY, or signal an already-running workspace-owned command without starting a new process or opening another UI surface.",
+    inputSchema: terminalControlGatewaySchema,
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    _meta: oauthMeta,
+  }, async (input) => {
+    const base = {
+      workspace_id: input.workspace_id,
+      ...(input.worker_id ? { worker_id: input.worker_id } : {}),
+      command_id: input.command_id,
+    };
+    switch (input.action) {
+      case "send_input":
+        return result(await client.controlCodingCommand({
+          ...base,
+          action: "send_input",
+          data: input.data ?? "",
+        }));
+      case "resize":
+        if (input.rows === undefined || input.cols === undefined) throw new Error("rows and cols are required for resize");
+        return result(await client.controlCodingCommand({
+          ...base,
+          action: "resize",
+          rows: input.rows,
+          cols: input.cols,
+        }));
+      case "signal":
+        if (!input.signal) throw new Error("signal is required for signal");
+        return result(await client.controlCodingCommand({
+          ...base,
+          action: "signal",
+          signal: input.signal,
+        }));
+    }
+  });
+
+  server.registerTool("cptr_lsp_read", {
+    title: "Language server inspection",
+    description: "Discover administrator-configured language servers or issue one bounded request to an already-owned workspace-scoped LSP process.",
+    inputSchema: lspReadGatewaySchema,
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    _meta: oauthMeta,
+  }, async (input) => {
+    const base = { workspace_id: input.workspace_id, ...(input.worker_id ? { worker_id: input.worker_id } : {}) };
+    switch (input.action) {
+      case "discover":
+        return result(await client.discoverLsp(base));
+      case "request":
+        return result(await client.requestLsp({
+          ...base,
+          lsp_id: required(input.lsp_id, "lsp_id"),
+          method: required(input.method, "method"),
+          ...(input.params !== undefined ? { params: input.params } : {}),
+          timeout_seconds: input.timeout_seconds,
+        }));
+    }
+  });
+
+  server.registerTool("cptr_lsp_control", {
+    title: "Language server lifecycle",
+    description: "Start or stop one administrator-configured workspace-scoped language server. Arbitrary executables are never accepted.",
+    inputSchema: lspControlGatewaySchema,
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    _meta: oauthMeta,
+  }, async (input) => {
+    const base = { workspace_id: input.workspace_id, ...(input.worker_id ? { worker_id: input.worker_id } : {}) };
+    switch (input.action) {
+      case "start":
+        return result(await client.startLsp({
+          ...base,
+          server_id: required(input.server_id, "server_id"),
+          root: input.root,
+        }));
+      case "stop":
+        return result(await client.stopLsp({
+          ...base,
+          lsp_id: required(input.lsp_id, "lsp_id"),
+        }));
+    }
+  });
+
   server.registerTool("cptr_direct_workers", {
     title: "Direct Worker inspection",
     description: "Get one model-free Direct Coding Worker or an overview of all workers in a workspace.",
@@ -325,6 +413,28 @@ export function registerCompactGateways(
         worker_id: required(input.worker_id, "worker_id"),
         discard_changes: input.discard_changes,
       }));
+    }
+  });
+
+  server.registerTool("cptr_benchmark", {
+    title: "Standardized coding benchmark",
+    description: "Start, inspect, submit, or compare the owner-scoped standardized CPTR coding benchmark. The comparable score uses a versioned server-owned hidden grader; observed real-work metrics remain separate and non-comparable.",
+    inputSchema: benchmarkGatewaySchema,
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    _meta: oauthMeta,
+  }, async (input) => {
+    switch (input.action) {
+      case "start":
+        return result(await client.startCodingBenchmark({
+          suite_id: input.suite_id,
+          model_reported: currentClientModel(),
+        }));
+      case "get":
+        return result(await client.getCodingBenchmark(required(input.run_id, "run_id")));
+      case "submit":
+        return result(await client.submitCodingBenchmark(required(input.run_id, "run_id")));
+      case "leaderboard":
+        return result(await client.getCodingBenchmarkLeaderboard(input.suite_id));
     }
   });
 

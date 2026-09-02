@@ -14,8 +14,9 @@ test("deployed contract verifier tracks the canonical compact v2 contract", () =
   const toolsBlock = source.match(/const expectedTools = \[(.*?)\];/s)?.[1] ?? "";
   const tools = [...toolsBlock.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
 
-  assert.equal(tools.length, 26);
+  assert.equal(tools.length, 30);
   assert.deepEqual([...tools].sort(), [...MCP_COMPACT_TOOL_NAMES].sort());
+  assert.equal(tools.includes("cptr_benchmark"), true);
   assert.equal(tools.includes("cptr_workspace_lifecycle"), true);
   assert.equal(tools.includes("cptr_chrome_read"), true);
   assert.equal(tools.includes("cptr_chrome_control"), true);
@@ -25,6 +26,9 @@ test("deployed contract verifier tracks the canonical compact v2 contract", () =
   assert.equal(tools.includes("cptr_workspace_run_test_target"), true);
   assert.equal(tools.includes("cptr_fdx_intelligence"), true);
   assert.equal(tools.includes("cptr_direct_worker_control"), true);
+  assert.equal(tools.includes("cptr_terminal_control"), true);
+  assert.equal(tools.includes("cptr_lsp_read"), true);
+  assert.equal(tools.includes("cptr_lsp_control"), true);
   assert.match(packageMetadata.version ?? "", /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/);
   assert.equal(packageMetadata.scripts?.build, "npm run build:server && npm run build:ui");
   assert.equal(packageMetadata.scripts?.["build:ui"], "npm run build:web && npm run copy:web");

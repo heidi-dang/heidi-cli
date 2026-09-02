@@ -9,6 +9,7 @@ if (typeof expectedContractVersion !== "string" || !expectedContractVersion.trim
 }
 
 const expectedTools = [
+  "cptr_benchmark",
   "cptr_chrome_control",
   "cptr_chrome_read",
   "cptr_code_cancel_command",
@@ -17,6 +18,9 @@ const expectedTools = [
   "cptr_code_mutate",
   "cptr_code_read",
   "cptr_code_run_command",
+  "cptr_lsp_control",
+  "cptr_lsp_read",
+  "cptr_terminal_control",
   "cptr_delegate_monitor_control",
   "cptr_delegate_monitor_read",
   "cptr_delegate_task_control",

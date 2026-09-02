@@ -201,6 +201,24 @@ export const compactGatewayOutputSchemas = {
     omitted_paths: z.array(z.string()).optional(),
   }),
 
+  cptr_terminal_control: commandSchema,
+
+  cptr_lsp_read: looseObject({
+    workspace_id: z.string().optional(),
+    lsp_id: z.string().optional(),
+    response: z.unknown().optional(),
+    servers: z.array(z.unknown()).optional(),
+  }),
+
+  cptr_lsp_control: looseObject({
+    workspace_id: z.string().optional(),
+    lsp_id: z.string().optional(),
+    server_id: z.string().optional(),
+    root: z.string().optional(),
+    status: z.string().optional(),
+    stopped: z.boolean().optional(),
+  }),
+
   cptr_direct_workers: looseObject({
     ...directWorkerSchema.shape,
     workers: z.array(directWorkerSchema).optional(),
@@ -215,6 +233,28 @@ export const compactGatewayOutputSchemas = {
     workers: z.array(directWorkerSchema).optional(),
     integrated_worker_ids: z.array(z.string()).optional(),
     closed: z.boolean().optional(),
+  }),
+
+  cptr_benchmark: looseObject({
+    run_id: z.string().optional(),
+    suite_id: z.string().optional(),
+    suite_version: z.string().optional(),
+    status: z.string().optional(),
+    model_reported: z.string().nullable().optional(),
+    model_canonical: z.string().nullable().optional(),
+    workspace_id: z.string().nullable().optional(),
+    score: z.number().int().nullable().optional(),
+    max_score: z.number().int().nonnegative().optional(),
+    case_results: unknownObjectArray.optional(),
+    error_summary: z.string().nullable().optional(),
+    started_at_ms: z.number().int().nonnegative().optional(),
+    completed_at_ms: z.number().int().nonnegative().nullable().optional(),
+    duration_ms: z.number().int().nonnegative().nullable().optional(),
+    comparable: z.boolean().optional(),
+    comparability: z.string().optional(),
+    tasks: unknownObjectArray.optional(),
+    grader_seed: z.string().optional(),
+    models: unknownObjectArray.optional(),
   }),
 
   cptr_ssh_read: looseObject({
