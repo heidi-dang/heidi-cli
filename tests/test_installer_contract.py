@@ -277,6 +277,9 @@ def test_noninteractive_upgrade_reuses_only_secure_matching_public_configuration
     assert '"$PREVIOUS_PUBLIC_TRANSPORT" == "$PUBLIC_TRANSPORT"' in source
     assert '"$PREVIOUS_MCP_DOMAIN" == "$MCP_DOMAIN"' in source
     assert '"$PREVIOUS_MCP_ALLOWED_EMAIL" == "$MCP_ALLOWED_EMAIL"' in source
+    assert 'secure_owner_file "$MCP_ENV_FILE"' in source
+    assert 'env_file_default "$MCP_ENV_FILE" MCP_OAUTH_ALLOWED_EMAIL' in source
+    assert 'state_default HEIDI_MCP_ALLOWED_EMAIL "$LEGACY_MCP_ALLOWED_EMAIL"' in source
     assert 'env_file_default "$MCP_ENV_FILE" CLOUDFLARE_ACCESS_ISSUER' in source
     assert 'env_file_default "$MCP_ENV_FILE" CLOUDFLARE_ACCESS_AUDIENCE' in source
     assert 'secure_owner_file "$MCP_OAUTH_CLIENT_STATE_FILE"' in source

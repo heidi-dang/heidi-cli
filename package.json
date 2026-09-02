@@ -1,7 +1,7 @@
 {
   "name": "heidi-cli-monorepo",
   "private": true,
-  "version": "2.1.9",
+  "version": "2.1.10",
   "description": "Unified CPTR Computer MCP adapter, CPTR backend, FDX intelligence CLI, installer, and deployment tooling.",
   "scripts": {
     "build:mcp": "npm --prefix apps/mcp run build",

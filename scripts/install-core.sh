@@ -182,13 +182,17 @@ if [[ "$PUBLIC_DEPLOYMENT" == 1 ]]; then
   PUBLIC_TRANSPORT="${HEIDI_PUBLIC_TRANSPORT:-$(state_default HEIDI_PUBLIC_TRANSPORT caddy)}"
   PUBLIC_TRANSPORT="$(choose 'Public transport: caddy (recommended) or cloudflare-tunnel' "$PUBLIC_TRANSPORT" 'caddy cloudflare-tunnel')"
   MCP_DOMAIN="${HEIDI_MCP_DOMAIN:-$(state_default HEIDI_MCP_DOMAIN '')}"; MCP_DOMAIN="$(read_tty 'Public MCP hostname (for example mcp.example.com)' "$MCP_DOMAIN")"
-  MCP_ALLOWED_EMAIL="${HEIDI_MCP_ALLOWED_EMAIL:-$(state_default HEIDI_MCP_ALLOWED_EMAIL '')}"; MCP_ALLOWED_EMAIL="$(read_tty 'Email allowed to authorize the ChatGPT MCP app' "$MCP_ALLOWED_EMAIL")"
+  LEGACY_MCP_ALLOWED_EMAIL=""
+  if secure_owner_file "$MCP_ENV_FILE"; then
+    LEGACY_MCP_ALLOWED_EMAIL="$(env_file_default "$MCP_ENV_FILE" MCP_OAUTH_ALLOWED_EMAIL '')"
+  fi
+  MCP_ALLOWED_EMAIL="${HEIDI_MCP_ALLOWED_EMAIL:-$(state_default HEIDI_MCP_ALLOWED_EMAIL "$LEGACY_MCP_ALLOWED_EMAIL")}"; MCP_ALLOWED_EMAIL="$(read_tty 'Email allowed to authorize the ChatGPT MCP app' "$MCP_ALLOWED_EMAIL")"
   CF_ACCESS_APP_ID="${HEIDI_CF_ACCESS_APP_ID:-$(state_default HEIDI_CF_ACCESS_APP_ID '')}"
   [[ "$MCP_DOMAIN" == *.* && "$MCP_ALLOWED_EMAIL" == *@* ]] || fail "valid public hostname and allowed email are required"
 
   PREVIOUS_PUBLIC_TRANSPORT="$(state_default HEIDI_PUBLIC_TRANSPORT '')"
   PREVIOUS_MCP_DOMAIN="$(state_default HEIDI_MCP_DOMAIN '')"
-  PREVIOUS_MCP_ALLOWED_EMAIL="$(state_default HEIDI_MCP_ALLOWED_EMAIL '')"
+  PREVIOUS_MCP_ALLOWED_EMAIL="$(state_default HEIDI_MCP_ALLOWED_EMAIL "$LEGACY_MCP_ALLOWED_EMAIL")"
   PREVIOUS_CF_ACCOUNT_ID="$(state_default HEIDI_CF_ACCOUNT_ID '')"
   PREVIOUS_CF_ZONE_ID="$(state_default HEIDI_CF_ZONE_ID '')"
   PREVIOUS_CF_TUNNEL_ID="$(state_default HEIDI_CF_TUNNEL_ID '')"
