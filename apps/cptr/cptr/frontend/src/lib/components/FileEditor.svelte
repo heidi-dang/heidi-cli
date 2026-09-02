@@ -172,7 +172,7 @@
 	let diffMode = $state(false);
 	let diffFiles = $state<DiffFileEntry[]>([]);
 	let diffLoading = $state(false);
-	let diffScrollEl: HTMLDivElement | undefined;
+	let diffScrollEl: HTMLDivElement | undefined = $state();
 	let hasGitChanges = $state(false);
 	let gitLineChanges: GitLineChange[] = [];
 	let gitBaseContent: string | null = null;
@@ -1250,8 +1250,7 @@
 				</div>
 			{:else if markdownMode === 'editor' && RichTextEditor}
 				{@const wsPath = $activeWorkspace?.path ?? ''}
-				<svelte:component
-					this={RichTextEditor}
+				<RichTextEditor
 					bind:this={richTextRef}
 					content={fileData.content}
 					filePath={fileData.path}

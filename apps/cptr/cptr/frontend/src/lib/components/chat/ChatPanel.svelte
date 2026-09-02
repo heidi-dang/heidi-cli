@@ -91,9 +91,10 @@
 		ontabupdate,
 		onopenchat
 	}: Props = $props();
+	const initialChat = () => initialChatId;
 
 	let inputText = $state('');
-	let chatId = $state<string | null>(initialChatId ?? null);
+	let chatId = $state<string | null>(initialChat() ?? null);
 	let selectedModel = $state('');
 	let toolApprovalMode = $state<ToolApprovalMode>('auto');
 	let planMode = $state(false);
@@ -131,13 +132,13 @@
 	let commandSessions = $state<CommandSession[]>([]);
 	let initialCommandSessionId = $state<string | null>(null);
 	let previousChats = $state<ChatInfo[]>([]);
-	let messagesEl: HTMLDivElement;
-	let chatInputEl: ChatInput;
+	let messagesEl: HTMLDivElement | undefined = $state();
+	let chatInputEl: ChatInput | undefined = $state();
 	let statusButtonEl: HTMLButtonElement | undefined = $state();
 	let sending = $state(false);
 	let autoScroll = $state(true);
 	let cancelledMessageId: string | null = null;
-	let loading = $state(!!initialChatId);
+	let loading = $state(!!initialChat());
 	let chatTitle = $state('');
 	let ttsQueue: string[] = [];
 	let ttsBuffer = '';
@@ -297,7 +298,7 @@
 		hasHiddenMessages ? activePath.slice(activePath.length - visibleCount) : activePath
 	);
 
-	let loadSentinelEl: HTMLDivElement;
+	let loadSentinelEl: HTMLDivElement | undefined = $state();
 	let loadObserver: IntersectionObserver | null = null;
 	let loadingMore = false;
 

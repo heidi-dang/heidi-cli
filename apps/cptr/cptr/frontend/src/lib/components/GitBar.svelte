@@ -1464,6 +1464,17 @@
 					if (view === 'pullRequests') loadPullRequests();
 				}
 			}}
+			onkeydown={(event) => {
+				if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' '))
+					return;
+				event.preventDefault();
+				expanded = !expanded;
+				if (expanded) {
+					refresh();
+					if (view === 'history') loadHistory();
+					if (view === 'pullRequests') loadPullRequests();
+				}
+			}}
 		>
 			<!-- Branch button (opens branch picker, stops expand) -->
 			<button
@@ -1970,15 +1981,23 @@
 								{#each gitStatus?.files ?? [] as file (file.path)}
 									{@const fp = fPath(file.path)}
 									{@const sc = statusChar(file.status)}
-									<button
+									<div
 										class="group flex min-w-0 items-center gap-1.5 w-full h-7 px-2.5 text-left transition-colors duration-75
 											{selectedFile === file.path
 											? 'bg-gray-100 dark:bg-white/8'
 											: 'hover:bg-gray-50 dark:hover:bg-white/3'}"
+										role="button"
+										tabindex="0"
 										onclick={() => selectFile(file.path, file.staged, file.status === 'untracked')}
+										onkeydown={(event) => {
+											if (event.key === 'Enter' || event.key === ' ') {
+												event.preventDefault();
+												selectFile(file.path, file.staged, file.status === 'untracked');
+											}
+										}}
 									>
-										<!-- svelte-ignore a11y_no_static_element_interactions -->
-										<span
+										<button
+											type="button"
 											class="flex items-center justify-center w-3 h-3 rounded border shrink-0 cursor-pointer
 												{file.staged
 												? 'border-gray-300 dark:border-gray-600 bg-gray-800 dark:bg-white'
@@ -1987,11 +2006,12 @@
 												e.stopPropagation();
 												toggleStage(e, file);
 											}}
+											aria-label={file.staged ? 'Unstage file' : 'Stage file'}
 										>
 											{#if file.staged}
 												<Icon name="check" size={7} class="text-white dark:text-black" />
 											{/if}
-										</span>
+										</button>
 										<span class="flex min-w-0 flex-1 items-baseline gap-1.5">
 											{#if fp.dir}
 												<span
@@ -1999,13 +2019,13 @@
 													>{fp.dir}</span
 												>
 											{/if}
-											<!-- svelte-ignore a11y_no_static_element_interactions -->
-											<span
+											<button
+												type="button"
 												class="min-w-0 max-w-[55%] shrink-0 truncate text-[0.6875rem] text-gray-800 dark:text-gray-200 hover:underline cursor-pointer"
 												onclick={(e) => {
 													e.stopPropagation();
 													openFileTab(workspacePath.replace(/\/$/, '') + '/' + file.path);
-												}}>{fp.name}</span
+												}}>{fp.name}</button
 											>
 										</span>
 										{#if file.binary}
@@ -2022,17 +2042,15 @@
 												<span class="text-red-500 dark:text-red-400">-{file.deletions ?? 0}</span>
 											</span>
 										{/if}
-										<!-- svelte-ignore a11y_no_static_element_interactions -->
-										<span
+										<button
+											type="button"
 											class="flex items-center justify-center w-5 h-5 rounded shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/10 transition-all duration-75"
-											role="button"
-											tabindex="-1"
 											onclick={(e) => openFileMenu(e, file)}
 											aria-label={$t('files.moreActions')}
 										>
 											<Icon name="three-dots" size={12} />
-										</span>
-									</button>
+										</button>
+									</div>
 								{/each}
 							</div>
 
@@ -2109,12 +2127,20 @@
 											</span>
 										</div>
 									{/if}
-									<button
+									<div
 										class="group flex items-center gap-1.5 w-full px-2.5 py-1.5 text-left border-b border-gray-50 dark:border-white/3 transition-colors duration-75
 											{selectedCommit?.hash === c.hash
 											? 'bg-gray-100 dark:bg-white/8'
 											: 'hover:bg-gray-50 dark:hover:bg-white/3'}"
+										role="button"
+										tabindex="0"
 										onclick={() => selectCommit(c)}
+										onkeydown={(event) => {
+											if (event.key === 'Enter' || event.key === ' ') {
+												event.preventDefault();
+												selectCommit(c);
+											}
+										}}
 									>
 										{#if i < unpushedCount}
 											<span
@@ -2130,17 +2156,15 @@
 												>{c.short_hash} · {c.author} · {relTime(c.date)}</span
 											>
 										</div>
-										<!-- svelte-ignore a11y_no_static_element_interactions -->
-										<span
+										<button
+											type="button"
 											class="flex items-center justify-center w-5 h-5 rounded shrink-0 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/10 transition-all duration-75"
-											role="button"
-											tabindex="-1"
 											onclick={(e) => openCommitMenu(e, c, i === 0)}
 											aria-label={$t('files.moreActions')}
 										>
 											<Icon name="three-dots" size={12} />
-										</span>
-									</button>
+										</button>
+									</div>
 								{/each}
 								{#if !commits.length}
 									<div
