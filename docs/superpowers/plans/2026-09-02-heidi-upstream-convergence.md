@@ -36,9 +36,9 @@
 - Consumes: exact upstream SHAs from this plan's Global Constraints.
 - Produces: `audit_parity(root: Path) -> dict[str, object]` with `computer`, `plugin`, `unmapped`, and `coverage_percent`; a CLI that exits non-zero when any required capability is unmapped.
 
-- [ ] **Step 1: Write failing parity tests**
+- [ ] **Step 1: Write failing parity-verifier unit tests**
 
-Create tests asserting the matrix contains required capability IDs and maps them to Heidi surfaces:
+Create tests that load the audit module, assert the authoritative SHA constants and required capability IDs are source-controlled, and exercise `audit_capabilities(root, capabilities)` against a temporary fixture containing one present evidence path and one missing path:
 
 ```python
 REQUIRED = {
@@ -62,12 +62,17 @@ REQUIRED = {
 }
 
 
-def test_upstream_parity_is_complete():
-    result = audit_parity(ROOT)
-    assert set(result["capabilities"]) >= REQUIRED
-    assert result["unmapped"] == []
-    assert result["coverage_percent"] == 100.0
+def test_audit_capabilities_reports_missing_evidence(tmp_path):
+    (tmp_path / "present.txt").write_text("ok", encoding="utf-8")
+    result = audit_capabilities(tmp_path, [
+        capability("present", "computer", COMPUTER_SHA, "source", ["present.txt"], "adapted"),
+        capability("missing", "plugin", PLUGIN_SHA, "source", ["missing.txt"], "compact-gateway"),
+    ])
+    assert result["coverage_percent"] == 50.0
+    assert result["unmapped"] == ["missing"]
 ```
+
+The repository-wide `audit_parity(ROOT) == 100%` assertion is intentionally deferred to Task 8 after all evidence paths exist.
 
 - [ ] **Step 2: Run the parity test and verify RED**
 
@@ -87,7 +92,7 @@ Use a literal mapping table in `scripts/audit-upstream-parity.py`. Each capabili
 
 Update `docs/SOURCE_PROVENANCE.md` so the latest audited source entries are exactly `ae2996a672ad...` and `70c3962e74a...`, and state whether each family is verbatim, adapted, or compact-gateway mapped.
 
-- [ ] **Step 5: Run the parity test GREEN**
+- [ ] **Step 5: Run the parity-verifier unit tests GREEN**
 
 Run:
 
@@ -95,7 +100,7 @@ Run:
 python -m pytest -q tests/test_upstream_parity.py
 ```
 
-Expected: PASS with `coverage_percent == 100.0` only after all evidence paths introduced by later tasks exist. During implementation, temporary expected failures are allowed; this test is a final convergence gate.
+Expected: PASS for SHA/capability-manifest structure and temporary-root verifier behavior. Task 8 adds the final repository-wide assertion requiring `audit_parity(ROOT)` to report 100% coverage.
 
 - [ ] **Step 6: Commit the parity framework**
 
