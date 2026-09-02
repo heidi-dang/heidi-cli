@@ -1,7 +1,25 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { McpServer } from "@modelcontextprotocol/server";
 import { ComputerApiError, ComputerClient } from "./client/computer-client.js";
+import { McpActivityEmitter } from "./mcp-activity.js";
+import { McpDiagnosticsEmitter } from "./mcp-diagnostics.js";
+import {
+  McpTrafficEmitter,
+  enrichMcpClientSession,
+  mcpRequestContext,
+  normalizeMcpClient,
+  normalizeTrafficErrorCode,
+  type McpRequestContextValue,
+} from "./mcp-traffic.js";
 import { LiveTicketStore, type LiveTarget } from "./live-tickets.js";
 import { PromptTerminalStore } from "./prompt-terminal.js";
+import {
+  canonicalMcpResultEnvelope,
+  canonicalToolCallEnvelope,
+  estimateModelTokens,
+  extractClientModel,
+  normalizeReportedModel,
+} from "./mcp-usage.js";
 import { registerCompactGateways } from "./compact-gateways.js";
 import { WORKBENCH_RESOURCE_URI, createWorkbenchResource } from "./ui/workbench-resource.js";
 import { z } from "zod";
@@ -369,18 +387,29 @@ const DELEGATED_AGENT_TOOL_NAMES = new Set([
 
 const COMPACT_PUBLIC_TOOLS = new Set<string>(MCP_COMPACT_TOOL_NAMES);
 
+export const CLIENT_MODEL_INSTRUCTION =
+  "When you are ChatGPT and invoke any CPTR tool, set client_model to the exact current model identity you are running as for this tool call, for example GPT-5.6 Sol. Report the current value on every CPTR tool call; do not reuse or infer it from an earlier call. If the current model identity is unavailable, omit client_model rather than guessing.";
+
 const DIRECT_GROUP_DESCRIPTION =
   "ChatGPT Direct Coding is the default. Prefer FDX for repository intelligence, then exact code reads before mutation.";
 const DELEGATE_GROUP_DESCRIPTION =
   "Delegated Agent access is optional and requires the exact prompt opt-in `allow:delegate` recorded by the Workbench.";
 
-function groupedToolConfig<T extends { title?: string; description?: string }>(name: string, config: T): T {
+const clientModelSchema = z.string().min(1).max(120).optional().describe(
+  "ChatGPT callers: report the exact current ChatGPT model identity for this call. CPTR stores it only as bounded usage/benchmark attribution metadata and never treats it as authorization.",
+);
+
+function groupedToolConfig<T extends { title?: string; description?: string; inputSchema?: Record<string, unknown> }>(name: string, config: T): T {
   const delegated = DELEGATED_AGENT_TOOL_NAMES.has(name);
+  const inputSchema = config.inputSchema && typeof config.inputSchema === "object" && !Array.isArray(config.inputSchema)
+    ? { ...config.inputSchema, client_model: clientModelSchema }
+    : { client_model: clientModelSchema };
   return {
     ...config,
+    inputSchema,
     title: `[${delegated ? "Delegated Agent" : "ChatGPT Direct Coding"}] ${config.title?.trim() || name}`,
     description: `${delegated ? DELEGATE_GROUP_DESCRIPTION : DIRECT_GROUP_DESCRIPTION}${config.description ? ` ${config.description}` : ""}`,
-  };
+  } as T;
 }
 
 function requiresDelegationAuthorization(name: string, input: unknown): boolean {
@@ -408,17 +437,25 @@ export function createMcpServer(
     widgetAssets?: () => { bundle: string; styles: string };
     connectDomain?: string;
     workbenchUiEnabled?: boolean;
+    traffic?: McpTrafficEmitter;
+    activityTelemetry?: McpActivityEmitter;
+    diagnostics?: McpDiagnosticsEmitter;
     /** Internal compatibility-test harness only. The production HTTP server never enables this. */
     legacyContract?: boolean;
   } = {},
 ): McpServer {
-  const server = new McpServer({ name: "chatgpt-computer-plugin", version: MCP_CONTRACT_VERSION });
+  const server = new McpServer(
+    { name: "chatgpt-computer-plugin", version: MCP_CONTRACT_VERSION },
+    { instructions: CLIENT_MODEL_INSTRUCTION },
+  );
   const legacyContract = options.legacyContract === true;
   const workbenchUiEnabled = options.workbenchUiEnabled === true;
   const tickets = options.tickets ?? new LiveTicketStore();
   const promptSessions = options.promptSessions ?? new PromptTerminalStore();
   const liveTerminalStreamingEnabled = options.liveTerminalStreamingEnabled ?? true;
+  const clientModelContext = new AsyncLocalStorage<string | null>();
   let activePromptTicket: string | null = null;
+  let activeWorkbenchSessionId: string | null = null;
 
   const publishActivity = (
     toolName: string,
@@ -457,6 +494,51 @@ export function createMcpServer(
     if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
     const id = (value as Record<string, unknown>).worker_id;
     return typeof id === "string" && id ? id : undefined;
+  };
+
+  const recordFrom = (value: unknown): Record<string, unknown> =>
+    value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+
+  const workspaceNameFor = async (workspaceId: string | null): Promise<string | null> => {
+    if (!workspaceId) return null;
+    try {
+      const workspaces = await client.listWorkspaces(false);
+      return workspaces.workspaces.find((workspace) => workspace.workspace_id === workspaceId)?.name ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  const applyTrafficIdentity = async (
+    context: McpRequestContextValue | undefined,
+    toolName: string,
+    inputValue: unknown,
+    model: string | null,
+    resultValue?: unknown,
+  ): Promise<void> => {
+    if (!context?.sessionId) return;
+    const inputRecord = recordFrom(inputValue);
+    const resultRecord = recordFrom(resultValue);
+    const workspaceId = typeof resultRecord.workspace_id === "string"
+      ? resultRecord.workspace_id
+      : typeof inputRecord.workspace_id === "string"
+        ? inputRecord.workspace_id
+        : context.client.workspace_id;
+    const workspaceName = workspaceId && workspaceId !== context.client.workspace_id
+      ? await workspaceNameFor(workspaceId)
+      : context.client.workspace_name;
+    const sessionName = toolName === "cptr_open_live_workbench" && typeof resultRecord.name === "string"
+      ? resultRecord.name
+      : typeof inputRecord.session_name === "string"
+        ? inputRecord.session_name
+        : context.client.session_name;
+    Object.assign(context.client, enrichMcpClientSession(context.client, {
+      sessionId: context.sessionId,
+      sessionName,
+      model,
+      workspaceId,
+      workspaceName,
+    }));
   };
 
   const publishWorkerResult = (input: unknown, value: unknown, summary: string) => {
@@ -526,8 +608,67 @@ export function createMcpServer(
       groupedConfig as never,
       (async (...args: unknown[]) => {
         const label = groupedConfig.title?.trim() || name;
-        const input = args.length ? args[0] : {};
+        const originalInput = args.length ? args[0] : {};
+        const { reported: rawClientModel, handlerInput: input } = extractClientModel(originalInput);
+        const normalizedModel = normalizeReportedModel(rawClientModel);
         const inputWorkerId = workerIdFrom(input);
+        const trafficContext = mcpRequestContext.getStore();
+        const trafficStartedAt = Date.now();
+        await applyTrafficIdentity(trafficContext, name, input, normalizedModel.reported);
+        let activityClient = trafficContext?.client ?? normalizeMcpClient(undefined);
+        const activityArgumentsJson = terminalJson(input);
+        const modelGeneratedArguments = trafficContext?.rawToolArguments ?? originalInput;
+        const recordUsage = async (status: "complete" | "error", returnedEnvelope: unknown) => {
+          try {
+            const toolCallOutputEstimate = estimateModelTokens(
+              normalizedModel.canonical,
+              canonicalToolCallEnvelope(name, modelGeneratedArguments),
+            );
+            const toolResultInputEstimate = estimateModelTokens(
+              normalizedModel.canonical,
+              canonicalMcpResultEnvelope(returnedEnvelope),
+            );
+            const event = {
+              kind: "usage" as const,
+              version: 1 as const,
+              event_id: `usage-${crypto.randomUUID()}`,
+              timestamp_ms: Date.now(),
+              request_id: trafficContext?.requestId ?? null,
+              correlation_id: trafficContext?.correlationId ?? null,
+              session_id: trafficContext?.sessionId ?? activeWorkbenchSessionId,
+              client_id: "chatgpt" as const,
+              model_reported: normalizedModel.reported,
+              model_canonical: normalizedModel.canonical,
+              model_source: normalizedModel.reported ? "self_reported" as const : "unavailable" as const,
+              tool_name: name,
+              input_tokens_estimated: toolResultInputEstimate.tokens,
+              output_tokens_estimated: toolCallOutputEstimate.tokens,
+              cached_input_tokens_estimated: null,
+              estimator_method: `input=${toolResultInputEstimate.method};output=${toolCallOutputEstimate.method}`,
+              estimator_exact_for_model:
+                toolResultInputEstimate.exact_for_model && toolCallOutputEstimate.exact_for_model,
+              status,
+            };
+            if (options.diagnostics) {
+              options.diagnostics.usage(event);
+            } else {
+              await client.recordMcpUsage({ ...event, estimator_exact_for_model: false });
+            }
+          } catch {
+            // Telemetry must never alter the actual MCP tool result.
+          }
+        };
+        options.traffic?.toolStarted(name, trafficContext);
+        options.activityTelemetry?.started({
+          client: activityClient,
+          sessionId: trafficContext?.sessionId ?? null,
+          requestId: trafficContext?.requestId ?? null,
+          correlationId: trafficContext?.correlationId ?? null,
+          toolName: name,
+          title: label,
+          summary: `Working: ${label}.`,
+          argumentsJson: activityArgumentsJson,
+        });
         const workerScoped = Boolean(inputWorkerId) || name.startsWith("cptr_direct_worker");
         if (inputWorkerId) {
           const inputRecord = input as Record<string, unknown>;
@@ -542,7 +683,7 @@ export function createMcpServer(
             name,
             `Working: ${label}.`,
             "STARTED",
-            { argumentsJson: terminalJson(input) },
+            { argumentsJson: activityArgumentsJson },
           );
         }
         try {
@@ -558,7 +699,68 @@ export function createMcpServer(
               "allow:delegate",
             );
           }
-          const value = await handler(...args);
+          const value = await clientModelContext.run(
+            normalizedModel.reported,
+            async () => handler(...(args.length ? [input, ...args.slice(1)] : args)),
+          );
+          const activityDurationMs = Date.now() - trafficStartedAt;
+          const terminalValue = terminalToolResult(value);
+          await applyTrafficIdentity(trafficContext, name, input, normalizedModel.reported, terminalValue);
+          activityClient = trafficContext?.client ?? activityClient;
+          const activityResultJson = terminalJson(terminalValue);
+          const valueRecord = value && typeof value === "object" && !Array.isArray(value)
+            ? value as Record<string, unknown>
+            : null;
+          if (valueRecord?.isError === true) {
+            if (trafficContext) {
+              trafficContext.outcome.failed = true;
+              trafficContext.outcome.errorCode = "tool_error";
+            }
+            options.traffic?.toolFailed(name, { code: "tool_error" }, trafficContext, activityDurationMs);
+            options.activityTelemetry?.failed({
+              client: activityClient,
+              sessionId: trafficContext?.sessionId ?? null,
+              requestId: trafficContext?.requestId ?? null,
+              correlationId: trafficContext?.correlationId ?? null,
+              toolName: name,
+              title: label,
+              summary: `Failed: ${label}.`,
+              errorJson: activityResultJson,
+              durationMs: activityDurationMs,
+            });
+            options.diagnostics?.failure({
+              request_id: trafficContext?.requestId ?? null,
+              correlation_id: trafficContext?.correlationId ?? null,
+              session_id: trafficContext?.sessionId ?? null,
+              client_id: activityClient.id,
+              method: trafficContext?.method ?? null,
+              tool_name: name,
+              stage: "cptr_mcp",
+              error_code: "tool_error",
+              http_status: null,
+              retryable: false,
+              started_at_ms: trafficStartedAt,
+              duration_ms: activityDurationMs,
+              request_bytes: null,
+              response_bytes: null,
+              summary: "MCP tool returned an error result.",
+            });
+            await recordUsage("error", terminalValue);
+            return value as never;
+          }
+          options.traffic?.toolFinished(name, trafficContext, activityDurationMs);
+          options.activityTelemetry?.complete({
+            client: activityClient,
+            sessionId: trafficContext?.sessionId ?? null,
+            requestId: trafficContext?.requestId ?? null,
+            correlationId: trafficContext?.correlationId ?? null,
+            toolName: name,
+            title: label,
+            summary: `Completed: ${label}.`,
+            resultJson: activityResultJson,
+            durationMs: activityDurationMs,
+          });
+          await recordUsage("complete", terminalValue);
           if (workerScoped) {
             publishWorkerResult(input, value, `ChatGPT completed ${label}.`);
           } else {
@@ -566,11 +768,37 @@ export function createMcpServer(
               name,
               `Completed: ${label}.`,
               "COMPLETE",
-              { resultJson: terminalJson(terminalToolResult(value)) },
+              { resultJson: activityResultJson },
             );
           }
           return value as never;
         } catch (error) {
+          const activityDurationMs = Date.now() - trafficStartedAt;
+          const normalizedErrorCode = normalizeTrafficErrorCode(error);
+          if (trafficContext) {
+            trafficContext.outcome.failed = true;
+            trafficContext.outcome.errorCode = normalizedErrorCode;
+          }
+          options.traffic?.toolFailed(name, error, trafficContext, activityDurationMs);
+          if (!(error instanceof ComputerApiError)) {
+            options.diagnostics?.failure({
+              request_id: trafficContext?.requestId ?? null,
+              correlation_id: trafficContext?.correlationId ?? null,
+              session_id: trafficContext?.sessionId ?? null,
+              client_id: activityClient.id,
+              method: trafficContext?.method ?? null,
+              tool_name: name,
+              stage: "cptr_mcp",
+              error_code: normalizedErrorCode,
+              http_status: null,
+              retryable: false,
+              started_at_ms: trafficStartedAt,
+              duration_ms: activityDurationMs,
+              request_bytes: null,
+              response_bytes: null,
+              summary: "MCP tool handler failed.",
+            });
+          }
           const envelope = error instanceof ComputerApiError
             ? error.toEnvelope()
             : {
@@ -578,6 +806,19 @@ export function createMcpServer(
                 message: redactTerminalString(error instanceof Error ? error.message : String(error)),
                 retriable: false,
               };
+          const activityErrorJson = terminalJson(envelope);
+          options.activityTelemetry?.failed({
+            client: activityClient,
+            sessionId: trafficContext?.sessionId ?? null,
+            requestId: trafficContext?.requestId ?? null,
+            correlationId: trafficContext?.correlationId ?? null,
+            toolName: name,
+            title: label,
+            summary: `Failed: ${label}.`,
+            errorJson: activityErrorJson,
+            durationMs: activityDurationMs,
+          });
+          await recordUsage("error", envelope);
           if (inputWorkerId) {
             const inputRecord = input as Record<string, unknown>;
             publishDirectWorker({
@@ -591,7 +832,7 @@ export function createMcpServer(
               name,
               `Failed: ${label}.`,
               "FAILED",
-              { error: terminalJson(envelope) },
+              { error: activityErrorJson },
             );
           }
           return {
@@ -668,7 +909,7 @@ export function createMcpServer(
     {
       title: "Open optional CPTR Workbench",
       description:
-        "Optional Apps SDK Workbench for an explicitly invoked Heidi/CPTR workflow. Ordinary Direct Coding does not require this tool; use it once when a visible plugin UI is useful, when the user asks to open or resume the Workbench, or when the prompt authorizes delegation with allow:delegate. The UI is backed by the compact 26-tool contract and scoped CPTR APIs; it does not enable the legacy 69-action surface.",
+        "Optional Apps SDK Workbench for an explicitly invoked Heidi/CPTR workflow. Ordinary Direct Coding does not require this tool; use it once when a visible plugin UI is useful, when the user asks to open or resume the Workbench, or when the prompt authorizes delegation with allow:delegate. The UI is backed by the compact 27-tool contract and scoped CPTR APIs; it does not enable the legacy 69-action surface.",
       inputSchema: openWorkbenchSessionSchema,
       outputSchema: {
         session_id: z.string(),
@@ -700,6 +941,7 @@ export function createMcpServer(
             ...(input.session_name ? { name: input.session_name } : {}),
             ...(input.workspace_id ? { workspace_id: input.workspace_id } : {}),
           });
+      activeWorkbenchSessionId = session.session_id;
       if (
         input.resume_session_id &&
         liveTerminalStreamingEnabled &&
@@ -2298,6 +2540,7 @@ export function createMcpServer(
 
   if (!legacyContract) {
     registerCompactGateways(server, client, {
+      currentClientModel: () => clientModelContext.getStore() ?? null,
       emitLive: (target) => {
         if (!liveTerminalStreamingEnabled) return;
         promptSessions.append(activePromptTicket, {
