@@ -27,6 +27,14 @@ export type TerminalViewProps = {
 type StandaloneWorkbenchTab = "overview" | "intelligence" | "verification" | "terminal";
 
 const COMPLETE_TOOL_STATUSES = new Set(["COMPLETE", "COMPLETED", "SUCCESS", "SUCCEEDED", "PASSED"]);
+const MAX_RENDERED_ROWS = 600;
+const MOBILE_RENDERED_ROWS = 320;
+const MOBILE_RENDER_QUERY = "(max-width: 560px)";
+
+function initialRenderedRowLimit(): number {
+  if (typeof window === "undefined") return MAX_RENDERED_ROWS;
+  return window.matchMedia(MOBILE_RENDER_QUERY).matches ? MOBILE_RENDERED_ROWS : MAX_RENDERED_ROWS;
+}
 
 function isDiagnosticOutput(row: TerminalRow): boolean {
   return ["stdout", "stderr", "prompt"].includes(row.tone);
@@ -72,6 +80,13 @@ export function TerminalView({
   const detailed = mode === "fullscreen";
   const [selectedTab, setSelectedTab] = useState<StandaloneWorkbenchTab>("overview");
   const [follow, setFollow] = useState(true);
+  const scrollFrame = useRef<number | null>(null);
+  const [renderedRowLimit, setRenderedRowLimit] = useState(initialRenderedRowLimit);
+  const hiddenRowCount = Math.max(0, rows.length - renderedRowLimit);
+  const visibleRows = useMemo(
+    () => hiddenRowCount ? rows.slice(rows.length - renderedRowLimit) : rows,
+    [hiddenRowCount, renderedRowLimit, rows],
+  );
   const recentRows = useMemo(() => rows.filter((row) => !isDiagnosticOutput(row)).slice(-5), [rows]);
   const intelligence = toolActivity.filter((activity) => isIntelligenceTool(activity.toolName));
   const verification = toolActivity.filter((activity) => isVerificationTool(activity.toolName));
@@ -81,15 +96,34 @@ export function TerminalView({
   const verificationComplete = COMPLETE_TOOL_STATUSES.has(latestVerificationStatus);
 
   useEffect(() => {
+    const media = window.matchMedia(MOBILE_RENDER_QUERY);
+    const update = () => setRenderedRowLimit(media.matches ? MOBILE_RENDERED_ROWS : MAX_RENDERED_ROWS);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
     if (!detailed || selectedTab !== "terminal" || !follow) return;
-    const element = viewport.current;
-    if (element) element.scrollTop = element.scrollHeight;
-  }, [rows, detailed, selectedTab, follow]);
+    const frame = window.requestAnimationFrame(() => {
+      const element = viewport.current;
+      if (element) element.scrollTop = element.scrollHeight;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [visibleRows, detailed, selectedTab, follow]);
+
+  useEffect(() => () => {
+    if (scrollFrame.current !== null) window.cancelAnimationFrame(scrollFrame.current);
+  }, []);
 
   const onScroll = () => {
-    const element = viewport.current;
-    if (!element) return;
-    setFollow(element.scrollHeight - element.scrollTop - element.clientHeight < 32);
+    if (scrollFrame.current !== null) return;
+    scrollFrame.current = window.requestAnimationFrame(() => {
+      scrollFrame.current = null;
+      const element = viewport.current;
+      if (!element) return;
+      setFollow(element.scrollHeight - element.scrollTop - element.clientHeight < 24);
+    });
   };
 
   const normalized = status.toUpperCase();
@@ -190,8 +224,8 @@ export function TerminalView({
               {!follow ? <button onClick={() => setFollow(true)}>Latest</button> : null}
             </div>
           </div>
-          <div ref={viewport} onScroll={onScroll} tabIndex={0} aria-label="Redacted terminal diagnostics">
-            <pre className="cptr-code">{rows.length ? rows.map((row) => row.text).join("\n") : "No command output available."}</pre>
+          <div className="terminal-output" ref={viewport} onScroll={onScroll} tabIndex={0} aria-label="Redacted terminal diagnostics">
+            <pre className="cptr-code">{hiddenRowCount > 0 ? `… ${hiddenRowCount} earlier lines retained outside the render window\n` : ""}{visibleRows.length ? visibleRows.map((row) => row.text).join("\n") : "No command output available."}</pre>
           </div>
         </div> : null}
       </> : <div className="cptr-panel">

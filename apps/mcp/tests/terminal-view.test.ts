@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TerminalView } from "../web/src/terminal-view.js";
+
+const terminalSource = readFileSync(new URL("../web/src/terminal-view.tsx", import.meta.url), "utf8");
+const workbenchSource = readFileSync(new URL("../web/src/workbench.tsx", import.meta.url), "utf8");
+const workbenchCss = readFileSync(new URL("../web/src/workbench.css", import.meta.url), "utf8");
 
 test("default widget surface renders a compact native workbench with terminal diagnostics excluded", () => {
   const html = renderToStaticMarkup(React.createElement(TerminalView, {
@@ -91,6 +96,27 @@ test("fullscreen workbench exposes intelligence, verification, and terminal navi
   assert.match(html, /1 FDX/);
   assert.match(html, /<b>1<\/b><span>verification<\/span>/);
   assert.equal(html.includes("Open Workbench"), false, "fullscreen mode must not offer a redundant fullscreen action");
+});
+
+test("official prompt-SSE and iPhone terminal performance invariants remain converged", () => {
+  assert.match(workbenchSource, /const promptConnection = usePromptActivity\(/);
+  assert.match(workbenchSource, /setConnection\("prompt live"\)/);
+  assert.match(workbenchSource, /const connection = hasWorkers \? promptConnection : meta\?\.targetId \? targetConnection : promptConnection/);
+  assert.doesNotMatch(workbenchSource, /meta\?\.targetId \? targetConnection : "connecting terminal session"/);
+  assert.match(workbenchSource, /notifyIntrinsicHeight\?\.\(/);
+
+  assert.match(terminalSource, /MAX_RENDERED_ROWS\s*=\s*600/);
+  assert.match(terminalSource, /MOBILE_RENDERED_ROWS\s*=\s*320/);
+  assert.match(terminalSource, /window\.matchMedia\(MOBILE_RENDER_QUERY\)/);
+  assert.match(terminalSource, /window\.requestAnimationFrame\(/);
+  assert.match(terminalSource, /window\.cancelAnimationFrame\(/);
+  assert.match(terminalSource, /rows\.slice\(rows\.length - renderedRowLimit\)/);
+
+  assert.match(workbenchCss, /\.terminal-output\s*\{[\s\S]*?overscroll-behavior:\s*contain/);
+  assert.match(workbenchCss, /@media \(max-width: 560px\)[\s\S]*?height:\s*clamp\(220px, 62vw, 280px\)/);
+  assert.match(workbenchCss, /@media \(max-width: 560px\)[\s\S]*?min-height:\s*220px/);
+  assert.match(workbenchCss, /@media \(max-width: 560px\)[\s\S]*?max-height:\s*280px/);
+  assert.match(workbenchCss, /@media \(max-width: 390px\)[\s\S]*?min-height:\s*210px/);
 });
 
 test("workbench empty state contains no synthetic command output", () => {
