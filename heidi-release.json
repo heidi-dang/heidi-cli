@@ -1,0 +1,41 @@
+{
+  "schema": "heidi.compatibility.v1",
+  "canonical_path": "release/compatibility.json",
+  "heidi_version": "2.1.3",
+  "mcp": {
+    "contract_version": "2.1.3",
+    "registered_action_count": 26,
+    "minimum_node_major": 22
+  },
+  "cptr": {
+    "package_version": "0.9.21",
+    "control_api_revision": "v1",
+    "state_migration": "automatic-forward-compatible"
+  },
+  "fdx": {
+    "package_version": "0.1.0",
+    "protocol_version": 2,
+    "state_migration": "automatic-forward-compatible"
+  },
+  "deployment": {
+    "topologies": ["all-in-one", "split-tailscale"],
+    "split_roles": ["backend", "mcp"],
+    "linux_systemd": true,
+    "supervisors": ["systemd", "foreground", "podman-quadlet"]
+  },
+  "sandbox": {
+    "default_managed_profile": "bubblewrap",
+    "supported_profiles": ["host", "auto", "bubblewrap", "systemd", "container", "vm"],
+    "network_default": "deny"
+  },
+  "migrations": [
+    "MCP v2.1.3 makes cptr_open_live_workbench explicitly optional so normal ChatGPT Direct Coding starts with the task-relevant tool instead of a Workbench activation prerequisite.",
+    "MCP v2.1.2 splits mixed Workbench, SSH, managed Chrome, delegated task, and delegated monitor gateways into read and control surfaces so host safety annotations match capability while destructive/open-world controls remain conservative.",
+    "MCP v2.1.1 disables the MCP Apps UI entrypoint: no resources capability is advertised and no tool publishes ui.resourceUri metadata; Workbench session tools remain data-only.",
+    "MCP v2.1 adds cptr_workspace_lifecycle for zero-workspace create, clone, import, refresh, archive, and confirmed managed deletion.",
+    "The developer control profile is now the default and adds command:external for explicitly network-opted push/deploy operations without workspace deletion; standard remains locked down, owner-full also adds workspace:delete, and legacy full remains an owner-full alias.",
+    "Git workspaces warm FDX automatically after provisioning; FDX failure remains a non-fatal fallback to normal CPTR Direct Coding.",
+    "Existing CPTR data under ~/.cptr is preserved; Heidi takes a pre-upgrade backup before activation.",
+    "FDX protocol 2 remains required for persistent structured resident reads."
+  ]
+}

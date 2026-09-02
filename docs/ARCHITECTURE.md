@@ -75,14 +75,17 @@ The installer binds CPTR and MCP to loopback. In production, Cloudflare Tunnel e
 
 Secrets live in `~/.config/heidi-cli/*.env` with mode `0600`. Runtime data remains in `~/.cptr` by default so reinstalling/updating Heidi CLI does not erase existing CPTR state.
 
-## Versioning direction
+## Compatibility authority
 
-The initial monorepo release keeps the component versions that existed at import time. A future cleanup should introduce a root release manifest such as `heidi-release.json` containing:
+The single compatibility authority is `release/compatibility.json` (schema `heidi.compatibility.v1`). It records:
 
 - Heidi release version;
-- MCP contract version;
-- minimum/maximum CPTR control API revision;
-- FDX protocol/capability contract version;
-- migration requirements.
+- MCP contract version and registered action count;
+- CPTR package version and control API revision;
+- FDX package and protocol/capability versions;
+- deployment topologies and sandbox defaults;
+- ordered migration notes for operators.
 
-CI and `heidi verify` should then validate that manifest as the single compatibility authority.
+`scripts/verify-compatibility.py` cross-checks that file against `package.json`, `apps/mcp/package.json`, `apps/cptr/pyproject.toml`, `crates/fdx/Cargo.toml`, and the canonical MCP tool inventory in `apps/mcp/server/release.ts`. `heidi verify` (via `scripts/verify-stack.sh`) runs the same check on deployed installations.
+
+A root alias `heidi-release.json` mirrors the same document for discoverability; treat `release/compatibility.json` as the path CI and installers open by default.

@@ -43,3 +43,10 @@ logs/
 *.log
 coverage/
 .DS_Store
+
+# Local transfer / bootstrap scratch (never commit)
+heidi-main.bundle
+heidi-main.bundle.b64
+heidi-main.patch.gz
+*.bundle
+*.bundle.b64
