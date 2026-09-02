@@ -170,6 +170,7 @@ fi
 MCP_LOCAL_URL=""; MCP_URL=""; PUBLIC_ORIGIN=""; PUBLIC_TRANSPORT=none
 MCP_DOMAIN=""; MCP_ALLOWED_EMAIL=""; CF_ACCOUNT_ID=""; CF_ZONE_ID=""; CF_TUNNEL_ID=""; CF_ACCESS_APP_ID=""; CF_ACCESS_AUDIENCE=""; CF_ACCESS_AUTH_DOMAIN=""; CF_TUNNEL_TOKEN=""
 MCP_OAUTH_CLIENT_ID=""; MCP_OAUTH_CLIENT_STATE_FILE=""
+CLOUDFLARED_MANAGEMENT="heidi"
 PUBLIC_DEPLOYMENT=0
 if [[ "$INCLUDES_MCP" == 1 ]]; then
   MCP_LOCAL_URL="http://127.0.0.1:$MCP_PORT"
@@ -203,6 +204,20 @@ if [[ "$PUBLIC_DEPLOYMENT" == 1 ]]; then
   PREVIOUS_OAUTH_CLIENT_FILE="$(state_default HEIDI_MCP_OAUTH_CLIENT_FILE '')"
   REUSE_PUBLIC_CONFIG=0
 
+  external_cloudflared_reusable() {
+    local previous_management previous_scope previous_units
+    [[ "$PUBLIC_TRANSPORT" == cloudflare-tunnel ]] || return 1
+    previous_management="$(state_default HEIDI_CLOUDFLARED_MANAGEMENT '')"
+    previous_scope="$(state_default HEIDI_SERVICE_SCOPE '')"
+    previous_units="$(state_default HEIDI_SERVICE_UNITS '')"
+    [[ -z "$previous_management" || "$previous_management" == external-system ]] || return 1
+    [[ "$previous_scope" == user ]] || return 1
+    [[ " $previous_units " != *" heidi-cloudflared.service "* ]] || return 1
+    command -v systemctl >/dev/null 2>&1 || return 1
+    systemctl is-active --quiet heidi-cloudflared.service || return 1
+    return 0
+  }
+
   existing_public_config_reusable() {
     local existing_tunnel_token=""
     [[ "${HEIDI_NONINTERACTIVE:-0}" == 1 ]] || return 1
@@ -217,9 +232,16 @@ if [[ "$PUBLIC_DEPLOYMENT" == 1 ]]; then
     [[ -n "$PREVIOUS_OAUTH_CLIENT_ID" && -n "$PREVIOUS_OAUTH_CLIENT_FILE" ]] || return 1
     secure_owner_file "$PREVIOUS_OAUTH_CLIENT_FILE" || return 1
     if [[ "$PUBLIC_TRANSPORT" == cloudflare-tunnel ]]; then
-      secure_owner_file "$CF_ENV_FILE" || return 1
-      existing_tunnel_token="$(env_file_default "$CF_ENV_FILE" TUNNEL_TOKEN '')"
-      [[ -n "$existing_tunnel_token" ]] || return 1
+      if secure_owner_file "$CF_ENV_FILE"; then
+        existing_tunnel_token="$(env_file_default "$CF_ENV_FILE" TUNNEL_TOKEN '')"
+      fi
+      if [[ -n "$existing_tunnel_token" ]]; then
+        CLOUDFLARED_MANAGEMENT="heidi"
+      elif external_cloudflared_reusable; then
+        CLOUDFLARED_MANAGEMENT="external-system"
+      else
+        return 1
+      fi
     fi
     return 0
   }
@@ -288,8 +310,12 @@ if [[ "$PUBLIC_DEPLOYMENT" == 1 ]]; then
     MCP_OAUTH_CLIENT_STATE_FILE="$PREVIOUS_OAUTH_CLIENT_FILE"
     secure_owner_file "$MCP_OAUTH_CLIENT_STATE_FILE" || fail "existing reusable OAuth client credentials are not owner-only"
     if [[ "$PUBLIC_TRANSPORT" == cloudflare-tunnel ]]; then
-      CF_TUNNEL_TOKEN="$(env_file_default "$CF_ENV_FILE" TUNNEL_TOKEN '')"
-      ensure_cloudflared
+      if [[ "$CLOUDFLARED_MANAGEMENT" == external-system ]]; then
+        say "Reusing existing externally managed Cloudflare Tunnel"
+      else
+        CF_TUNNEL_TOKEN="$(env_file_default "$CF_ENV_FILE" TUNNEL_TOKEN '')"
+        ensure_cloudflared
+      fi
     else
       ensure_caddy
     fi
@@ -394,7 +420,7 @@ if [[ "$INCLUDES_MCP" == 1 ]]; then
     fi
   } >"$MCP_ENV_FILE"; chmod 600 "$MCP_ENV_FILE"
 fi
-if [[ "$PUBLIC_TRANSPORT" == cloudflare-tunnel ]]; then
+if [[ "$PUBLIC_TRANSPORT" == cloudflare-tunnel && "$CLOUDFLARED_MANAGEMENT" != external-system ]]; then
   [[ -n "$CF_TUNNEL_TOKEN" ]] || fail "Cloudflare Tunnel provisioning returned no runtime token"
   { env_line TUNNEL_TOKEN "$CF_TUNNEL_TOKEN"; env_line NO_AUTOUPDATE true; env_line TUNNEL_LOGLEVEL info; } >"$CF_ENV_FILE"; chmod 600 "$CF_ENV_FILE"
 fi
@@ -480,7 +506,7 @@ TimeoutStopSec=20
 WantedBy=$SERVICE_WANTED_BY"
     HEIDI_SERVICE_UNITS+="heidi-mcp.service "
   fi
-  if [[ "$PUBLIC_TRANSPORT" == cloudflare-tunnel ]]; then
+  if [[ "$PUBLIC_TRANSPORT" == cloudflare-tunnel && "$CLOUDFLARED_MANAGEMENT" != external-system ]]; then
     write_service_unit heidi-cloudflared.service "[Unit]
 Description=Heidi Cloudflare Tunnel
 After=network-online.target heidi-mcp.service
@@ -547,6 +573,7 @@ HEIDI_SERVICE_UNITS="${HEIDI_SERVICE_UNITS% }"
   env_line HEIDI_CONTROL_PROFILE "$CONTROL_PROFILE"
   env_line HEIDI_SANDBOX_PROFILE "$SANDBOX_PROFILE"
   env_line HEIDI_PUBLIC_TRANSPORT "$PUBLIC_TRANSPORT"
+  env_line HEIDI_CLOUDFLARED_MANAGEMENT "$CLOUDFLARED_MANAGEMENT"
   env_line HEIDI_MCP_DOMAIN "$MCP_DOMAIN"
   env_line HEIDI_MCP_ALLOWED_EMAIL "$MCP_ALLOWED_EMAIL"
   env_line HEIDI_CF_ACCOUNT_ID "$CF_ACCOUNT_ID"

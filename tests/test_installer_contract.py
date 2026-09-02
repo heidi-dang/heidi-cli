@@ -287,6 +287,16 @@ def test_noninteractive_upgrade_reuses_only_secure_matching_public_configuration
     assert 'HEIDI_CONFIG_DIR="$CONFIG_DIR" "$HEIDI_HOME/current/source/scripts/verify-stack.sh"' in source
 
 
+def test_noninteractive_upgrade_preserves_active_external_system_tunnel_without_taking_ownership():
+    source = read("scripts/install-core.sh")
+    assert "external_cloudflared_reusable" in source
+    assert "systemctl is-active --quiet heidi-cloudflared.service" in source
+    assert 'CLOUDFLARED_MANAGEMENT="external-system"' in source
+    assert 'env_line HEIDI_CLOUDFLARED_MANAGEMENT "$CLOUDFLARED_MANAGEMENT"' in source
+    assert source.count('"$CLOUDFLARED_MANAGEMENT" != external-system') >= 2
+    assert "existing externally managed Cloudflare Tunnel" in source
+
+
 def test_caddy_signed_tarball_is_extracted_after_checksum_verification():
     source = read("scripts/install-lib.sh")
     assert "manifest_runtime_field caddy" in source

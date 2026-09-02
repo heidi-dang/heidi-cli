@@ -1,8 +1,8 @@
 {
   "schema": "heidi.compatibility.v1",
-  "heidi_version": "2.1.10",
+  "heidi_version": "2.1.11",
   "mcp": {
-    "contract_version": "2.1.10",
+    "contract_version": "2.1.11",
     "registered_action_count": 30,
     "resource_count": 1,
     "ui_resource_uri": "ui://cptr/live-workbench.html",
@@ -30,6 +30,7 @@
     "network_default": "deny"
   },
   "migrations": [
+    "Heidi v2.1.11 preserves existing externally/system-managed Cloudflare Tunnel ownership during signed upgrades: when legacy state proves user-scoped Heidi services do not own the tunnel, the system heidi-cloudflared.service is active, and all public MCP/OAuth state matches securely, Heidi records external-system ownership, skips tunnel-token and user-unit takeover, and still requires final public-edge verification.",
     "Heidi v2.1.10 preserves secretless signed upgrades from older Heidi state layouts by recovering a missing allowed-email value from the existing owner-only MCP environment before public-config validation; the fallback is accepted only from a non-symlink 0600 file owned by the deployment user and remains subject to all v2.1.9 exact-match and final verify-stack gates.",
     "Heidi v2.1.9 makes signed production upgrades non-interactive without persisting the Cloudflare API token: unchanged public MCP configuration may be reused only from owner-only non-symlink state/config files with exact transport/domain/email matches, existing Access issuer/audience/application metadata, and owner-only reusable OAuth credentials; tunnel deployments additionally require their existing owner-only tunnel token, and final strict verify-stack remains mandatory.",
     "Heidi v2.1.8 fixes signed-release portability by pinning Rustup 1.29.1 to immutable archive URLs and verified architecture-specific SHA-256 values; releases can no longer depend on Rust's mutable current/dist bootstrap path, preventing checksum drift from blocking future production installs while preserving fail-closed runtime verification.",
