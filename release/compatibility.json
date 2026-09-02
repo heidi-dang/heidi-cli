@@ -1,8 +1,8 @@
 {
   "schema": "heidi.compatibility.v1",
-  "heidi_version": "2.1.8",
+  "heidi_version": "2.1.9",
   "mcp": {
-    "contract_version": "2.1.8",
+    "contract_version": "2.1.9",
     "registered_action_count": 30,
     "resource_count": 1,
     "ui_resource_uri": "ui://cptr/live-workbench.html",
@@ -30,6 +30,7 @@
     "network_default": "deny"
   },
   "migrations": [
+    "Heidi v2.1.9 makes signed production upgrades non-interactive without persisting the Cloudflare API token: unchanged public MCP configuration may be reused only from owner-only non-symlink state/config files with exact transport/domain/email matches, existing Access issuer/audience/application metadata, and owner-only reusable OAuth credentials; tunnel deployments additionally require their existing owner-only tunnel token, and final strict verify-stack remains mandatory.",
     "Heidi v2.1.8 fixes signed-release portability by pinning Rustup 1.29.1 to immutable archive URLs and verified architecture-specific SHA-256 values; releases can no longer depend on Rust's mutable current/dist bootstrap path, preventing checksum drift from blocking future production installs while preserving fail-closed runtime verification.",
     "Heidi v2.1.7 converges audited heidi-dang/computer@ae2996a672ad4b595617384b7c5ee8cced3e304d and heidi-dang/chatgpt-computer-plugin@70c3962e74a75bde2fd3beb1bfaea7ac0a73b517, adding database-backed MCP analytics, a hybrid coding benchmark, and compact terminal/LSP parity: migration 0018 persists restart-safe MCP-visible usage by unique event ID with current-week/current-month, rolling 7/30-day, and all-time aggregates; all 30 compact actions accept bounded self-reported client_model attribution without passing it to CPTR business handlers; cptr_benchmark runs owner-scoped standardized tasks with a server-owned randomized anti-tamper grader; cptr_terminal_control, cptr_lsp_read, and cptr_lsp_control expose the scoped interactive PTY/LSP backend without restoring legacy standalone production actions; observed real-work engineering metrics remain explicitly non-comparable; and the Workbench renders weekly/monthly estimated tokens, API-equivalent simulated cost, and benchmark evidence without storing prompts, source code, tool arguments, or tool results.",
     "Heidi v2.1.6 hardens production execution prerequisites: Direct Coding reconstructs the active Heidi Python/Node runtime PATH even when service environment files are stale, production CPTR includes pytest/pytest-asyncio, host deployment provisions Managed Chrome with Ubuntu Snap support, and the default container image now includes Node/npm plus Chromium.",

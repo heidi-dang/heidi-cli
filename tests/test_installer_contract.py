@@ -269,6 +269,21 @@ def test_rustup_runtime_uses_versioned_immutable_archive_urls():
         assert "/rustup/dist/" not in artifact["url"]
 
 
+def test_noninteractive_upgrade_reuses_only_secure_matching_public_configuration():
+    source = read("scripts/install-core.sh")
+    assert "secure_owner_file" in source
+    assert "existing_public_config_reusable" in source
+    assert '"${HEIDI_NONINTERACTIVE:-0}" == 1' in source
+    assert '"$PREVIOUS_PUBLIC_TRANSPORT" == "$PUBLIC_TRANSPORT"' in source
+    assert '"$PREVIOUS_MCP_DOMAIN" == "$MCP_DOMAIN"' in source
+    assert '"$PREVIOUS_MCP_ALLOWED_EMAIL" == "$MCP_ALLOWED_EMAIL"' in source
+    assert 'env_file_default "$MCP_ENV_FILE" CLOUDFLARE_ACCESS_ISSUER' in source
+    assert 'env_file_default "$MCP_ENV_FILE" CLOUDFLARE_ACCESS_AUDIENCE' in source
+    assert 'secure_owner_file "$MCP_OAUTH_CLIENT_STATE_FILE"' in source
+    assert "Reusing existing verified public MCP configuration for non-interactive upgrade" in source
+    assert 'HEIDI_CONFIG_DIR="$CONFIG_DIR" "$HEIDI_HOME/current/source/scripts/verify-stack.sh"' in source
+
+
 def test_caddy_signed_tarball_is_extracted_after_checksum_verification():
     source = read("scripts/install-lib.sh")
     assert "manifest_runtime_field caddy" in source

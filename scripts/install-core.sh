@@ -34,6 +34,20 @@ state_default() {
   printf '%s' "${value:-$fallback}"
 }
 
+env_file_default() {
+  local file="$1" key="$2" fallback="$3" value=""
+  if [[ -f "$file" ]]; then value="$(awk -F= -v key="$key" '$1==key {sub(/^[^=]*=/, ""); gsub(/^"|"$/, ""); print; exit}' "$file")"; fi
+  printf '%s' "${value:-$fallback}"
+}
+
+secure_owner_file() {
+  local file="$1" owner mode
+  [[ -f "$file" && ! -L "$file" ]] || return 1
+  owner="$(stat -c '%u' "$file" 2>/dev/null || true)"
+  mode="$(stat -c '%a' "$file" 2>/dev/null || true)"
+  [[ "$owner" == "$(id -u)" && "$mode" == 600 ]]
+}
+
 HEIDI_VERSION="${HEIDI_VERSION:-$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["heidi_version"])' "$REPO_DIR/release/compatibility.json")}"
 HEIDI_CHANNEL="${HEIDI_CHANNEL:-$(state_default HEIDI_CHANNEL stable)}"
 SOURCE_GIT_SHA="${HEIDI_SOURCE_GIT_SHA:-}"
@@ -171,7 +185,40 @@ if [[ "$PUBLIC_DEPLOYMENT" == 1 ]]; then
   MCP_ALLOWED_EMAIL="${HEIDI_MCP_ALLOWED_EMAIL:-$(state_default HEIDI_MCP_ALLOWED_EMAIL '')}"; MCP_ALLOWED_EMAIL="$(read_tty 'Email allowed to authorize the ChatGPT MCP app' "$MCP_ALLOWED_EMAIL")"
   CF_ACCESS_APP_ID="${HEIDI_CF_ACCESS_APP_ID:-$(state_default HEIDI_CF_ACCESS_APP_ID '')}"
   [[ "$MCP_DOMAIN" == *.* && "$MCP_ALLOWED_EMAIL" == *@* ]] || fail "valid public hostname and allowed email are required"
-  CF_API_TOKEN="$(read_secret 'Cloudflare API token' "${CLOUDFLARE_API_TOKEN:-}")"; [[ -n "$CF_API_TOKEN" ]] || fail "Cloudflare API token is required"
+
+  PREVIOUS_PUBLIC_TRANSPORT="$(state_default HEIDI_PUBLIC_TRANSPORT '')"
+  PREVIOUS_MCP_DOMAIN="$(state_default HEIDI_MCP_DOMAIN '')"
+  PREVIOUS_MCP_ALLOWED_EMAIL="$(state_default HEIDI_MCP_ALLOWED_EMAIL '')"
+  PREVIOUS_CF_ACCOUNT_ID="$(state_default HEIDI_CF_ACCOUNT_ID '')"
+  PREVIOUS_CF_ZONE_ID="$(state_default HEIDI_CF_ZONE_ID '')"
+  PREVIOUS_CF_TUNNEL_ID="$(state_default HEIDI_CF_TUNNEL_ID '')"
+  PREVIOUS_CF_ACCESS_APP_ID="$(state_default HEIDI_CF_ACCESS_APP_ID '')"
+  PREVIOUS_CF_ACCESS_AUDIENCE="$(env_file_default "$MCP_ENV_FILE" CLOUDFLARE_ACCESS_AUDIENCE '')"
+  PREVIOUS_CF_ACCESS_AUTH_DOMAIN="$(env_file_default "$MCP_ENV_FILE" CLOUDFLARE_ACCESS_ISSUER '')"
+  PREVIOUS_OAUTH_CLIENT_ID="$(state_default HEIDI_MCP_OAUTH_CLIENT_ID '')"
+  PREVIOUS_OAUTH_CLIENT_FILE="$(state_default HEIDI_MCP_OAUTH_CLIENT_FILE '')"
+  REUSE_PUBLIC_CONFIG=0
+
+  existing_public_config_reusable() {
+    local existing_tunnel_token=""
+    [[ "${HEIDI_NONINTERACTIVE:-0}" == 1 ]] || return 1
+    [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]] || return 1
+    secure_owner_file "$STATE_FILE" || return 1
+    secure_owner_file "$MCP_ENV_FILE" || return 1
+    [[ "$PREVIOUS_PUBLIC_TRANSPORT" == "$PUBLIC_TRANSPORT" ]] || return 1
+    [[ "$PREVIOUS_MCP_DOMAIN" == "$MCP_DOMAIN" ]] || return 1
+    [[ "$PREVIOUS_MCP_ALLOWED_EMAIL" == "$MCP_ALLOWED_EMAIL" ]] || return 1
+    [[ -n "$PREVIOUS_CF_ACCESS_APP_ID" && -n "$PREVIOUS_CF_ACCESS_AUDIENCE" && -n "$PREVIOUS_CF_ACCESS_AUTH_DOMAIN" ]] || return 1
+    [[ "$PREVIOUS_CF_ACCESS_AUTH_DOMAIN" == https://* ]] || return 1
+    [[ -n "$PREVIOUS_OAUTH_CLIENT_ID" && -n "$PREVIOUS_OAUTH_CLIENT_FILE" ]] || return 1
+    secure_owner_file "$PREVIOUS_OAUTH_CLIENT_FILE" || return 1
+    if [[ "$PUBLIC_TRANSPORT" == cloudflare-tunnel ]]; then
+      secure_owner_file "$CF_ENV_FILE" || return 1
+      existing_tunnel_token="$(env_file_default "$CF_ENV_FILE" TUNNEL_TOKEN '')"
+      [[ -n "$existing_tunnel_token" ]] || return 1
+    fi
+    return 0
+  }
 
   CLAUDE_MCP_OAUTH_REDIRECT_URI="https://claude.ai/api/mcp/auth_callback"
   GROK_MCP_OAUTH_REDIRECT_URI="https://grok.com/connectors-oauth-exchange-code/"
@@ -225,53 +272,75 @@ if [[ "$PUBLIC_DEPLOYMENT" == 1 ]]; then
     done
   fi
 
-  CF_ARGS=(--domain "$MCP_DOMAIN" --origin "$MCP_LOCAL_URL" --email "$MCP_ALLOWED_EMAIL")
-  [[ -z "$CF_ACCESS_APP_ID" ]] || CF_ARGS+=(--access-app-id "$CF_ACCESS_APP_ID")
-  for oauth_redirect_uri in "${OAUTH_DCR_ALLOWED_REDIRECT_URIS[@]}"; do
-    CF_ARGS+=(--oauth-redirect-uri "$oauth_redirect_uri")
-  done
-  if [[ "$PUBLIC_TRANSPORT" == caddy ]]; then
-    ensure_caddy
-    ORIGIN_IP="${HEIDI_PUBLIC_IP:-$(public_ipv4)}"; ORIGIN_IP="$(read_tty 'Public IP of this MCP server' "$ORIGIN_IP")"
-    [[ -n "$ORIGIN_IP" ]] || fail "Caddy public transport requires the server public IP"
-    CF_ARGS+=(--transport caddy --origin-address "$ORIGIN_IP")
+  if existing_public_config_reusable; then
+    REUSE_PUBLIC_CONFIG=1
+    CF_ACCOUNT_ID="$PREVIOUS_CF_ACCOUNT_ID"
+    CF_ZONE_ID="$PREVIOUS_CF_ZONE_ID"
+    CF_TUNNEL_ID="$PREVIOUS_CF_TUNNEL_ID"
+    CF_ACCESS_APP_ID="$PREVIOUS_CF_ACCESS_APP_ID"
+    CF_ACCESS_AUDIENCE="$PREVIOUS_CF_ACCESS_AUDIENCE"
+    CF_ACCESS_AUTH_DOMAIN="$PREVIOUS_CF_ACCESS_AUTH_DOMAIN"
+    MCP_OAUTH_CLIENT_ID="$PREVIOUS_OAUTH_CLIENT_ID"
+    MCP_OAUTH_CLIENT_STATE_FILE="$PREVIOUS_OAUTH_CLIENT_FILE"
+    secure_owner_file "$MCP_OAUTH_CLIENT_STATE_FILE" || fail "existing reusable OAuth client credentials are not owner-only"
+    if [[ "$PUBLIC_TRANSPORT" == cloudflare-tunnel ]]; then
+      CF_TUNNEL_TOKEN="$(env_file_default "$CF_ENV_FILE" TUNNEL_TOKEN '')"
+      ensure_cloudflared
+    else
+      ensure_caddy
+    fi
+    PUBLIC_ORIGIN="https://$MCP_DOMAIN"; MCP_URL="$PUBLIC_ORIGIN/mcp"
+    say "Reusing existing verified public MCP configuration for non-interactive upgrade"
   else
-    ensure_cloudflared
-    CF_ARGS+=(--transport tunnel)
-  fi
-  CF_RESULT="$(CLOUDFLARE_API_TOKEN="$CF_API_TOKEN" python3 "$REPO_DIR/scripts/cloudflare-provision.py" "${CF_ARGS[@]}")" || fail "Cloudflare provisioning failed"
-  unset CF_API_TOKEN CLOUDFLARE_API_TOKEN || true
-  cf_value() { printf '%s' "$CF_RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get(sys.argv[1], ""))' "$1"; }
-  CF_ACCOUNT_ID="$(cf_value account_id)"; CF_ZONE_ID="$(cf_value zone_id)"; CF_TUNNEL_ID="$(cf_value tunnel_id)"; CF_TUNNEL_TOKEN="$(cf_value tunnel_token)"
-  CF_ACCESS_APP_ID="$(cf_value access_app_id)"; CF_ACCESS_AUDIENCE="$(cf_value access_audience)"; CF_ACCESS_AUTH_DOMAIN="$(cf_value access_auth_domain)"
-  [[ -n "$CF_ACCESS_AUDIENCE" && -n "$CF_ACCESS_AUTH_DOMAIN" ]] || fail "Cloudflare Access provisioning returned incomplete OAuth data"
-  [[ "$CF_ACCESS_AUTH_DOMAIN" == http*://* ]] || CF_ACCESS_AUTH_DOMAIN="https://$CF_ACCESS_AUTH_DOMAIN"
-  PUBLIC_ORIGIN="https://$MCP_DOMAIN"; MCP_URL="$PUBLIC_ORIGIN/mcp"
-
-  GLOBAL_OAUTH_ENABLED="${HEIDI_MCP_OAUTH_GLOBAL_CLIENT:-1}"
-  GLOBAL_OAUTH_ROTATE="${HEIDI_MCP_OAUTH_GLOBAL_CLIENT_ROTATE:-0}"
-  [[ "$GLOBAL_OAUTH_ENABLED" == 0 || "$GLOBAL_OAUTH_ENABLED" == 1 ]] || fail "HEIDI_MCP_OAUTH_GLOBAL_CLIENT must be 0 or 1"
-  [[ "$GLOBAL_OAUTH_ROTATE" == 0 || "$GLOBAL_OAUTH_ROTATE" == 1 ]] || fail "HEIDI_MCP_OAUTH_GLOBAL_CLIENT_ROTATE must be 0 or 1"
-  [[ "$GLOBAL_OAUTH_ENABLED" == 1 || "$GLOBAL_OAUTH_ROTATE" == 0 ]] || fail "cannot rotate reusable OAuth client while HEIDI_MCP_OAUTH_GLOBAL_CLIENT=0"
-  if [[ "$GLOBAL_OAUTH_ENABLED" == 1 ]]; then
-    GLOBAL_OAUTH_METADATA_URL="${CF_ACCESS_AUTH_DOMAIN%/}/.well-known/oauth-authorization-server"
-    GLOBAL_OAUTH_ARGS=(
-      ensure
-      --metadata-url "$GLOBAL_OAUTH_METADATA_URL"
-      --resource "$PUBLIC_ORIGIN"
-      --credentials-file "$MCP_OAUTH_CLIENT_FILE"
-      --client-name "${HEIDI_MCP_OAUTH_GLOBAL_CLIENT_NAME:-Heidi reusable MCP client}"
-      --token-endpoint-auth-method client_secret_post
-    )
-    for oauth_redirect_uri in "${OAUTH_GLOBAL_CLIENT_REDIRECT_URIS[@]}"; do
-      GLOBAL_OAUTH_ARGS+=(--redirect-uri "$oauth_redirect_uri")
+    CF_API_TOKEN="$(read_secret 'Cloudflare API token' "${CLOUDFLARE_API_TOKEN:-}")"; [[ -n "$CF_API_TOKEN" ]] || fail "Cloudflare API token is required"
+    CF_ARGS=(--domain "$MCP_DOMAIN" --origin "$MCP_LOCAL_URL" --email "$MCP_ALLOWED_EMAIL")
+    [[ -z "$CF_ACCESS_APP_ID" ]] || CF_ARGS+=(--access-app-id "$CF_ACCESS_APP_ID")
+    for oauth_redirect_uri in "${OAUTH_DCR_ALLOWED_REDIRECT_URIS[@]}"; do
+      CF_ARGS+=(--oauth-redirect-uri "$oauth_redirect_uri")
     done
-    [[ "$GLOBAL_OAUTH_ROTATE" == 0 ]] || GLOBAL_OAUTH_ARGS+=(--rotate)
-    GLOBAL_OAUTH_RESULT="$(python3 "$REPO_DIR/scripts/managed-oauth-client.py" "${GLOBAL_OAUTH_ARGS[@]}")" || fail "reusable Managed OAuth client provisioning failed"
-    oauth_client_value() { printf '%s' "$GLOBAL_OAUTH_RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get(sys.argv[1], ""))' "$1"; }
-    MCP_OAUTH_CLIENT_ID="$(oauth_client_value client_id)"
-    [[ -n "$MCP_OAUTH_CLIENT_ID" ]] || fail "reusable Managed OAuth client provisioning returned no client_id"
-    MCP_OAUTH_CLIENT_STATE_FILE="$MCP_OAUTH_CLIENT_FILE"
+    if [[ "$PUBLIC_TRANSPORT" == caddy ]]; then
+      ensure_caddy
+      ORIGIN_IP="${HEIDI_PUBLIC_IP:-$(public_ipv4)}"; ORIGIN_IP="$(read_tty 'Public IP of this MCP server' "$ORIGIN_IP")"
+      [[ -n "$ORIGIN_IP" ]] || fail "Caddy public transport requires the server public IP"
+      CF_ARGS+=(--transport caddy --origin-address "$ORIGIN_IP")
+    else
+      ensure_cloudflared
+      CF_ARGS+=(--transport tunnel)
+    fi
+    CF_RESULT="$(CLOUDFLARE_API_TOKEN="$CF_API_TOKEN" python3 "$REPO_DIR/scripts/cloudflare-provision.py" "${CF_ARGS[@]}")" || fail "Cloudflare provisioning failed"
+    unset CF_API_TOKEN CLOUDFLARE_API_TOKEN || true
+    cf_value() { printf '%s' "$CF_RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get(sys.argv[1], ""))' "$1"; }
+    CF_ACCOUNT_ID="$(cf_value account_id)"; CF_ZONE_ID="$(cf_value zone_id)"; CF_TUNNEL_ID="$(cf_value tunnel_id)"; CF_TUNNEL_TOKEN="$(cf_value tunnel_token)"
+    CF_ACCESS_APP_ID="$(cf_value access_app_id)"; CF_ACCESS_AUDIENCE="$(cf_value access_audience)"; CF_ACCESS_AUTH_DOMAIN="$(cf_value access_auth_domain)"
+    [[ -n "$CF_ACCESS_AUDIENCE" && -n "$CF_ACCESS_AUTH_DOMAIN" ]] || fail "Cloudflare Access provisioning returned incomplete OAuth data"
+    [[ "$CF_ACCESS_AUTH_DOMAIN" == http*://* ]] || CF_ACCESS_AUTH_DOMAIN="https://$CF_ACCESS_AUTH_DOMAIN"
+    PUBLIC_ORIGIN="https://$MCP_DOMAIN"; MCP_URL="$PUBLIC_ORIGIN/mcp"
+
+    GLOBAL_OAUTH_ENABLED="${HEIDI_MCP_OAUTH_GLOBAL_CLIENT:-1}"
+    GLOBAL_OAUTH_ROTATE="${HEIDI_MCP_OAUTH_GLOBAL_CLIENT_ROTATE:-0}"
+    [[ "$GLOBAL_OAUTH_ENABLED" == 0 || "$GLOBAL_OAUTH_ENABLED" == 1 ]] || fail "HEIDI_MCP_OAUTH_GLOBAL_CLIENT must be 0 or 1"
+    [[ "$GLOBAL_OAUTH_ROTATE" == 0 || "$GLOBAL_OAUTH_ROTATE" == 1 ]] || fail "HEIDI_MCP_OAUTH_GLOBAL_CLIENT_ROTATE must be 0 or 1"
+    [[ "$GLOBAL_OAUTH_ENABLED" == 1 || "$GLOBAL_OAUTH_ROTATE" == 0 ]] || fail "cannot rotate reusable OAuth client while HEIDI_MCP_OAUTH_GLOBAL_CLIENT=0"
+    if [[ "$GLOBAL_OAUTH_ENABLED" == 1 ]]; then
+      GLOBAL_OAUTH_METADATA_URL="${CF_ACCESS_AUTH_DOMAIN%/}/.well-known/oauth-authorization-server"
+      GLOBAL_OAUTH_ARGS=(
+        ensure
+        --metadata-url "$GLOBAL_OAUTH_METADATA_URL"
+        --resource "$PUBLIC_ORIGIN"
+        --credentials-file "$MCP_OAUTH_CLIENT_FILE"
+        --client-name "${HEIDI_MCP_OAUTH_GLOBAL_CLIENT_NAME:-Heidi reusable MCP client}"
+        --token-endpoint-auth-method client_secret_post
+      )
+      for oauth_redirect_uri in "${OAUTH_GLOBAL_CLIENT_REDIRECT_URIS[@]}"; do
+        GLOBAL_OAUTH_ARGS+=(--redirect-uri "$oauth_redirect_uri")
+      done
+      [[ "$GLOBAL_OAUTH_ROTATE" == 0 ]] || GLOBAL_OAUTH_ARGS+=(--rotate)
+      GLOBAL_OAUTH_RESULT="$(python3 "$REPO_DIR/scripts/managed-oauth-client.py" "${GLOBAL_OAUTH_ARGS[@]}")" || fail "reusable Managed OAuth client provisioning failed"
+      oauth_client_value() { printf '%s' "$GLOBAL_OAUTH_RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get(sys.argv[1], ""))' "$1"; }
+      MCP_OAUTH_CLIENT_ID="$(oauth_client_value client_id)"
+      [[ -n "$MCP_OAUTH_CLIENT_ID" ]] || fail "reusable Managed OAuth client provisioning returned no client_id"
+      MCP_OAUTH_CLIENT_STATE_FILE="$MCP_OAUTH_CLIENT_FILE"
+    fi
   fi
 fi
 
