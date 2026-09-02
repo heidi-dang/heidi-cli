@@ -44,24 +44,29 @@ test("reports a bounded fallback only when CPTR workbench assets are unavailable
   }
 });
 
-test("enables production-safe hot reload by default and fingerprints the deployed assets", () => {
-  const first = resolveWorkbenchHotReload(
+test("disables hot reload by default and enables it only via explicit opt-in", () => {
+  const defaultMode = resolveWorkbenchHotReload(
     { bundle: "bundle-a", styles: "styles-a" },
-    { NODE_ENV: "production" },
+    {},
+  );
+  const enabled = resolveWorkbenchHotReload(
+    { bundle: "bundle-a", styles: "styles-a" },
+    { CPTR_HOT_RELOAD: "1" },
   );
   const same = resolveWorkbenchHotReload(
     { bundle: "bundle-a", styles: "styles-a" },
-    { NODE_ENV: "production" },
+    { CPTR_HOT_RELOAD: "1" },
   );
   const changed = resolveWorkbenchHotReload(
     { bundle: "bundle-b", styles: "styles-a" },
-    { NODE_ENV: "production" },
+    { CPTR_HOT_RELOAD: "1" },
   );
 
-  assert.equal(first.enabled, true);
-  assert.equal(first.buildId, same.buildId);
-  assert.notEqual(first.buildId, changed.buildId);
-  assert.match(first.buildId, /^[a-f0-9]{24}$/);
+  assert.equal(defaultMode.enabled, false);
+  assert.equal(enabled.enabled, true);
+  assert.equal(enabled.buildId, same.buildId);
+  assert.notEqual(enabled.buildId, changed.buildId);
+  assert.match(enabled.buildId, /^[a-f0-9]{24}$/);
 });
 
 test("supports explicit hot-reload disable and release-labelled asset fingerprints", () => {
