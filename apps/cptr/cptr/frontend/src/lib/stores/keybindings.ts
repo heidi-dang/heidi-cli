@@ -255,13 +255,7 @@ export function executeAction(
 ): boolean {
 	const dispatchHomeAction = (
 		detail:
-			| 'newChat'
-			| 'newTerminal'
-			| 'newBrowser'
-			| 'closeTab'
-			| 'nextTab'
-			| 'prevTab'
-			| 'toggleSplit'
+			'newChat' | 'newTerminal' | 'newBrowser' | 'closeTab' | 'nextTab' | 'prevTab' | 'toggleSplit'
 	) => {
 		if (typeof window !== 'undefined')
 			window.dispatchEvent(new CustomEvent('cptr:home-action', { detail }));

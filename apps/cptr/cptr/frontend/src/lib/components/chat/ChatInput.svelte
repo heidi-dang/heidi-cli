@@ -398,8 +398,7 @@
 	let cachedSkillsWorkspace = '';
 	let activeSlashRange = $state<{ from: number; to: number } | null>(null);
 	type SlashSuggestionItem =
-		| { kind: 'command'; id: string }
-		| { kind: 'skill'; id: string; skill: SkillMentionAttrs };
+		{ kind: 'command'; id: string } | { kind: 'skill'; id: string; skill: SkillMentionAttrs };
 	let slashSuggestionItems = $state<SlashSuggestionItem[]>([]);
 	let slashCommandsEl: HTMLDivElement | undefined = $state();
 

@@ -2,7 +2,7 @@
 
 Heidi CLI is the canonical monorepo for the CPTR Computer stack:
 
-- `apps/mcp` — ChatGPT-facing 26-tool MCP adapter plus one bounded MCP Apps Workbench resource at `ui://cptr/live-workbench.html`.
+- `apps/mcp` — ChatGPT-facing 30-tool MCP adapter plus one bounded MCP Apps Workbench resource at `ui://cptr/live-workbench.html`.
 - `apps/cptr` — CPTR backend, control plane, execution runtime, browser/SSH/direct-coding services, persistence, and verification.
 - `crates/fdx` — native FDX repository-intelligence CLI and persistent daemon.
 - `install.sh` + `bin/heidi` — installation, configuration, deployment, verification, update, status, logs, and URL discovery.
@@ -28,7 +28,7 @@ It will:
 7. prompt for **development** or **production** deployment;
 8. configure loopback CPTR + MCP services;
 9. optionally provision a Cloudflare remotely-managed tunnel, DNS CNAME, and Cloudflare Access MCP application using an API token;
-10. verify FDX, CPTR health/readiness, MCP health, the exact 26-tool + one-resource Apps contract, and CPTR↔MCP connectivity;
+10. verify FDX, CPTR health/readiness, MCP health, the exact 30-tool + one-resource Apps contract, and CPTR↔MCP connectivity;
 11. print the final ChatGPT MCP URL.
 
 Secrets are written only under `~/.config/heidi-cli` with owner-only permissions. They are never written into the Git checkout.

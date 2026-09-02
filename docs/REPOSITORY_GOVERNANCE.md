@@ -26,7 +26,7 @@ Every split-repository import must satisfy all of the following:
 2. import only tracked source required by Heidi;
 3. exclude nested `.git`, generated output, caches, credentials, and machine state;
 4. review the source delta against the current Heidi component before integration;
-5. preserve the 26-tool production MCP contract unless a deliberate versioned contract migration is approved;
+5. preserve the 30-tool production MCP contract unless a deliberate versioned contract migration is approved;
 6. update `release/compatibility.json` for component/protocol changes;
 7. run installer, MCP, CPTR, and FDX gates before merge.
 
@@ -48,7 +48,7 @@ A production Heidi release is accepted only when:
 - the signed release manifest identifies the exact Git commit and source archive checksum;
 - `release/compatibility.json` matches the MCP/CPTR/FDX runtime contract;
 - the production MCP reports the same source commit in `/health` and update metadata;
-- the production MCP contract advertises exactly 26 compact tools plus exactly one Apps resource at `ui://cptr/live-workbench.html`, with `cptr_open_live_workbench` as the only UI-producing tool and the legacy 69-action surface remaining test-only;
+- the production MCP contract advertises exactly 30 compact tools plus exactly one Apps resource at `ui://cptr/live-workbench.html`, with `cptr_open_live_workbench` as the only UI-producing tool and the legacy 69-action surface remaining test-only;
 - the canonical CI gates pass on the release commit.
 
 This policy prevents the split-repository drift that the Heidi monorepo was created to eliminate.

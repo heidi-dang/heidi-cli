@@ -5,6 +5,7 @@ from cptr.routers.audio import router as audio_router
 from cptr.routers.auth import router as auth_router
 from cptr.routers.automations import router as automations_router
 from cptr.routers.automations_extended import router as automations_extended_router
+from cptr.routers.benchmarks import router as benchmarks_router
 from cptr.routers.bridge import router as bridge_router
 from cptr.routers.bridge import webhook_router
 from cptr.routers.browser import router as browser_router
@@ -23,6 +24,7 @@ from cptr.routers.gateway_extended import router as gateway_extended_router
 from cptr.routers.git import router as git_router
 from cptr.routers.images import router as images_router
 from cptr.routers.mcp import router as mcp_router
+from cptr.routers.mcp_analytics import router as mcp_analytics_router
 from cptr.routers.memory import router as memory_router
 from cptr.routers.memory_extended import router as memory_extended_router
 from cptr.routers.notifications import router as notifications_router
@@ -49,6 +51,7 @@ __all__ = [
     "auth_router",
     "automations_router",
     "automations_extended_router",
+    "benchmarks_router",
     "bridge_router",
     "browser_router",
     "browser_extended_router",
@@ -64,6 +67,7 @@ __all__ = [
     "git_router",
     "images_router",
     "mcp_router",
+    "mcp_analytics_router",
     "memory_router",
     "memory_extended_router",
     "notifications_router",

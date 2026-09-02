@@ -75,9 +75,13 @@ test("compact MCP exposes workspace lifecycle before any workspace exists", asyn
     },
   });
   assert.equal(result.isError, undefined);
-  assert.equal(seen.at(-1)?.url, "http://cptr.test/api/control/v1/workspaces/lifecycle");
-  assert.equal(seen.at(-1)?.method, "POST");
-  assert.deepEqual(seen.at(-1)?.body, {
+  const lifecycleRequest = seen.find((item) => item.url.endsWith("/workspaces/lifecycle"));
+  const usageRequest = seen.find((item) => item.url.endsWith("/mcp/analytics/usage/events"));
+  assert.ok(lifecycleRequest);
+  assert.ok(usageRequest, "workspace lifecycle must also persist one MCP usage event");
+  assert.equal(lifecycleRequest.url, "http://cptr.test/api/control/v1/workspaces/lifecycle");
+  assert.equal(lifecycleRequest.method, "POST");
+  assert.deepEqual(lifecycleRequest.body, {
     action: "clone",
     repository_url: "https://github.com/heidi-dang/heidi-cli.git",
     warm_fdx: true,

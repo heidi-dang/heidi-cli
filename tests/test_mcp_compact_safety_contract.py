@@ -37,11 +37,14 @@ def test_compact_contract_splits_read_surfaces_from_mixed_control_gateways():
     names_block = re.search(r"MCP_COMPACT_TOOL_NAMES = \[(.*?)\] as const", release, re.S)
     assert names_block is not None
     names = re.findall(r'"([^"]+)"', names_block.group(1))
-    assert len(names) == 26
+    assert len(names) == 30
 
 
 def test_compact_read_surfaces_are_not_advertised_as_destructive_or_open_world():
     source = (MCP / "server" / "compact-gateways.ts").read_text(encoding="utf-8")
+
+    assert 'server.registerTool("cptr_benchmark"' in source
+    assert "versioned server-owned hidden grader" in source
 
     for tool in (
         "cptr_workbench_sessions_read",
@@ -79,7 +82,7 @@ def test_chatgpt_apps_ui_policy_is_persisted_for_future_maintainers():
 
     policy = policy_path.read_text(encoding="utf-8")
     assert "NON-NEGOTIABLE CHATGPT CONNECTOR INVARIANT" in policy
-    assert "26-tool compact contract" in policy
+    assert "30-tool compact contract" in policy
     assert "ui://cptr/live-workbench.html" in policy
     assert "Exactly one production tool" in policy
     assert "legacy 63-core-tool / 69-registered-action surface remains regression-test-only" in policy

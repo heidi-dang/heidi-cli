@@ -22,6 +22,12 @@ test("renders the bounded CPTR overview and refresh affordance", () => {
         mcpServerCount: 2,
         sourceRevision: "a4a3a022",
         apiFamilies: ["system", "mcp", "workspace"],
+        usageWeek: { requests: 12, inputTokens: 1100, outputTokens: 400, totalTokens: 1500, simulatedCostUsd: "0.0123" },
+        usageMonth: { requests: 42, inputTokens: 8100, outputTokens: 1900, totalTokens: 10000, simulatedCostUsd: "0.0876" },
+        engineering: { model: "GPT-5.6 Sol", reliability: 0.875, verificationRatio: 0.75, toolCalls: 24 },
+        benchmark: { model: "GPT-5.6 Sol", bestScore: 96, averageScore: 91.5, maxScore: 100, attempts: 3, perfectRuns: 0 },
+        benchmarkSuite: "cptr-python-core",
+        benchmarkVersion: "1",
       }}
       loading={false}
       error=""
@@ -39,6 +45,19 @@ test("renders the bounded CPTR overview and refresh affordance", () => {
   assert.match(html, /system/);
   assert.match(html, /Refresh/);
   assert.match(html, /1h 1m/);
+  assert.match(html, /Model usage &amp; simulated cost/);
+  assert.match(html, /This week/);
+  assert.match(html, /This month/);
+  assert.match(html, /1\.50K/);
+  assert.match(html, /10\.0K/);
+  assert.match(html, /\$0\.0123/);
+  assert.match(html, /\$0\.0876/);
+  assert.match(html, /not your ChatGPT bill/);
+  assert.match(html, /Coding benchmark/);
+  assert.match(html, /Comparable standardized/);
+  assert.match(html, /Observed real-work · not comparable/);
+  assert.match(html, /96\/100/);
+  assert.match(html, /88%/);
   assert.doesNotMatch(html, /secret|Authorization|Bearer/);
 });
 

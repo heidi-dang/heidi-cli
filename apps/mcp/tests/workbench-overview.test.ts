@@ -46,6 +46,21 @@ test("normalizes untrusted overview data into bounded display fields", () => {
       count: 2,
       connected_configurations: [{ id: "server", name: "Tools", type: "mcp", enabled: true, url: "https://secret" }],
     },
+    mcp_usage: {
+      week: { requests: 12, input_tokens_estimated: 1100, output_tokens_estimated: 400, total_tokens_estimated: 1500, simulated_cost_usd: "0.0123" },
+      month: { requests: 42, input_tokens_estimated: 8100, output_tokens_estimated: 1900, total_tokens_estimated: 10000, simulated_cost_usd: "0.0876" },
+    },
+    engineering: {
+      comparable: false,
+      sessions: [{ model_reported: "GPT-5.6 Sol", reliability: 0.875, verification_ratio: 0.75, tool_calls: 24, prompt: "secret" }],
+    },
+    coding_benchmark: {
+      comparable: true,
+      suite_id: "cptr-python-core",
+      suite_version: "1",
+      max_score: 100,
+      models: [{ model_reported: "GPT-5.6 Sol", best_score: 96, average_score: 91.5, attempts: 3, perfect_runs: 0, grader_seed: "secret" }],
+    },
     api_surface: {
       source: "heidi-dang/computer@a4a3a02251312e5f5c04b910d1e11857323b0ab5",
       families: Array.from({ length: 40 }, (_, index) => `family-${index}`),
@@ -62,6 +77,18 @@ test("normalizes untrusted overview data into bounded display fields", () => {
   assert.equal(normalized.modelCount, 8);
   assert.equal(normalized.defaultModel, "provider/default");
   assert.equal(normalized.mcpServerCount, 2);
+  assert.equal(normalized.usageWeek.requests, 12);
+  assert.equal(normalized.usageWeek.totalTokens, 1500);
+  assert.equal(normalized.usageWeek.simulatedCostUsd, "0.0123");
+  assert.equal(normalized.usageMonth.requests, 42);
+  assert.equal(normalized.usageMonth.totalTokens, 10000);
+  assert.equal(normalized.engineering?.model, "GPT-5.6 Sol");
+  assert.equal(normalized.engineering?.reliability, 0.875);
+  assert.equal(normalized.engineering?.verificationRatio, 0.75);
+  assert.equal(normalized.benchmark?.bestScore, 96);
+  assert.equal(normalized.benchmark?.attempts, 3);
+  assert.equal(normalized.benchmarkSuite, "cptr-python-core");
+  assert.equal(normalized.benchmarkVersion, "1");
   assert.equal(normalized.apiFamilies.length, 16);
   assert.equal(normalized.sourceRevision, "a4a3a022");
   assert.doesNotMatch(JSON.stringify(normalized), /secret|api_key|\/secret/);

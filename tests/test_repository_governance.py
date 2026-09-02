@@ -14,7 +14,7 @@ def test_heidi_cli_is_the_documented_canonical_product_boundary():
     assert "heidi-dang/computer" in governance
     assert "heidi-dang/chatgpt-computer-plugin" in governance
     assert "audited sync" in governance.lower()
-    assert "26-tool production MCP contract" in governance
+    assert "30-tool production MCP contract" in governance
     assert "heidi-dang/chatgpt-computer-plugin" in provenance
     assert "heidi-dang/computer" in provenance
 

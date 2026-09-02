@@ -363,7 +363,8 @@ test("invokes managed Chrome control through the ChatGPT-visible MCP tool", asyn
 
   assert.equal(response.isError, undefined);
   assert.equal((response.structuredContent as { status?: string } | undefined)?.status, "ready");
-  assert.deepEqual(seen, [
+  const businessSeen = seen.filter((item) => !item.url.endsWith("/mcp/analytics/usage/events"));
+  assert.deepEqual(businessSeen, [
     {
       url: "http://cptr.test/api/control/v1/workspaces/ws-1/browser",
       body: {
@@ -499,14 +500,17 @@ test("invokes every direct-coding tool through MCP without a CPTR model input", 
     assert.equal(meta?.["cptr/live"], undefined, `${name} must bind through the already-open prompt terminal instead of returning another live widget`);
   }
 
-  assert.equal(seen.length, 12);
-  for (const request of seen) {
+  const businessSeen = seen.filter((request) => !request.url.endsWith("/mcp/analytics/usage/events"));
+  assert.equal(businessSeen.length, 12);
+  assert.equal(seen.length, 24, "each direct coding call must also persist one usage event");
+  for (const request of businessSeen) {
     const body = request.init?.body ? JSON.parse(String(request.init.body)) : {};
     assert.equal(body.model_id, undefined);
+    assert.equal(body.client_model, undefined);
     assert.equal((request.init?.headers as Record<string, string>).Authorization, "Bearer test-token");
   }
-  assert.equal(seen[10].url.includes("offset=0&wait_seconds=0"), true);
-  assert.equal(seen[11].url.endsWith("/coding/commands/command-1/cancel"), true);
+  assert.equal(businessSeen[10].url.includes("offset=0&wait_seconds=0"), true);
+  assert.equal(businessSeen[11].url.endsWith("/coding/commands/command-1/cancel"), true);
 
   await client.close();
   await server.close();
@@ -562,16 +566,18 @@ test("routes dedicated SSH tools through the SSH control API and live command ta
   assert.equal(live?.ui, undefined);
   assert.equal(live?.["cptr/live"], undefined);
 
-  assert.equal(seen.length, 4);
-  assert.equal(seen[0].url.endsWith("/workspaces/ws-1/ssh/hosts"), true);
-  assert.equal(seen[1].url.endsWith("/workspaces/ws-1/ssh/commands"), true);
-  assert.deepEqual(JSON.parse(String(seen[1].init?.body)), {
+  const businessSeen = seen.filter((request) => !request.url.endsWith("/mcp/analytics/usage/events"));
+  assert.equal(businessSeen.length, 4);
+  assert.equal(seen.length, 8, "each SSH tool call must also persist one usage event");
+  assert.equal(businessSeen[0].url.endsWith("/workspaces/ws-1/ssh/hosts"), true);
+  assert.equal(businessSeen[1].url.endsWith("/workspaces/ws-1/ssh/commands"), true);
+  assert.deepEqual(JSON.parse(String(businessSeen[1].init?.body)), {
     alias: "aws",
     command: "uname -a",
     wait_seconds: 0,
   });
-  assert.equal(seen[2].url.includes("/ssh/commands/ssh-command-1?offset=0&wait_seconds=0"), true);
-  assert.equal(seen[3].url.endsWith("/ssh/commands/ssh-command-1/cancel"), true);
+  assert.equal(businessSeen[2].url.includes("/ssh/commands/ssh-command-1?offset=0&wait_seconds=0"), true);
+  assert.equal(businessSeen[3].url.endsWith("/ssh/commands/ssh-command-1/cancel"), true);
 
   await client.close();
   await server.close();
@@ -863,8 +869,8 @@ test("does not delegate ChatGPT work to a CPTR model without explicit opt-in", a
   const computer = new ComputerClient({
     baseUrl: "http://cptr.test",
     token: "server-only-token",
-    fetchImpl: async () => {
-      requestCount += 1;
+    fetchImpl: async (input) => {
+      if (!String(input).endsWith("/mcp/analytics/usage/events")) requestCount += 1;
       return new Response(JSON.stringify({}), { status: 200 });
     },
   });
@@ -893,8 +899,10 @@ test("forwards an explicit task review decision to the scoped control endpoint",
     baseUrl: "http://cptr.test",
     token: "server-only-token",
     fetchImpl: async (url, init) => {
-      requestUrl = String(url);
-      requestBody = JSON.parse(String(init?.body));
+      if (!String(url).endsWith("/mcp/analytics/usage/events")) {
+        requestUrl = String(url);
+        requestBody = JSON.parse(String(init?.body));
+      }
       return new Response(JSON.stringify({
         id: "task-review",
         status: "COMPLETE",
@@ -928,7 +936,7 @@ test("retrieves a task-bound review checkpoint and diff", async () => {
     baseUrl: "http://cptr.test",
     token: "server-only-token",
     fetchImpl: async (url) => {
-      requestUrl = String(url);
+      if (!String(url).endsWith("/mcp/analytics/usage/events")) requestUrl = String(url);
       return new Response(JSON.stringify({
         task_id: "task-review",
         workspace_id: "ws-1",

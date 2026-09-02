@@ -74,6 +74,24 @@ class ControlUiTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ) as list_models,
             patch("cptr.routers.control_ui.database_ready", new=AsyncMock(return_value=True)),
+            patch("cptr.routers.control_ui.authenticate_control_request", new=AsyncMock(return_value="user-1")),
+            patch(
+                "cptr.routers.control_ui.mcp_usage_store.summary",
+                new=AsyncMock(
+                    return_value={
+                        "week": {"requests": 4, "total_tokens_estimated": 1200, "simulated_cost_usd": "0.012"},
+                        "month": {"requests": 9, "total_tokens_estimated": 3600, "simulated_cost_usd": "0.036"},
+                    }
+                ),
+            ),
+            patch(
+                "cptr.routers.control_ui.mcp_usage_store.engineering_sessions",
+                new=AsyncMock(return_value={"comparable": False, "sessions": []}),
+            ),
+            patch(
+                "cptr.routers.control_ui.coding_benchmark_store.leaderboard",
+                new=AsyncMock(return_value={"comparable": True, "suite_id": "cptr-python-core", "models": []}),
+            ),
             patch("cptr.routers.control_ui.runtime_metrics.snapshot", return_value=metrics),
             patch(
                 "cptr.routers.control_ui.Config.get",
@@ -100,6 +118,10 @@ class ControlUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["workspaces"]["available"], 1)
         self.assertEqual(result["models"]["default_model"], "provider/default")
         self.assertEqual(result["mcp_servers"]["count"], 1)
+        self.assertEqual(result["mcp_usage"]["week"]["requests"], 4)
+        self.assertEqual(result["mcp_usage"]["month"]["requests"], 9)
+        self.assertFalse(result["engineering"]["comparable"])
+        self.assertTrue(result["coding_benchmark"]["comparable"])
         self.assertEqual(result["system"]["uptime_seconds"], 123)
         serialized = repr(result)
         self.assertNotIn("private-key", serialized)
