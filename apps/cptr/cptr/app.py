@@ -13,6 +13,7 @@ from cptr.routers import (
     auth_router,
     automations_router,
     automations_extended_router,
+    benchmarks_router,
     bridge_router,
     browser_router,
     browser_extended_router,
@@ -28,6 +29,7 @@ from cptr.routers import (
     git_router,
     images_router,
     mcp_router,
+    mcp_analytics_router,
     memory_router,
     memory_extended_router,
     notifications_router,
@@ -236,6 +238,15 @@ async def auth_middleware(request: Request, call_next):
         or path == "/api/config"
         or path == "/api/changelog"
         or path == "/manifest.json"
+        or (
+            request.method == "POST"
+            and path
+            in {
+                "/api/mcp/traffic/events",
+                "/api/mcp/activity/events",
+                "/api/mcp/diagnostics/events",
+            }
+        )
     ):
         return await call_next(request)
     if (
@@ -380,6 +391,7 @@ app.include_router(audio_router)
 app.include_router(auth_router)
 app.include_router(automations_router)
 app.include_router(automations_extended_router)
+app.include_router(benchmarks_router)
 app.include_router(bridge_router)
 app.include_router(browser_router)
 app.include_router(browser_extended_router)
@@ -396,6 +408,7 @@ app.include_router(gateway_extended_router)
 app.include_router(git_router)
 app.include_router(images_router)
 app.include_router(mcp_router)
+app.include_router(mcp_analytics_router)
 app.include_router(memory_router)
 app.include_router(memory_extended_router)
 app.include_router(notifications_router)
