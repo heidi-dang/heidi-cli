@@ -3,6 +3,8 @@ import React from "react";
 export function NativeWorkbenchStyles() {
   return <style>{`
     .cptr-native{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:CanvasText;background:Canvas;border:1px solid color-mix(in srgb,CanvasText 12%,transparent);border-radius:16px;overflow:hidden;box-shadow:0 1px 2px color-mix(in srgb,CanvasText 7%,transparent)}
+    .cptr-native:not([data-display-mode="fullscreen"]){display:grid;grid-template-rows:auto minmax(0,1fr) auto;max-height:320px}
+    .cptr-native:not([data-display-mode="fullscreen"]) .cptr-native-body{min-height:0;overflow:auto;overscroll-behavior:contain}
     .cptr-native[data-display-mode="fullscreen"]{border:0;border-radius:0;box-shadow:none;min-height:min(760px,100vh)}
     .cptr-native *{box-sizing:border-box}
     .cptr-native button{font:inherit;color:inherit;background:transparent;border:1px solid color-mix(in srgb,CanvasText 14%,transparent);border-radius:9px;padding:7px 10px;cursor:pointer}

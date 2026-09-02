@@ -16,6 +16,17 @@ button:focus-visible, .terminal-viewport:focus-visible { outline: 2px solid #7fb
   margin: 0 auto;
   padding: 8px;
 }
+.terminal-workbench:not([data-display-mode="fullscreen"]) {
+  max-height: 440px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.terminal-workbench[data-display-mode="fullscreen"] {
+  max-width: none;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+}
 
 .overview-card {
   overflow: hidden;

@@ -16,6 +16,7 @@ import {
   type WorkbenchState,
 } from "./state.js";
 import { requestHostDisplayMode, type DisplayModeBridge } from "./display-mode.js";
+import { useOpenAiDisplayMode } from "./openai-globals.js";
 import { DirectWorkersView, type DirectWorkerTab } from "./direct-workers-view.js";
 import { TerminalView } from "./terminal-view.js";
 import { PluginUpdateCenter } from "./plugin-update.js";
@@ -537,6 +538,7 @@ function OwnedWorkbench() {
   const [workerChanges, setWorkerChanges] = useState("");
   const [workerTerminal, setWorkerTerminal] = useState("");
   const callTool = useMcpBridge();
+  const displayMode = useOpenAiDisplayMode();
   const toolResponseMetadata = hostBridge()?.toolResponseMetadata;
   const promptMetadata = findPromptMetadata(toolResponseMetadata);
   const initialOverviewMetadata = findUiOverviewMetadata(toolResponseMetadata);
@@ -557,7 +559,6 @@ function OwnedWorkbench() {
   const connection = hasWorkers ? promptConnection : meta?.targetId ? targetConnection : promptConnection;
   const selectedWorker = selectedWorkerId ? state.workers[selectedWorkerId] : undefined;
   const visibleTarget = useRef<string | null>(null);
-  const autoPinAttempted = useRef(false);
   const isCommand = meta?.targetType === "command" && !!meta.targetId && !!meta.workspaceId;
   const canControl = !!meta?.targetType && ["RUNNING", "WORKING", "CONNECTING", "APPROVAL_REQUIRED"].includes(state.status);
   const displayStatus = meta?.targetType && meta.targetId
@@ -620,18 +621,12 @@ function OwnedWorkbench() {
   }, [meta?.targetType, meta?.targetId, meta?.workspaceId]);
 
   useEffect(() => {
-    if (!liveStreamingEnabled || autoPinAttempted.current) return;
-    autoPinAttempted.current = true;
-    void requestHostDisplayMode(hostBridge(), "pip")
-      .then((granted) => {
-        if (granted === "pip") setActionStatus("terminal pinned");
-      })
-      .catch(() => undefined);
-  }, [liveStreamingEnabled]);
-
-  useEffect(() => {
-    hostBridge()?.notifyIntrinsicHeight?.(Math.min(860, Math.max(320, document.body.scrollHeight)));
-  }, [state.status, state.transcript.length, state.workerOrder.length, selectedWorkerTab, connection, actionStatus, overview, overviewLoading, overviewError]);
+    const workbench = document.querySelector<HTMLElement>(".terminal-workbench");
+    const measuredHeight = Math.ceil(workbench?.getBoundingClientRect().height ?? 0);
+    if (measuredHeight <= 0) return;
+    const height = displayMode === "fullscreen" ? measuredHeight : Math.min(440, measuredHeight);
+    hostBridge()?.notifyIntrinsicHeight?.(height);
+  }, [displayMode, state.status, state.transcript.length, state.workerOrder.length, selectedWorkerTab, connection, actionStatus, overview, overviewLoading, overviewError]);
 
   const stop = async () => {
     if (!meta?.targetType || !meta.targetId) return;
@@ -742,7 +737,7 @@ function OwnedWorkbench() {
 
   const updateCenter = <PluginUpdateCenter callTool={callTool} manifestUrl={updateManifestUrl} onStatus={setActionStatus} />;
 
-  return <main className="terminal-workbench" aria-label="CPTR live workbench">
+  return <main className="terminal-workbench" data-display-mode={displayMode} aria-label="CPTR live workbench">
     <OverviewView
       overview={overview}
       loading={overviewLoading}

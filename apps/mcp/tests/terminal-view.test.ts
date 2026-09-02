@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -91,6 +92,22 @@ test("fullscreen workbench exposes intelligence, verification, and terminal navi
   assert.match(html, /1 FDX/);
   assert.match(html, /<b>1<\/b><span>verification<\/span>/);
   assert.equal(html.includes("Open Workbench"), false, "fullscreen mode must not offer a redundant fullscreen action");
+});
+
+test("inline workbench stays bounded and never auto-pins itself", () => {
+  const workbench = readFileSync(new URL("../web/src/workbench.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../web/src/workbench.css", import.meta.url), "utf8");
+  const nativeUi = readFileSync(new URL("../web/src/native-workbench-ui.tsx", import.meta.url), "utf8");
+
+  assert.doesNotMatch(workbench, /autoPinAttempted/);
+  assert.doesNotMatch(workbench, /document\.body\.scrollHeight/);
+  assert.match(workbench, /querySelector<HTMLElement>\("\.terminal-workbench"\)/);
+  assert.match(workbench, /getBoundingClientRect\(\)\.height/);
+  assert.match(workbench, /displayMode === "fullscreen" \? measuredHeight : Math\.min\(440, measuredHeight\)/);
+  assert.match(workbench, /data-display-mode=\{displayMode\}/);
+  assert.match(css, /\.terminal-workbench:not\(\[data-display-mode="fullscreen"\]\)\s*\{[^}]*max-height:\s*440px[^}]*overflow:\s*auto[^}]*overscroll-behavior:\s*contain/);
+  assert.match(nativeUi, /\.cptr-native:not\(\[data-display-mode="fullscreen"\]\)\{[^}]*max-height:320px/);
+  assert.match(nativeUi, /\.cptr-native:not\(\[data-display-mode="fullscreen"\]\) \.cptr-native-body\{[^}]*overflow:auto[^}]*overscroll-behavior:contain/);
 });
 
 test("workbench empty state contains no synthetic command output", () => {
