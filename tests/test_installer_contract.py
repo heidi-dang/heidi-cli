@@ -260,6 +260,15 @@ def test_runtime_lock_pins_every_downloaded_runtime_for_both_linux_architectures
             int(artifact["sha256"], 16)
 
 
+def test_rustup_runtime_uses_versioned_immutable_archive_urls():
+    lock = json.loads(read("release/runtime-lock.json"))
+    for artifact in lock["runtimes"]["rustup"].values():
+        version = artifact["version"]
+        assert version != "current"
+        assert f"/rustup/archive/{version}/" in artifact["url"]
+        assert "/rustup/dist/" not in artifact["url"]
+
+
 def test_caddy_signed_tarball_is_extracted_after_checksum_verification():
     source = read("scripts/install-lib.sh")
     assert "manifest_runtime_field caddy" in source

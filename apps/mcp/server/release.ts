@@ -68,8 +68,9 @@ export function currentPluginUpdateManifest(env: NodeJS.ProcessEnv = process.env
     release_sha: env.GIT_COMMIT_SHA ?? env.RAILWAY_GIT_COMMIT_SHA ?? env.CPTR_WORKBENCH_BUILD_ID ?? null,
     control_profile: env.HEIDI_CONTROL_PROFILE?.trim() || "unknown",
     released_at: "2026-09-02",
-    summary: "Heidi v2.1.7 adds restart-safe weekly/monthly MCP usage analytics, an anti-tamper standardized coding benchmark, and compact terminal/LSP parity in the versioned 30-tool MCP Apps contract.",
+    summary: "Heidi v2.1.8 carries the 30-tool MCP convergence release and fixes signed production installs by pinning Rustup 1.29.1 to immutable verified archives.",
     changes: [
+      "Pins Rustup 1.29.1 to immutable architecture-specific archive URLs and verified SHA-256 values so signed Heidi installs cannot break when Rust's mutable current/dist bootstrap changes.",
       "Converges the audited official sources heidi-dang/computer@ae2996a672ad4b595617384b7c5ee8cced3e304d and heidi-dang/chatgpt-computer-plugin@70c3962e74a75bde2fd3beb1bfaea7ac0a73b517 into Heidi's compact authorization and release boundaries.",
       "Adds migration 0018 with immutable, owner-scoped MCP usage events keyed by unique event ID plus durable engineering-session and standardized benchmark records.",
       "Persists current-week, current-month, rolling 7/30-day, and all-time MCP-visible token estimates and API-equivalent simulated cost so analytics survive backend restarts.",
@@ -83,7 +84,7 @@ export function currentPluginUpdateManifest(env: NodeJS.ProcessEnv = process.env
       "Preserves exactly one Apps resource at ui://cptr/live-workbench.html, cptr_open_live_workbench as the only UI-producing action, Direct Coding as the default execution path, and allow:delegate as the explicit delegation gate.",
     ],
     refresh_required: true,
-    refresh_reason: "Heidi v2.1.7 changes the MCP action schema by adding bounded client_model attribution, cptr_benchmark, and three compact terminal/LSP parity gateways, so ChatGPT must refresh its cached app/action contract after deployment.",
+    refresh_reason: "Heidi v2.1.8 includes the v2.1.7 MCP action migration with bounded client_model attribution, cptr_benchmark, and three compact terminal/LSP parity gateways; hosts upgrading from the deployed v2.1.6 contract must refresh their cached app/action contract after deployment.",
     refresh_path: ["Settings", "Apps / Plugins", "Heidi", "Manage / Action control", "Refresh"],
     verification: {
       tool: "cptr_plugin_update",
