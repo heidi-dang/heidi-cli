@@ -9,6 +9,7 @@ from cptr.routers.benchmarks import router as benchmarks_router
 from cptr.routers.bridge import router as bridge_router
 from cptr.routers.bridge import webhook_router
 from cptr.routers.browser import router as browser_router
+from cptr.routers.browser_device import router as browser_device_router
 from cptr.routers.browser_extended import router as browser_extended_router
 from cptr.routers.chat import router as chat_router
 from cptr.routers.chat_extended import router as chat_extended_router
@@ -54,6 +55,7 @@ __all__ = [
     "benchmarks_router",
     "bridge_router",
     "browser_router",
+    "browser_device_router",
     "browser_extended_router",
     "chat_router",
     "chat_extended_router",

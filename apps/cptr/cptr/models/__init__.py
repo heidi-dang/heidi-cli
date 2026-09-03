@@ -26,6 +26,13 @@ from cptr.models.control import (
     WorkbenchSession,
     WorkbenchSessionEvent,
 )
+from cptr.models.browser_device import (
+    BrowserDevice,
+    BrowserDeviceEvent,
+    BrowserLease,
+    BrowserPairingChallenge,
+    BrowserSession,
+)
 from cptr.models.files import File
 from cptr.models.metrics import CodingBenchmarkRun, McpEngineeringSession, McpUsageEvent
 from cptr.models.users import Auth, User, UserStates
@@ -41,6 +48,11 @@ __all__ = [
     "AutonomousScope",
     "AutonomousWorkspaceLease",
     "Base",
+    "BrowserDevice",
+    "BrowserDeviceEvent",
+    "BrowserLease",
+    "BrowserPairingChallenge",
+    "BrowserSession",
     "Chat",
     "ChatMessage",
     "Config",

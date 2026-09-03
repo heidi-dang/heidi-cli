@@ -6,14 +6,14 @@ Heidi CLI is the canonical monorepo and release authority for the stack. It keep
 
 ![Heidi CPTR Live Workbench showing terminal diagnostics and release verification](docs/assets/heidi-live-workbench.png)
 
-*Heidi 2.1.11 Live Workbench — rendered from the production Workbench bundle through the same snapshot/SSE terminal path with sanitized verification output. The terminal surface is bounded, redacted, and responsive on desktop and iPhone.*
+*Heidi 2.1.12 Live Workbench — rendered from the production Workbench bundle through the same snapshot/SSE terminal path with sanitized verification output. The terminal surface is bounded, redacted, and responsive on desktop and iPhone.*
 
 ## What Heidi includes
 
 | Component | Role |
 | --- | --- |
 | `apps/mcp` | ChatGPT-facing **30-tool compact MCP contract** plus exactly one bounded Apps Workbench resource at `ui://cptr/live-workbench.html`. |
-| `apps/cptr` | CPTR backend, control plane, terminal/LSP runtime, managed Chrome, SSH, Direct Coding, persistence, analytics, benchmarks, and verification. |
+| `apps/cptr` | CPTR backend, control plane, terminal/LSP runtime, isolated managed Chrome plus securely paired user Chrome, SSH, Direct Coding, persistence, analytics, benchmarks, and verification. |
 | `crates/fdx` | Native repository-intelligence CLI and persistent daemon used for fast source navigation, impact analysis, and verification planning. |
 | `install.sh` + `bin/heidi` | Signed installation, immutable release activation, configuration, updates, diagnostics, verification, logs, and deployment lifecycle. |
 
@@ -21,7 +21,7 @@ Heidi CLI is the canonical monorepo and release authority for the stack. It keep
 
 - **Native ChatGPT Workbench.** One bounded Apps surface shows lifecycle state, FDX intelligence, verification evidence, model-usage analytics, benchmark results, and explicit terminal diagnostics without spawning a new widget for every action.
 - **ChatGPT Direct Coding by default.** ChatGPT remains the reasoning/orchestration layer and operates through scoped workspace, Git, test, terminal, LSP, SSH, and browser primitives; model-backed delegation stays explicit and gated.
-- **Compact production contract.** Heidi exposes 30 reviewed MCP tools rather than mirroring the much larger internal/legacy action surface, while preserving functional parity with the official CPTR backend and ChatGPT adapter.
+- **Compact production contract.** Heidi exposes 30 reviewed MCP tools rather than mirroring the much larger internal/legacy action surface. The existing Chrome read/control gateways select `target=managed` for isolated CPTR Chrome or `target=user` for a paired real Chrome device, so paired-browser support does not expand the public tool count.
 - **Restart-safe engineering telemetry.** Database-backed MCP-visible usage, weekly/monthly aggregates, simulated API-equivalent cost, observed real-work reliability, and standardized anti-tamper coding benchmarks survive backend restarts.
 - **Production-first deployment.** CPTR and MCP bind to loopback, the public MCP edge can sit behind Cloudflare Access/OAuth, secrets remain owner-only, and signed releases are staged before atomic activation and strict end-to-end verification.
 - **Local native intelligence.** FDX stays on the execution host and provides repository intelligence without expanding the public MCP trust boundary.
@@ -35,7 +35,7 @@ ChatGPT
 Heidi MCP  ─────── 30 compact tools + 1 Apps Workbench
    │
    ▼
-CPTR backend ───── workspace / terminal / LSP / SSH / browser / analytics
+CPTR backend ───── workspace / terminal / LSP / SSH / managed + paired-user browser / analytics
    │
    ├────────────── FDX native repository intelligence
    └────────────── local workspace + persistent CPTR state

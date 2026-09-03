@@ -1082,6 +1082,81 @@ export class ComputerClient {
     });
   }
 
+  async controlUserChrome(input: {
+    action: "list_devices" | "open_session" | "command" | "transfer_lease" | "return_to_agent" | "approve_evaluate" | "approve_pairing";
+    pairing_id?: string;
+    code?: string;
+    device_id?: string;
+    session_id?: string;
+    tab_id?: number;
+    workbench_session_id?: string;
+    surface_id?: string;
+    command_id?: string;
+    browser_action?: string;
+    expected_epoch?: number;
+    expected_owner?: "none" | "agent" | "human";
+    new_owner?: "none" | "agent" | "human";
+    fresh_snapshot_id?: string;
+    expression?: string;
+    wait_seconds?: number;
+    payload?: Record<string, unknown>;
+  }): Promise<Record<string, unknown>> {
+    switch (input.action) {
+      case "list_devices":
+        return this.requestBrowserDevice("/devices");
+      case "approve_pairing":
+        if (!input.pairing_id || !input.code) throw new Error("approve_pairing requires pairing_id and code");
+        return this.requestBrowserDevice("/pairing/approve", { method: "POST", body: { pairing_id: input.pairing_id, code: input.code } });
+      case "open_session":
+        if (!input.device_id || input.tab_id === undefined) throw new Error("open_session requires device_id and tab_id");
+        return this.requestBrowserDevice("/sessions", { method: "POST", body: {
+          device_id: input.device_id,
+          tab_id: input.tab_id,
+          ...(input.workbench_session_id ? { workbench_session_id: input.workbench_session_id } : {}),
+          ...(input.surface_id ? { surface_id: input.surface_id } : {}),
+        } });
+      case "approve_evaluate":
+        if (!input.session_id || !input.expression) throw new Error("approve_evaluate requires session_id and expression");
+        return this.requestBrowserDevice(`/sessions/${encodeURIComponent(input.session_id)}/evaluate-approval`, { method: "POST", body: { expression: input.expression } });
+      case "return_to_agent":
+        if (!input.session_id || input.expected_epoch === undefined) throw new Error("return_to_agent requires session_id and expected_epoch");
+        return this.requestBrowserDevice(`/sessions/${encodeURIComponent(input.session_id)}/return-to-agent`, { method: "POST", body: { expected_epoch: input.expected_epoch, wait_seconds: input.wait_seconds ?? 15 } });
+      case "command":
+        if (!input.session_id || !input.command_id || !input.browser_action) throw new Error("command requires session_id, command_id, and browser_action");
+        return this.requestBrowserDevice(`/sessions/${encodeURIComponent(input.session_id)}/command`, { method: "POST", body: {
+          command_id: input.command_id,
+          action: input.browser_action,
+          expected_epoch: input.expected_epoch,
+          wait_seconds: input.wait_seconds ?? 15,
+          payload: input.payload ?? {},
+        } });
+      case "transfer_lease":
+        if (!input.session_id || input.expected_epoch === undefined || !input.expected_owner || !input.new_owner) throw new Error("transfer_lease requires session_id, expected_epoch, expected_owner, and new_owner");
+        return this.requestBrowserDevice(`/sessions/${encodeURIComponent(input.session_id)}/lease`, { method: "POST", body: {
+          expected_epoch: input.expected_epoch,
+          expected_owner: input.expected_owner,
+          new_owner: input.new_owner,
+          ...(input.fresh_snapshot_id ? { fresh_snapshot_id: input.fresh_snapshot_id } : {}),
+        } });
+    }
+  }
+
+  async getUserChromeFrame(sessionId: string, afterFrameId?: string): Promise<Record<string, unknown>> {
+    const query = afterFrameId ? `?after_frame_id=${encodeURIComponent(afterFrameId)}` : "";
+    const response = await this.requestRawBrowserDevice(`/sessions/${encodeURIComponent(sessionId)}/frame${query}`, { headers: { Accept: "image/jpeg, image/webp" } });
+    if (response.status === 204) return { status: 204 };
+    const data = Buffer.from(await response.arrayBuffer()).toString("base64");
+    return {
+      status: response.status,
+      mime_type: response.headers.get("content-type") ?? "application/octet-stream",
+      frame_id: response.headers.get("x-cptr-frame-id"),
+      width: Number(response.headers.get("x-cptr-frame-width") ?? 0),
+      height: Number(response.headers.get("x-cptr-frame-height") ?? 0),
+      created_at_ms: Number(response.headers.get("x-cptr-frame-time") ?? 0),
+      data_base64: data,
+    };
+  }
+
   async createAutonomous(input: {
     workspace_id: string;
     goal: string;
@@ -1255,6 +1330,66 @@ export class ComputerClient {
       );
     } finally {
       clearTimeout(timeout);
+    }
+  }
+
+  private async requestBrowserDevice<T>(
+    path: string,
+    options: { method?: string; body?: unknown } = {},
+  ): Promise<T> {
+    const response = await this.requestRawBrowserDevice(path, {
+      method: options.method,
+      body: options.body,
+      headers: { Accept: "application/json" },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const rawDetail = payload?.detail;
+      const detail = typeof rawDetail === "string" ? rawDetail : "browser-device request failed";
+      throw new ComputerApiError(response.status, publicErrorMessage(detail));
+    }
+    return payload as T;
+  }
+
+  private async requestRawBrowserDevice(
+    path: string,
+    options: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const startedAt = Date.now();
+    const method = options.method ?? "GET";
+    let status: number | null = null;
+    let observedError: ComputerApiError | null = null;
+    try {
+      const response = await this.fetchImpl(`${this.baseUrl}/api/browser-device/v1${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...(options.headers ?? {}),
+        },
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        signal: controller.signal,
+      });
+      status = response.status;
+      return response;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        observedError = new ComputerApiError(504, "CPTR browser-device request timed out", "browser_device_timeout");
+        throw observedError;
+      }
+      observedError = new ComputerApiError(502, "CPTR browser-device request failed", "browser_device_unavailable");
+      throw observedError;
+    } finally {
+      clearTimeout(timeout);
+      this.notifyRequestObserver({
+        method,
+        path: `/api/browser-device/v1${path}`,
+        status,
+        durationMs: Math.max(0, Date.now() - startedAt),
+        error: observedError,
+      });
     }
   }
 

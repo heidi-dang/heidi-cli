@@ -487,20 +487,59 @@ export function registerCompactGateways(
   });
 
   server.registerTool("cptr_chrome_read", {
-    title: "Managed Chrome inspection gateway",
-    description: "Read managed Chrome status or a bounded accessibility snapshot without navigation or page interaction.",
+    title: "Chrome inspection gateway",
+    description: "Inspect CPTR managed Chrome or the user-approved paired Chrome device surface without mutating browser state. target=managed preserves the existing isolated browser behavior; target=user reads paired devices or bounded visual frames.",
     inputSchema: chromeReadGatewaySchema,
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     _meta: oauthMeta,
-  }, async (input) => result(await client.controlChromeBrowser(input)));
+  }, async (input) => {
+    if (input.target === "user") {
+      if (input.action === "list_devices" || input.action === "status") return result(await client.controlUserChrome({ action: "list_devices" }));
+      if (input.action === "get_frame") return result(await client.getUserChromeFrame(required(input.session_id, "session_id"), input.after_frame_id));
+      throw new Error("snapshot is available for paired user Chrome through cptr_chrome_control action=command with browser_action=snapshot");
+    }
+    const workspaceId = required(input.workspace_id, "workspace_id");
+    if (input.action !== "status" && input.action !== "snapshot") throw new Error(`managed Chrome does not support read action ${input.action}`);
+    return result(await client.controlChromeBrowser({ workspace_id: workspaceId, action: input.action }));
+  });
 
   server.registerTool("cptr_chrome_control", {
-    title: "Managed Chrome control gateway",
-    description: "Navigate or interact with CPTR managed Chrome, capture screenshots, or close the managed session. External navigation and page interaction remain conservatively destructive/open-world.",
+    title: "Chrome control gateway",
+    description: "Control either CPTR managed Chrome or a user-approved paired Chrome extension. target=managed preserves the isolated browser semantics. target=user supports pairing approval, session attach, fenced commands, lease handoff/return, and one-time approved evaluate through CPTR's browser-device broker.",
     inputSchema: chromeControlGatewaySchema,
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     _meta: oauthMeta,
-  }, async (input) => result(await client.controlChromeBrowser(input)));
+  }, async (input) => {
+    if (input.target === "user") {
+      switch (input.action) {
+        case "approve_pairing": return result(await client.controlUserChrome({ action: "approve_pairing", pairing_id: input.pairing_id, code: input.code }));
+        case "open_session": return result(await client.controlUserChrome({ action: "open_session", device_id: input.device_id, tab_id: input.tab_id, workbench_session_id: input.workbench_session_id, surface_id: input.surface_id }));
+        case "approve_evaluate": return result(await client.controlUserChrome({ action: "approve_evaluate", session_id: input.session_id, expression: input.expression }));
+        case "return_to_agent": return result(await client.controlUserChrome({ action: "return_to_agent", session_id: input.session_id, expected_epoch: input.expected_epoch, wait_seconds: input.wait_seconds }));
+        case "command": return result(await client.controlUserChrome({ action: "command", session_id: input.session_id, command_id: input.command_id, browser_action: input.browser_action, expected_epoch: input.expected_epoch, wait_seconds: input.wait_seconds, payload: input.payload }));
+        case "transfer_lease": return result(await client.controlUserChrome({ action: "transfer_lease", session_id: input.session_id, expected_epoch: input.expected_epoch, expected_owner: input.expected_owner, new_owner: input.new_owner, fresh_snapshot_id: input.fresh_snapshot_id }));
+        default: throw new Error(`paired user Chrome does not support gateway action ${input.action}; use action=command with browser_action for browser operations`);
+      }
+    }
+    const workspaceId = required(input.workspace_id, "workspace_id");
+    if (!(["navigate", "click", "type", "press_key", "scroll", "screenshot", "close"] as const).includes(input.action as never)) {
+      throw new Error(`managed Chrome does not support control action ${input.action}`);
+    }
+    return result(await client.controlChromeBrowser({
+      workspace_id: workspaceId,
+      action: input.action as "navigate" | "click" | "type" | "press_key" | "scroll" | "screenshot" | "close",
+      url: input.url,
+      ref: input.ref,
+      text: input.text,
+      key: input.key,
+      modifiers: input.modifiers,
+      direction: input.direction,
+      amount: input.amount,
+      width: input.width,
+      height: input.height,
+      allow_network: input.allow_network,
+    }));
+  });
 
   server.registerTool("cptr_delegate_task_read", {
     title: "Delegated task inspection gateway",

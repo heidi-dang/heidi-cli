@@ -1,8 +1,8 @@
 {
   "schema": "heidi.compatibility.v1",
-  "heidi_version": "2.1.11",
+  "heidi_version": "2.1.12",
   "mcp": {
-    "contract_version": "2.1.11",
+    "contract_version": "2.1.12",
     "registered_action_count": 30,
     "resource_count": 1,
     "ui_resource_uri": "ui://cptr/live-workbench.html",
@@ -30,6 +30,7 @@
     "network_default": "deny"
   },
   "migrations": [
+    "Heidi v2.1.12 converges heidi-dang/computer@70ea95c047a61865ec64b12039d80941741fef80 and heidi-dang/chatgpt-computer-plugin@2133a5d3d5d4d0ee7e0915eb2013bd13a7633948 into the signed 30-tool Heidi contract: migration 0019 adds durable paired-browser devices, pairing challenges, sessions, lease epochs, and replay events; device WebSockets separate control and visual traffic; agent/human ownership is epoch-fenced with fresh-snapshot handback; Runtime.evaluate requires a short-lived one-time expression-bound approval; and the existing cptr_chrome_read/cptr_chrome_control gateways add target=user without increasing the production MCP action count or changing target=managed semantics.",
     "Heidi v2.1.11 preserves existing externally/system-managed Cloudflare Tunnel ownership during signed upgrades: when legacy state proves user-scoped Heidi services do not own the tunnel, the system heidi-cloudflared.service is active, and all public MCP/OAuth state matches securely, Heidi records external-system ownership, skips tunnel-token and user-unit takeover, and still requires final public-edge verification.",
     "Heidi v2.1.10 preserves secretless signed upgrades from older Heidi state layouts by recovering a missing allowed-email value from the existing owner-only MCP environment before public-config validation; the fallback is accepted only from a non-symlink 0600 file owned by the deployment user and remains subject to all v2.1.9 exact-match and final verify-stack gates.",
     "Heidi v2.1.9 makes signed production upgrades non-interactive without persisting the Cloudflare API token: unchanged public MCP configuration may be reused only from owner-only non-symlink state/config files with exact transport/domain/email matches, existing Access issuer/audience/application metadata, and owner-only reusable OAuth credentials; tunnel deployments additionally require their existing owner-only tunnel token, and final strict verify-stack remains mandatory.",

@@ -177,13 +177,36 @@ export const sshControlGatewaySchema = {
 };
 
 export const chromeReadGatewaySchema = {
-  action: z.enum(["status", "snapshot"]),
-  workspace_id: workspaceId,
+  target: z.enum(["managed", "user"]).default("managed"),
+  action: z.enum(["status", "snapshot", "list_devices", "get_frame"]),
+  workspace_id: workspaceId.optional(),
+  session_id: z.string().min(1).max(120).optional(),
+  after_frame_id: z.string().min(1).max(160).optional(),
 };
 
 export const chromeControlGatewaySchema = {
-  action: z.enum(["navigate", "click", "type", "press_key", "scroll", "screenshot", "close"]),
-  workspace_id: workspaceId,
+  target: z.enum(["managed", "user"]).default("managed"),
+  action: z.enum([
+    "navigate", "click", "type", "press_key", "scroll", "screenshot", "close",
+    "approve_pairing", "open_session", "command", "transfer_lease", "return_to_agent", "approve_evaluate",
+  ]),
+  workspace_id: workspaceId.optional(),
+  pairing_id: z.string().min(1).max(120).optional(),
+  code: z.string().regex(/^\d{6}$/).optional(),
+  device_id: z.string().min(1).max(120).optional(),
+  session_id: z.string().min(1).max(120).optional(),
+  tab_id: z.number().int().min(0).max(2_147_483_647).optional(),
+  workbench_session_id: z.string().min(1).max(120).optional(),
+  surface_id: z.string().min(1).max(200).optional(),
+  command_id: z.string().min(1).max(160).optional(),
+  browser_action: z.string().min(1).max(120).optional(),
+  expected_epoch: z.number().int().min(0).optional(),
+  expected_owner: z.enum(["none", "agent", "human"]).optional(),
+  new_owner: z.enum(["none", "agent", "human"]).optional(),
+  fresh_snapshot_id: z.string().min(1).max(200).optional(),
+  expression: z.string().min(1).max(20_000).optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
+  wait_seconds: z.number().min(0.1).max(60).default(15),
   url: z.string().max(4_096).optional(),
   ref: z.string().max(64).optional(),
   text: z.string().max(20_000).optional(),
